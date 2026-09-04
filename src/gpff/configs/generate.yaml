@@ -1,0 +1,101 @@
+# @package _global_
+
+defaults:
+  - sampler: direct_denoising
+  - prior: gaussian
+  # Builds the conditions dict shared by prior and sampler; unused by
+  # prior=gaussian.
+  - condition_generator: null
+  - _self_
+
+# Globals override (can be overridden via command line or experiment config)
+globals:
+  verbose: true
+  
+# Model loading: local files only, both are required. Nothing is downloaded,
+# so the sampled model is exactly the checkpoint at model_path.
+model_path: ???
+split_path: ???
+
+# Data configuration
+datapath: ???
+batch_size: 32
+num_workers: 12
+data_workdir: null
+
+# Sampling configuration
+n_samples: 1000
+seed: 42069
+results_dir: generated_samples
+output_db: ${results_dir}/samples_${now:%Y-%m-%d_%H-%M-%S}.db
+
+# debug configuration
+store_trajectories: false
+
+# hydra configuration
+hydra:
+    job:
+      chdir: False
+
+    searchpath:
+      - file://${oc.env:PWD}
+      - file://${oc.env:PWD}/configs
+
+    # disable hydra config storage, since handled manually
+    output_subdir: null
+
+    help:
+      app_name: GPFF Generate
+
+      template: |-
+        GPFF Sample Generation
+
+        == Configuration ==
+        This is the config generated for this run.
+
+        -------
+        $CONFIG
+        -------
+
+        You can override values via command line, for example:
+        > gpff_generate model_path=/path/to/best_model split_path=/path/to/split.npz datapath=/path/to/qm9.db n_samples=5000
+        
+        Available sampler options:
+        - sampler=direct_denoising (default) - direct denoising sampler
+        - sampler=shape_direct_denoising - direct denoising with prior shape enforcement
+        - sampler=scaffold_direct_denoising - direct denoising with frozen scaffold atoms
+        - sampler=shape_scaffold_direct_denoising - frozen scaffold atoms plus shape
+          enforcement on the free atoms
+        - sampler=ddim - DDIM-style sampler
+        - sampler=adaptive_ddim - adaptive DDIM sampler with per-molecule sigma estimation
+        - sampler=euler_maruyama - Euler-Maruyama sampler
+        - sampler=ve_ddpm - variance exploding DDPM sampler
+        - sampler=heun - Heun's method sampler
+        - sampler=stochastic_heun - stochastic Heun's method sampler
+        - sampler=adaptive_heun - adaptive Heun's method sampler with per-molecule sigma estimation
+        
+        Available prior options:
+        - prior=gaussian (default)
+        - prior=shape - prescribed principal variances per molecule; needs
+          condition_generator=shape
+        - prior=scaffold - scaffold atoms keep their original positions, free atoms
+          match a target covariance and center; needs a scaffold condition generator
+        - prior=scaffold_gaussian - scaffold atoms keep their original positions,
+          free atoms are drawn isotropically; needs a scaffold condition generator
+
+        Available condition generator options:
+        - condition_generator=shape - one target variance vector per molecule
+          from a per-molecule-size Gaussian mixture fitted on the train split.
+          Set condition_generator.target_ratio (with
+          sampler=shape_direct_denoising) for shape-targeted sampling.
+        - condition_generator=scaffold - scaffold mask plus free-atom covariance
+          and center from prescribed scaffold atom ids; set
+          condition_generator.scaffold_ids, pair with prior=scaffold and
+          sampler=scaffold_direct_denoising.
+        - condition_generator=precomputed_scaffold - same, but each molecule's
+          scaffold is looked up by dataset index from a JSON file; set
+          condition_generator.scaffold_ids_path. Every sampled structure must be
+          covered by that file, so pass a split_path whose test split contains
+          only those structures.
+
+        ${hydra.help.footer}

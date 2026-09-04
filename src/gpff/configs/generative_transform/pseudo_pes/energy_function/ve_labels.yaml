@@ -1,0 +1,2 @@
+# @package pseudo_pes.energy_function
+_target_: gpff.pseudo_pes.labels.VEPseudoCalculator

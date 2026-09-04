@@ -1,0 +1,14 @@
+defaults:
+  - /calculator@calculator: default
+  - _self_
+
+_target_: gpff.sample.direct_denoising.ShapeDirectDenoisingSampler
+n_steps: 50
+time_aware_model: false
+observers:
+  - _target_: gpff.sample.observers.ProgressReporter
+    verbose: false
+    show_progressbar: false
+stochastic_lambda: 1.0
+f_max: 0.0
+prior_shape_denoising_power: 4.0

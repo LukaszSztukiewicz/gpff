@@ -1,0 +1,2 @@
+wandb_cleanup:
+  _target_: gpff.callbacks.WandbCleanupCallback

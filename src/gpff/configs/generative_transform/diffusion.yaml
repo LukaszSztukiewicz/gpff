@@ -1,0 +1,5 @@
+_target_: morered.transform.Diffuse
+diffuse_property: _positions
+diffusion_process: ${diffusion_process}
+time_key: ${key:t}
+

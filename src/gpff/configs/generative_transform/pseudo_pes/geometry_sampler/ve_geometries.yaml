@@ -1,0 +1,10 @@
+# @package pseudo_pes.geometry_sampler
+# Variance Exploding geometry sampler
+# Default values - can be overridden by experiments
+_target_: gpff.pseudo_pes.geometries.VarianceExplodingGeometries
+sigma_max: ${globals.sigma_max}
+sigma_mean: -0.7
+sigma_std: 1.2
+destroy_signal: false
+mean_free_noise: true
+sample_uniformly: false

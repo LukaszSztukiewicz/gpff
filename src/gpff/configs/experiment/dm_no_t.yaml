@@ -1,0 +1,82 @@
+# @package _global_
+# Diffusion-model baseline (noise / epsilon prediction), time-agnostic.
+# Was "gpff_noise_no_t" in matred. Like dm_t_aware but with the plain
+# GatedEquivariant head (no time conditioning).
+defaults:
+  - override /generative_transform: pseudo_pes
+  - override /model: nnp
+  - override /model/representation: painn
+  - override /data: qm9_valid
+  - override /prior: gaussian
+
+globals:
+  # Architecture
+  sigma_max: 30
+  cutoff: ${mul:${globals.sigma_max}, 5}
+  n_atom_basis: 256
+  n_interactions: 4
+  n_rbf: ${mul:${globals.cutoff}, 4}
+
+  # Transform alignment
+  align_permutation: false
+  align_rotation: false
+
+  # Training
+  scale_loss: null
+  lr: 1e-4
+
+  # Metadata
+  model_path: "best_model"
+
+  # Keys
+  noise_target_key: ${key:noise}
+  noise_output_key: eps_pred
+
+run:
+  experiment: dm_no_t
+  tags:
+    - dm_no_t
+
+prior:
+  sigma: ${globals.sigma_max}
+
+model:
+  representation:
+    cutoff_fn:
+      cutoff: ${globals.cutoff}
+    n_atom_basis: ${globals.n_atom_basis}
+    n_interactions: ${globals.n_interactions}
+    radial_basis:
+      n_rbf: ${globals.n_rbf}
+  output_modules:
+    - _target_: gpff.model.heads.GatedEquivariant
+      n_in: ${globals.n_atom_basis}
+      n_hidden: null
+      n_layers: 3
+      output_key: ${globals.noise_output_key}
+
+pseudo_pes:
+  weight_generator: null
+
+data:
+  transforms:
+    - ${generative_transform}
+    - _target_: morered.transform.AllToAllNeighborList
+    - _target_: schnetpack.transform.CastTo32
+
+task:
+  warmup_steps: 0
+  outputs:
+    - _target_: gpff.task.ModelOutput
+      name: ${globals.noise_output_key}
+      target_property: ${globals.noise_target_key}
+      metrics:
+        mae:
+          _target_: torchmetrics.regression.MeanAbsoluteError
+        mse:
+          _target_: torchmetrics.regression.MeanSquaredError
+          squared: True
+      loss_weight: 1.
+      scale_loss: ${globals.scale_loss}
+      weights_key: null
+      warmup_steps: 0

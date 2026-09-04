@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gpff"
+version = "0.0.1"
+description = "GPFF - Generative Pseudo Force Field for molecule generation."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Stefaan Hessmann", email = "stefaan@posteo.de" },
+]
+dependencies = [
+    # Numerical stack pinned around torch==2.8.0; newer torch releases gave
+    # different numerical results, so the versions below are held together.
+    "ase==3.26.0",
+    "hydra-core==1.4.0.dev1",
+    "matplotlib==3.10.8",
+    "numpy==2.3.2",
+    "omegaconf==2.4.0.dev4",
+    "petname==2.9",
+    "pytorch-lightning==2.5.3",
+    "rdkit==2025.9.6",
+    "scikit-learn==1.8.0",
+    "scipy==1.16.1",
+    "torch==2.8.0",
+    "torchmetrics==1.8.1",
+    "tqdm==4.67.3",
+    "wandb==0.25.1",
+    "posebusters==0.2.12",
+    # Extra numerics pins held to the matred_old versions (transitive deps;
+    # torch==2.8.0 already pins triton + the nvidia-cu12 libs).
+    "pandas==2.3.2",
+    "sympy==1.14.0",
+    "networkx==3.5",
+    "lightning-utilities==0.15.2",
+    "schnetpack @ git+https://github.com/atomistic-machine-learning/schnetpack.git@74940f3",
+    # morered is required at runtime but its own pyproject pins schnetpack==2.0.3,
+    # which is incompatible with the pinned torch==2.8.0. Install it separately
+    # with --no-deps:
+    #     pip install --no-deps git+https://github.com/khaledkah/MoreRed.git
+
+]
+
+[project.scripts]
+gpff_train = "gpff.cli.train:train"
+gpff_generate = "gpff.cli.generate:sample_molecules"
+gpff_prepare_metadata = "gpff.cli.prepare_metadata:main"
+gpff_calculate_metrics = "gpff.cli.calculate_metrics:main"
+gpff_reference_assets = "gpff.cli.reference_assets:main"
+# Deprecated alias for gpff_train, kept for existing job scripts.
+gpfftrain = "gpff.cli.train:train"
+
+[project.urls]
+Homepage = "https://github.com/stefaanhessmann/gpff"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["gpff*"]
+
+[tool.setuptools.package-data]
+gpff = ["configs/**/*.yaml"]

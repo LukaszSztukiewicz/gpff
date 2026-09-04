@@ -1,0 +1,10 @@
+# Looks each molecule's scaffold up by its dataset index from a precomputed
+# JSON file, then derives the free atoms' covariance and center from the
+# structure. Pair with a scaffold prior and a scaffold sampler; the covariance
+# and center are simply unused by the ones that do not constrain the free atoms'
+# shape. Every sampled structure must be covered by the file, so pass a
+# split_path whose test split contains only those structures.
+_target_: gpff.sample.conditions.PrecomputedScaffoldConditionGenerator
+# JSON with a "molecules" list, each entry carrying "dataset_idx" and
+# "scaffold_ids" (0-based within the molecule, in database atom order).
+scaffold_ids_path: ???

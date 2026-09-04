@@ -1,0 +1,7 @@
+# @package pseudo_pes.geometry_sampler
+# Mixed geometry sampler supporting multiple noise schedules
+# Default values - can be overridden by experiments
+_target_: gpff.pseudo_pes.geometries.MixedGeometries
+sigma_max: 5
+t_sigma: 0.1
+

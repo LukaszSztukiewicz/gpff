@@ -1,0 +1,3 @@
+# Draws positions with prescribed principal variances per molecule. Requires
+# condition_generator=shape.
+_target_: gpff.sample.priors.ShapePrior

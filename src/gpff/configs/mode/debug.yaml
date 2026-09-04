@@ -1,0 +1,18 @@
+# @package _global_
+data:
+  num_train: 1000
+  num_val: 100
+  batch_size: 16
+
+globals:
+  n_atom_basis: 32
+
+sampler:
+  n_steps: 10
+
+callbacks:
+  sampler_callback:
+    start_epoch: 2
+    every_n_epochs: 2
+
+project: debug

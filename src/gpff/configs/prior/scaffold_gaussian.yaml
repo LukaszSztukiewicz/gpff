@@ -1,0 +1,5 @@
+# Keeps scaffold atoms at their original positions and draws the free atoms from
+# an isotropic normal distribution. Requires a condition generator supplying the
+# scaffold mask, e.g. condition_generator=precomputed_scaffold.
+_target_: gpff.sample.priors.ScaffoldGaussianPrior
+sigma: 30.0

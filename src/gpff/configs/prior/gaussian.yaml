@@ -1,0 +1,2 @@
+_target_: gpff.sample.priors.GaussianPrior
+sigma: 30.0

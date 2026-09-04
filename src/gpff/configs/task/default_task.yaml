@@ -1,0 +1,9 @@
+defaults:
+  - _self_
+  - optimizer: adam
+  - scheduler: reduce_on_plateau
+
+_target_: gpff.task.AtomisticTask
+outputs: ???
+warmup_steps: 0
+skip_exploding_batches: True

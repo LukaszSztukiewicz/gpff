@@ -1,0 +1,10 @@
+# Runs model inference for a sampler: owns the model, device/dtype placement
+# and the (fully connected) neighbor list. `model` is injected at runtime from
+# the loaded checkpoint (see gpff_generate) or by the sampler callback in
+# training.
+_target_: gpff.sample.base.Calculator
+model: null
+noise_model: false
+noise_key: ${key:noise}
+dtype: float32
+device: cuda

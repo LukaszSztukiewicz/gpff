@@ -1,0 +1,4 @@
+ema:
+    # gpff subclass: restores the raw (non-EMA) weights on resume — see callbacks.py
+    _target_: gpff.callbacks.ExponentialMovingAverage
+    decay: 0.995

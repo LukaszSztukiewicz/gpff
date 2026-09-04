@@ -1,0 +1,16 @@
+# Scaffold atoms stay frozen while the free atoms are denoised around them, with
+# no constraint on the free atoms' shape. Requires a condition generator
+# supplying the scaffold mask, e.g. condition_generator=precomputed_scaffold.
+defaults:
+  - /calculator@calculator: default
+  - _self_
+
+_target_: gpff.sample.direct_denoising.ScaffoldDirectDenoisingSampler
+n_steps: 50
+time_aware_model: false
+observers:
+  - _target_: gpff.sample.observers.ProgressReporter
+    verbose: false
+    show_progressbar: false
+stochastic_lambda: 1.0
+f_max: 0.0

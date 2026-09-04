@@ -1,0 +1,5 @@
+_target_: gpff.sample.schedules.EDMNoiseSchedule
+n_steps: ${..n_steps}
+sigma_min: 0.01
+sigma_max: 30.0
+rho: 5.0

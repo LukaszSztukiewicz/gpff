@@ -1,0 +1,78 @@
+# @package _global_
+
+defaults:
+  - _self_
+  - run: default_run
+  - trainer: default_trainer
+  - callbacks:
+      - checkpoint
+      - rng
+      - earlystopping
+      - lrmonitor
+      - ema
+      - progress_bar
+  - task: default_task
+  - logger: wandb
+  
+  # Experiment-specific (set to null, must be provided by experiment)
+  - model: null
+  - data: null
+  - prior: null
+  - generative_transform: null
+  - experiment: null
+  - mode: null
+
+print_config: True
+
+# Default project (can be overridden by experiments)
+project: default
+
+# hydra configuration
+hydra:
+    job:
+      chdir: True
+    # output paths for hydra logs
+    run:
+        dir: ${run.path}/${run.id}
+
+    searchpath:
+      - file://${oc.env:PWD}
+      - file://${oc.env:PWD}/configs
+
+    # disable hydra config storage, since handled manually
+    output_subdir: null
+
+    help:
+      app_name: GPFF Train
+
+      template: |-
+        GPFF Training Configuration
+
+        == Configuration groups ==
+        Compose your configuration from those groups
+
+        $APP_CONFIG_GROUPS
+
+        == Config ==
+        This is the config generated for this run.
+
+        -------
+        $CONFIG
+        -------
+
+        You can use a pre-defined experiment config:
+        > gpfftrain experiment=gpff
+
+        or your own experiment config, which needs to be located in a directory called `experiment` in the config search
+        path, e.g.,
+        > gpfftrain --config-dir=./my_configs experiment=my_experiment
+
+        with your experiment config located at `./my_configs/experiment/my_experiment.yaml`.
+        Your current working directory as well as an optional config subdirectory are automatically in the config
+        search path. Therefore, you can put your experiment config either in `./experiment`,
+        or `./configs/experiment`.
+
+        You can also override everything with the command line, for example:
+        > gpfftrain experiment=gpff data.batch_size=50 model.representation.n_atom_basis=512
+
+        ${hydra.help.footer}

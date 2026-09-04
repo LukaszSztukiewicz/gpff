@@ -1,0 +1,8 @@
+sampler_callback:
+  _target_: gpff.callbacks.SamplerCallback
+  prior_sampler: ${prior}
+  sampler: ${sampler}
+  store_path: "samples"
+  every_n_batchs: 20
+  every_n_epochs: 50
+  start_epoch: 20

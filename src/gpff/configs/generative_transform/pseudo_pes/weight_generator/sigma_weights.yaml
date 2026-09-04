@@ -1,0 +1,5 @@
+# @package pseudo_pes.weight_generator
+# Sigma weights
+_target_: gpff.pseudo_pes.weights.SigmaWeights
+min_clipping: 0.
+max_clipping: 1.

@@ -1,0 +1,4 @@
+# Keeps scaffold atoms at their original positions and draws the free atoms
+# from the conditioned covariance and center. Requires
+# condition_generator=scaffold; pair with sampler=scaffold_direct_denoising.
+_target_: gpff.sample.priors.ScaffoldPrior

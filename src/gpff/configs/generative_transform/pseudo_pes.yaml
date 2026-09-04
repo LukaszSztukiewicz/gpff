@@ -1,0 +1,17 @@
+# Pseudo-PES generative transform
+# Expected globals:
+#   - align_permutation: Align permutations (default: true)
+#   - align_rotation: Align rotations (default: false)
+#   - sigma_max: Maximum noise scale (required for VE geometries)
+#   - Other globals depend on selected geometry_sampler, energy_function, weight_generator
+defaults:
+  - pseudo_pes/geometry_sampler: ve_geometries
+  - pseudo_pes/energy_function: ve_labels
+  - pseudo_pes/weight_generator: sigma_weights
+
+_target_: gpff.data.transform.PseudoPESTransform
+align_permutation: ${globals.align_permutation}
+align_rotation: ${globals.align_rotation}
+geometry_sampler: ${pseudo_pes.geometry_sampler}
+energy_function: ${pseudo_pes.energy_function}
+weight_generator: ${pseudo_pes.weight_generator}

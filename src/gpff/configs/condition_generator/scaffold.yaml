@@ -1,0 +1,8 @@
+# Builds the scaffold conditions (keys.scaffold_mask, keys.free_covariance,
+# keys.free_center) from prescribed scaffold atom ids and the batch's original
+# positions. Pair with prior=scaffold and sampler=scaffold_direct_denoising.
+_target_: gpff.sample.conditions.ScaffoldConditionGenerator
+# Atom indices belonging to the scaffold, 0-based within each molecule. Either
+# one flat list applied to every molecule, e.g. [0, 1, 2], or one list per
+# molecule ordered like idx_m.unique().
+scaffold_ids: ???

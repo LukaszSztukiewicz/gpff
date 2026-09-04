@@ -1,0 +1,21 @@
+# Supplies one target variance vector per molecule (keys.target_variances) from
+# a per-molecule-size Gaussian mixture fitted on the train split. Pair with
+# prior=shape, and sampler=shape_direct_denoising when the shape should survive
+# denoising.
+_target_: gpff.sample.conditions.ShapeConditionGenerator
+# Optional (xx, yy, zz) principal variance ratio to prescribe for every molecule
+# of the run, e.g. [0.9, 0.05, 0.05] for a rod. Null keeps the shape the mixture
+# predicts. Setting it keeps the predicted molecule size but forces the shape:
+# [1, 1, 1] is spherical, [8, 1, 1] is strongly elongated.
+target_ratio: null
+shape_predictor:
+  # One mixture per atom count, fitted on the three principal-axis variances.
+  _target_: gpff.sample.shape_predictor.ShapeGMM.load_or_fit
+  # Injected with the train split by gpff_generate.
+  train_dataset: null
+  # Cache for the fitted mixture. Loaded if present, written after fitting
+  # otherwise. The target ratio above is applied at sampling time, so one cache
+  # serves every shape.
+  cache_path: null
+  n_components: 5
+  verbose: false

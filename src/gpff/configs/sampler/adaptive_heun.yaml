@@ -1,0 +1,14 @@
+defaults:
+  - /calculator@calculator: default
+  - /noise_schedule@noise_schedule: edm
+  - _self_
+
+_target_: gpff.sample.heun.AdaptiveHeunSampler
+n_steps: 50
+n_steps_target: 10
+time_aware_model: false
+observers:
+  - _target_: gpff.sample.observers.ProgressReporter
+    verbose: false
+    show_progressbar: false
+estimate_sigma: true

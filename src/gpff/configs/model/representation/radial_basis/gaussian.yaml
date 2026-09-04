@@ -1,0 +1,7 @@
+# Gaussian radial basis function
+# Expected globals:
+#   - cutoff: Cutoff radius (default: 5.0)
+_target_: schnetpack.nn.radial.GaussianRBF
+n_rbf: 20
+cutoff: ${globals.cutoff}
+trainable: False

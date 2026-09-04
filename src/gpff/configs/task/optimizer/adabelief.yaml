@@ -1,0 +1,8 @@
+# @package task
+# AdaBelief optimizer
+# Expected globals:
+#   - lr: Learning rate (default: 2e-4)
+optimizer_cls: adabelief_pytorch.AdaBelief
+optimizer_args:
+  lr: ${globals.lr}
+  weight_decay: 0.0

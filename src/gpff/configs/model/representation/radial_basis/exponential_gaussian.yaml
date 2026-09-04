@@ -1,0 +1,9 @@
+# Gaussian radial basis function
+# Expected globals:
+#   - cutoff: Cutoff radius (default: 5.0)
+_target_: gpff.nn.radial.ExpGaussianRBF
+n_rbf: 20
+trainable: False
+gamma: 0.05
+cuspless: false
+use_exponential_weighting: false

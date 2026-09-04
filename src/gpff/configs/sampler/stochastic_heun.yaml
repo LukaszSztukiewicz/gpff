@@ -1,0 +1,18 @@
+defaults:
+  - /calculator@calculator: default
+  - /noise_schedule@noise_schedule: edm
+  - _self_
+
+_target_: gpff.sample.heun.StochasticHeunSampler
+n_steps: 50
+noise_schedule:
+  rho: 5.0
+sigma_tmin: 0.01
+sigma_tmax: 15.0
+sigma_churn: 60.0
+sigma_noise: 1.0
+time_aware_model: false
+observers:
+  - _target_: gpff.sample.observers.ProgressReporter
+    verbose: false
+    show_progressbar: false
