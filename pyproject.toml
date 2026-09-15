@@ -62,3 +62,6 @@ include = ["gpff*"]
 
 [tool.setuptools.package-data]
 gpff = ["configs/**/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

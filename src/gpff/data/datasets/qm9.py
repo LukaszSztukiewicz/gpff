@@ -35,7 +35,12 @@ def build_filtered_qm9(
     RDKit can infer a neutral, radical-free, single-fragment bond structure from
     its geometry. The written database carries the same properties as the source
     plus the index of each molecule in the source database ("original_index")
-    and the SMILES string as a key-value pair.
+    and two SMILES key-value pairs: ``smiles``, the isomeric form with explicit
+    hydrogens (``analyze_with_rdkit(..., remove_hs=False)["smiles"]``, the same
+    call and key ``gpff_prepare_metadata`` uses for generated samples), and
+    ``canonical_smiles``, the implicit-hydrogen canonicalisation of that string.
+    The target metadata also carries the source database's ``atomrefs`` (if any)
+    and a ``smiles_format`` marker identifying the ``smiles`` convention above.
 
     Args:
         raw_datapath: path to the unfiltered QM9 database.
@@ -87,9 +92,14 @@ def build_filtered_qm9(
 
             data = dict(row.data)
             data["original_index"] = np.array([index], dtype=int)
-            # the rows carry the SMILES without the explicit hydrogens
+            # store both SMILES representations: the isomeric, explicit-hydrogen
+            # form that gpff_prepare_metadata stores for generated samples, and
+            # the implicit-hydrogen canonicalisation of it
             target.write(
-                atoms, data=data, smiles=analysis.get("canonical_smiles", "")
+                atoms,
+                data=data,
+                smiles=analysis.get("smiles", ""),
+                canonical_smiles=analysis.get("canonical_smiles", ""),
             )
 
         target.metadata = {
@@ -105,6 +115,10 @@ def build_filtered_qm9(
             },
             "_property_unit_dict": property_unit_dict,
             "_distance_unit": source_metadata["_distance_unit"],
+            "atomrefs": source_metadata.get("atomrefs", {}),
+            # identifies the "smiles" convention above: isomeric SMILES with
+            # explicit hydrogens, from analyze_with_rdkit(remove_hs=False)
+            "smiles_format": "gpff_explicit_h_isomeric_v1",
         }
 
     os.replace(partial_datapath, target_datapath)

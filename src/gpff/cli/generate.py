@@ -1,13 +1,15 @@
 """Sampling entry point (``gpff_generate``)."""
 import logging
 import os
+import random
 import socket
 from typing import Optional
 
 import hydra
 import numpy as np
 from ase.db import connect
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
+from pytorch_lightning import seed_everything
 
 from schnetpack.utils import load_model
 from schnetpack.utils.script import print_config
@@ -46,6 +48,16 @@ def sample_molecules(config: DictConfig):
     """
     print(header)
     log.info("Running on host: " + str(socket.gethostname()))
+
+    # Set seed for random number generators in pytorch, numpy and python.random
+    if "seed" in config:
+        log.info(f"Seed with <{config.seed}>")
+    else:
+        # choose seed randomly
+        with open_dict(config):
+            config.seed = random.randint(0, 2**32 - 1)
+        log.info(f"Seed randomly with <{config.seed}>")
+    seed_everything(seed=config.seed, workers=True)
 
     # print config
     print_config(
@@ -122,7 +134,10 @@ def sample_molecules(config: DictConfig):
         )
 
     # create samples directory and initialize database
-    run_metadata = {"config": OmegaConf.to_container(config, resolve=True)}
+    run_metadata = {
+        "config": OmegaConf.to_container(config, resolve=True),
+        "seed": int(config.seed),
+    }
     if os.path.exists(config.output_db):
         os.remove(config.output_db)
     os.makedirs(os.path.dirname(config.output_db), exist_ok=True)
