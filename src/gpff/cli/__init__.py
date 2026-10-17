@@ -8,10 +8,8 @@ One module per command, each registered in ``pyproject.toml``:
     gpff_calculate_metrics  gpff.cli.calculate_metrics:main
     gpff_reference_assets   gpff.cli.reference_assets:main
 
-This module holds only what every command shares: the banner, the
-``torch.load`` compatibility shim and the OmegaConf resolvers. Keep it free of
-heavy imports so that running one command does not drag in another's
-dependencies.
+This module holds only what every command shares. Cheap imports only
+so that running one command does not drag in another's dependencies.
 """
 import tempfile
 import uuid
@@ -43,14 +41,6 @@ OmegaConf.register_new_resolver("tmpdir", tempfile.mkdtemp, use_cache=True)
 OmegaConf.register_new_resolver("mul", lambda x, y: x * y)
 OmegaConf.register_new_resolver("key", lambda key_name: getattr(keys, key_name))
 
-header = r"""
- ___________ _   __           _____           ___  ___ _     ____________ 
-/  ___| ___ \ | / /          |  __ \          |  \/  || |    |  ___|  ___|
-\ `--.| |_/ / |/ /   ______  | |  \/ ___ _ __ | .  . || |    | |_  | |_   
- `--. \  __/|    \  |______| | | __ / _ \ '_ \| |\/| || |    |  _| |  _|  
-/\__/ / |   | |\  \          | |_\ \  __/ | | | |  | || |____| |   | |    
-\____/\_|   \_| \_/           \____/\___|_| |_\_|  |_/\_____/\_|   \_|    
-
-"""
+header = r""" --- Hello from Generative Pseudo-Force Field (GPFF) model repo! --- \n"""
 
 __all__ = ["header"]

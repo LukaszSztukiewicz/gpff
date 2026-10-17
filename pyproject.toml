@@ -44,6 +44,11 @@ dependencies = [
 
 ]
 
+[project.optional-dependencies]
+notebook = [
+    "jupyterlab",
+]
+
 [project.scripts]
 gpff_train = "gpff.cli.train:train"
 gpff_generate = "gpff.cli.generate:sample_molecules"
