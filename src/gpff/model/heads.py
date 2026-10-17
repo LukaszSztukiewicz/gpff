@@ -7,6 +7,8 @@ import schnetpack.nn as snn
 import schnetpack.properties as properties
 from schnetpack.atomistic import Atomwise as SPKAtomwise
 
+from gpff import keys
+
 
 __all__ = ["GatedEquivariant", "Atomwise", "TimeAwareEquivariant", "DiffusionTime"]
 
@@ -300,7 +302,7 @@ class TimeAwareEquivariant(nn.Module):
         n_hidden: Optional[Union[int, Sequence[int]]] = None,
         n_layers: int = 2,
         activation: Callable = F.silu,
-        output_key: str = "eps_pred",
+        output_key: str = keys.eps_pred,
         time_head: Optional[nn.Module] = None,
         time_key: Optional[str] = None,
         detach_time_head: bool = False,
