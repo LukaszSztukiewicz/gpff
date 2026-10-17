@@ -39,40 +39,28 @@ hydra:
       - file://${oc.env:PWD}
       - file://${oc.env:PWD}/configs
 
-    # disable hydra config storage, since handled manually
-    output_subdir: null
-
     help:
       app_name: GPFF Train
 
       template: |-
-        GPFF Training Configuration
+        Train a GPFF model.
 
-        == Configuration groups ==
-        Compose your configuration from those groups
+        Usage:
+          gpff_train experiment=gpff
+          gpff_train experiment=gpff data.batch_size=50 trainer.max_epochs=300
+
+        Your own experiments:
+          Put my_exp.yaml in ./experiment/ or ./configs/experiment/, then run
+          gpff_train experiment=my_exp
+
+        Resume a run:
+          gpff_train experiment=gpff run.id=<run-name> run.path=runs/<project>/<date>
+
+        Show the full config without training:
+          gpff_train experiment=gpff --cfg job
+
+        Config groups you can choose from:
 
         $APP_CONFIG_GROUPS
-
-        == Config ==
-        This is the config generated for this run.
-
-        -------
-        $CONFIG
-        -------
-
-        You can use a pre-defined experiment config:
-        > gpfftrain experiment=gpff
-
-        or your own experiment config, which needs to be located in a directory called `experiment` in the config search
-        path, e.g.,
-        > gpfftrain --config-dir=./my_configs experiment=my_experiment
-
-        with your experiment config located at `./my_configs/experiment/my_experiment.yaml`.
-        Your current working directory as well as an optional config subdirectory are automatically in the config
-        search path. Therefore, you can put your experiment config either in `./experiment`,
-        or `./configs/experiment`.
-
-        You can also override everything with the command line, for example:
-        > gpfftrain experiment=gpff data.batch_size=50 model.representation.n_atom_basis=512
 
         ${hydra.help.footer}

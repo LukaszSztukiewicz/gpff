@@ -3,5 +3,7 @@ wandb:
   project: ${project}
   entity: null
   name: ${run.id}
+  id: ${run.id}
+  resume: allow # continue the same wandb run when resuming
   notes: "none"
   tags: null

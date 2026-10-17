@@ -45,33 +45,6 @@ def train(config: DictConfig):
         )
         return
 
-    if os.path.exists("config.yaml"):
-        log.info(
-            f"Config already exists in given directory {os.path.abspath('.')}."
-            + " Attempting to continue training."
-        )
-
-        # save old config
-        old_config = OmegaConf.load("config.yaml")
-        count = 1
-        while os.path.exists(f"config.old.{count}.yaml"):
-            count += 1
-        with open(f"config.old.{count}.yaml", "w") as f:
-            OmegaConf.save(old_config, f, resolve=False)
-
-        # resume from latest checkpoint
-        if config.run.ckpt_path is None:
-            if os.path.exists("checkpoints/last.ckpt"):
-                config.run.ckpt_path = "checkpoints/last.ckpt"
-
-        if config.run.ckpt_path is not None:
-            log.info(
-                f"Resuming from checkpoint {os.path.abspath(config.run.ckpt_path)}"
-            )
-    else:
-        with open("config.yaml", "w") as f:
-            OmegaConf.save(config, f, resolve=False)
-
     # Set matmul precision if specified
     if "matmul_precision" in config and config.matmul_precision is not None:
         log.info(f"Setting float32 matmul precision to <{config.matmul_precision}>")
