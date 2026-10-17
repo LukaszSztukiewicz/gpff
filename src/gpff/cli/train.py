@@ -1,13 +1,12 @@
 """Training entry point (``gpff_train``)."""
 import logging
 import os
-import random
 import socket
 from typing import List
 
 import hydra
 import torch
-from omegaconf import DictConfig, OmegaConf, open_dict
+from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import Callback, LightningDataModule, Trainer, seed_everything
 from pytorch_lightning.loggers.logger import Logger
 
@@ -40,7 +39,7 @@ def train(config: DictConfig):
             f"""
         Config incomplete! You have to specify at least `data` and `model`!
         For an example, try one of our pre-defined experiments:
-        > spktrain experiment=qm9_atomwise
+        > gpff_train experiment=gpff
         """
         )
         return
@@ -51,13 +50,7 @@ def train(config: DictConfig):
         torch.set_float32_matmul_precision(config.matmul_precision)
 
     # Set seed for random number generators in pytorch, numpy and python.random
-    if "seed" in config:
-        log.info(f"Seed with <{config.seed}>")
-    else:
-        # choose seed randomly
-        with open_dict(config):
-            config.seed = random.randint(0, 2**32 - 1)
-        log.info(f"Seed randomly with <{config.seed}>")
+    log.info(f"Seed with <{config.seed}>")
     seed_everything(seed=config.seed, workers=True)
 
     if config.get("print_config"):

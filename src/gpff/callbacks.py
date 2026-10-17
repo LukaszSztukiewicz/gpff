@@ -67,18 +67,13 @@ class DeterministicDataSeed(Callback):
 
     _MOD = 2 ** 32
 
-    def __init__(self) -> None:
+    def __init__(self, base_seed: int) -> None:
         super().__init__()
-        self._base_seed: Optional[int] = None
+        # the run's config seed; identical on launch and resume
+        self._base_seed = base_seed
         self._first_epoch_reiterated = False
 
-    def on_train_start(self, trainer, pl_module) -> None:
-        # the seed set by seed_everything in cli.py; identical on launch and resume
-        self._base_seed = int(torch.initial_seed()) % self._MOD
-
     def on_train_epoch_start(self, trainer, pl_module) -> None:
-        if self._base_seed is None:
-            self._base_seed = int(torch.initial_seed()) % self._MOD
         seed = (self._base_seed + int(trainer.current_epoch)) % self._MOD
         random.seed(seed)
         np.random.seed(seed)

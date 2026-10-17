@@ -72,6 +72,12 @@ sampler's calculator, so those overrides are addressed as
 ```bash
 gpff_train experiment=gpff data=qm9_valid trainer.max_epochs=300
 
+# Runs are seeded from `seed` (default 999); vary it to repeat an experiment:
+gpff_train -m experiment=gpff seed=0,1,2
+
+# Resume an interrupted run from its last checkpoint by passing its id and path:
+gpff_train experiment=gpff run.id=<run-name> run.path=runs/<project>/<date>
+
 # Sample with a local checkpoint; model_path and split_path are required and
 # are the only way to point gpff_generate at a model:
 gpff_generate \

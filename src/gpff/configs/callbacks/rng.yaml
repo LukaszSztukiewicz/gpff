@@ -2,3 +2,4 @@
 # checkpoint-resumed training reproduces an uninterrupted run bit-for-bit.
 deterministic_data_seed:
     _target_: gpff.callbacks.DeterministicDataSeed
+    base_seed: ${seed}
