@@ -3,6 +3,7 @@
 import torch
 from typing import Any, Dict, List, Optional
 from tqdm import tqdm
+from gpff import keys
 from gpff.sample.results import clone_batch
 
 
@@ -87,7 +88,7 @@ class ProgressReporter(SamplerObserver):
                 return f"{value.item():.2f}"
             return str(value)
         # Special rule for "forces" key: show 1 digit if value >= 10, 2 digits otherwise
-        if key.lower() == "forces":
+        if key.lower() == keys.forces:
             if isinstance(value, torch.Tensor) and value.numel() == 1:
                 v = value.item()
             elif isinstance(value, (int, float)):

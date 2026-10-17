@@ -29,7 +29,7 @@ globals:
   model_path: "best_model"
 
   # Keys
-  time_target_key: t
+  time_target_key: ${key:t}
 
 run:
   experiment: gpff_t_aware

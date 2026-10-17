@@ -26,7 +26,7 @@ class GatedEquivariant(nn.Module):
         n_hidden: Optional[int | Sequence[int]] = None,
         n_layers: int = 2,
         activation: Callable = F.silu,
-        output_key: str = "forces",
+        output_key: str = keys.forces,
         time_head: Optional[nn.Module] = None,
         time_key: Optional[str] = None,
         detach_time_head: bool = False,
@@ -128,7 +128,7 @@ class TimeConditionedGatedEquivariant(nn.Module):
         n_hidden: Optional[int | Sequence[int]] = None,
         n_layers: int = 2,
         activation: Callable = F.silu,
-        output_key: str = "forces",
+        output_key: str = keys.forces,
         time_key: Optional[str] = "timestep",
     ):
         """
