@@ -241,6 +241,37 @@ def batch_apply_covariances(
     return transformed
 
 
+def _pad_by_molecule(
+    values: torch.Tensor,
+    idx_m: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Scatter per-atom values into a zero-padded (n_molecules, max_atoms, ...) tensor.
+
+    Reductions over the padded tensor replace per-molecule Python loops and
+    (unlike index_add_) stay deterministic on CUDA. Molecules are ordered like
+    idx_m.unique().
+
+    Returns:
+        inverse: (n_atoms,) row of each atom's molecule.
+        slot: (n_atoms,) position of each atom within its molecule.
+        counts: (n_molecules,) number of atoms per molecule.
+        padded: (n_molecules, max_atoms, ...) values, zero-padded.
+        mask: (n_molecules, max_atoms) True where padded holds an atom.
+    """
+    _, inverse, counts = idx_m.unique(return_inverse=True, return_counts=True)
+    order = torch.argsort(inverse, stable=True)
+    offsets = torch.cumsum(counts, 0) - counts
+    slot = torch.empty_like(inverse)
+    slot[order] = torch.arange(len(inverse), device=inverse.device) - offsets[inverse[order]]
+
+    padded = values.new_zeros(len(counts), int(counts.max()), *values.shape[1:])
+    padded[inverse, slot] = values
+    mask = torch.zeros(padded.shape[:2], dtype=torch.bool, device=padded.device)
+    mask[inverse, slot] = True
+    return inverse, slot, counts, padded, mask
+
+
 def _batch_covariances(
     positions: torch.Tensor,
     idx_m: torch.Tensor,
@@ -248,9 +279,8 @@ def _batch_covariances(
     """
     Per-molecule centered positions and covariances, without a Python loop.
 
-    Atoms are scattered into a zero-padded (n_molecules, max_atoms, 3) tensor so
-    the covariances come from one batched matmul, which (unlike index_add_)
-    stays deterministic on CUDA. Molecules are ordered like idx_m.unique().
+    Atoms are padded per molecule (see _pad_by_molecule) so the covariances come
+    from one batched matmul. Molecules are ordered like idx_m.unique().
 
     Returns:
         inverse: (n_atoms,) row of each atom's molecule.
@@ -260,17 +290,8 @@ def _batch_covariances(
         centroid: (n_molecules, 3) centroid of each molecule.
         covariance: (n_molecules, 3, 3) covariance, normalised by the atom count.
     """
-    _, inverse, counts = idx_m.unique(return_inverse=True, return_counts=True)
-    order = torch.argsort(inverse, stable=True)
-    offsets = torch.cumsum(counts, 0) - counts
-    slot = torch.empty_like(inverse)
-    slot[order] = torch.arange(len(inverse), device=inverse.device) - offsets[inverse[order]]
-
+    inverse, slot, counts, padded, mask = _pad_by_molecule(positions, idx_m)
     n = counts.to(positions.dtype)
-    padded = positions.new_zeros(len(counts), int(counts.max()), positions.shape[-1])
-    padded[inverse, slot] = positions
-    mask = torch.zeros(padded.shape[:2], dtype=torch.bool, device=padded.device)
-    mask[inverse, slot] = True
     centroid = padded.sum(dim=1) / n[:, None]
     centered = (padded - centroid[:, None]) * mask[..., None]
     covariance = centered.mT @ centered / n[:, None, None]

@@ -4,6 +4,7 @@ import torch.nn as nn
 from typing import Any, Dict, Optional, List
 from abc import ABC, abstractmethod
 from gpff.utils import compute_neighbors
+from gpff.utils.alignment import _pad_by_molecule
 from gpff.sample.schedules import NoiseSchedule, EDMNoiseSchedule
 from gpff.sample.observers import SamplerObserver
 from gpff.sample.results import clone_batch
@@ -113,19 +114,13 @@ class Calculator:
             sigma_t: Standard deviation tensor of shape (n_atoms, 1) with
                      corresponding std values for each atom.
         """
-        sigma_t = torch.zeros(
-            idx_m.shape[0],
-            device=target_property.device,
-            dtype=target_property.dtype
-        ).unsqueeze(-1)
-        for mol_idx in idx_m.unique():
-            mol_mask = idx_m == mol_idx
-            mol_property = target_property[mol_mask]
-            if len(mol_property) > 0:
-                # Compute std across all dimensions (flatten and compute scalar std)
-                mol_std = torch.std(mol_property.flatten())
-                sigma_t[mol_mask] = mol_std
-        return sigma_t
+        inverse, _, counts, padded, mask = _pad_by_molecule(target_property, idx_m)
+        n = (counts * target_property.shape[-1]).to(target_property.dtype)
+        mean = padded.sum(dim=(1, 2)) / n
+        centered = (padded - mean[:, None, None]) * mask[..., None]
+        # unbiased, like torch.std over the molecule's flattened values
+        std = (centered.square().sum(dim=(1, 2)) / (n - 1)).sqrt()
+        return std[inverse].unsqueeze(-1)
 
     def calculate(
         self,
