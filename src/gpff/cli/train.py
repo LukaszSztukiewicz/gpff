@@ -136,7 +136,6 @@ def train(config: DictConfig):
 
     log.info(f"Store best model")
     best_task = type(task).load_from_checkpoint(best_path, weights_only=False)
-    torch.save(best_task, config.globals.model_path + ".task")
 
     best_task.save_model(config.globals.model_path, do_postprocessing=True)
     log.info(f"Best model stored at {os.path.abspath(config.globals.model_path)}")

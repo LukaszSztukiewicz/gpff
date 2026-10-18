@@ -19,7 +19,6 @@ from gpff.utils.wandb import upload_artifact
 
 
 __all__ = [
-    "StopOnNaN",
     "SamplerCallback",
     "ModelCheckpoint",
     "DeterministicDataSeed",
@@ -96,15 +95,6 @@ class _PinnedNoise(trn.Transform):
                 return self.transforms(inputs)
         finally:
             random.setstate(py_state)
-
-
-class StopOnNaN(Callback):
-    def on_after_backward(self, trainer, pl_module):
-        for n, p in pl_module.named_parameters():
-            if p.grad is not None and not torch.isfinite(p.grad).all():
-                print(f"⚠️ NaN/Inf in grad of {n} at step {trainer.global_step}")
-                trainer.should_stop = True
-                break
 
 
 class SamplerCallback(Callback):
