@@ -36,16 +36,10 @@ gpff/
 git clone https://github.com/stefaanhessmann/gpff.git
 cd gpff
 pip install -e .
-pip install --no-deps git+https://github.com/khaledkah/MoreRed.git
 ```
 
 `pip install -e .` resolves all standard dependencies plus the pinned
-`schnetpack` git URL declared in `pyproject.toml`. `morered` must be installed
-separately with `--no-deps` because its own pyproject pins `schnetpack==2.0.3`,
-which conflicts with the pinned `schnetpack` git ref. `gpff` only relies on
-`morered.transform.AllToAllNeighborList`, `morered.transform.Diffuse`, and
-`morered.noise_schedules.linear_decay`, all of which work against the newer
-schnetpack ref.
+`schnetpack` git URL declared in `pyproject.toml`.
 
 Python 3.12 only (`>=3.12,<3.13`): the pinned schnetpack ref declares
 `requires-python = ">=3.12,<3.13"`, so it cannot be installed on 3.13 or newer.

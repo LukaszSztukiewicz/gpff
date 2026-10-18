@@ -6,7 +6,7 @@ from schnetpack.transform import NeighborListTransform
 from schnetpack.transform import MatScipyNeighborList
 
 
-__all__ = ["compute_neighbors"]
+__all__ = ["AllToAllNeighborList", "compute_neighbors"]
 
 
 class AllToAllNeighborList(NeighborListTransform):

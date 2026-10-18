@@ -38,11 +38,6 @@ dependencies = [
     "networkx==3.5",
     "lightning-utilities==0.15.2",
     "schnetpack @ git+https://github.com/atomistic-machine-learning/schnetpack.git@74940f3",
-    # morered is required at runtime but its own pyproject pins schnetpack==2.0.3,
-    # which conflicts with the schnetpack ref above. Install it separately
-    # with --no-deps:
-    #     pip install --no-deps git+https://github.com/khaledkah/MoreRed.git
-
 ]
 
 [project.optional-dependencies]

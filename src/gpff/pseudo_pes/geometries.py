@@ -2,13 +2,24 @@ from typing import Optional, Union
 import abc
 from random import randint, random, choice
 
+import numpy as np
 import torch
 
 from gpff.utils.alignment import sample_covariance_noise, align_permutation
-from morered.noise_schedules import linear_decay
 
 
 __all__ = ["VarianceExplodingGeometries", "VariancePreservingGeometries", "Geometries", "MixedGeometries"]
+
+
+def linear_decay(timesteps: int, beta_start: float = 1e-4, beta_end: float = 0.02) -> np.ndarray:
+    """
+    Linear beta schedule from https://arxiv.org/pdf/2006.11239.pdf, returned as
+    alphas_bar. Ported from morered.noise_schedules.linear_decay.
+    """
+    # rescale beta_start and beta_end as the paper uses 1000 timesteps
+    scale = 1000 / timesteps
+    betas = np.linspace(scale * beta_start, scale * beta_end, timesteps, dtype=np.float64)
+    return np.cumprod(1 - betas)
 
 
 class Geometries(abc.ABC):
