@@ -39,7 +39,6 @@ class Calculator:
         dtype: torch.dtype | str = torch.float32,
         device: torch.device | str = "cuda",
     ):
-        self.model = model
         self.noise_model = noise_model
         self.noise_key = noise_key
         if isinstance(dtype, str):
@@ -54,11 +53,14 @@ class Calculator:
         else:
             self.dtype = dtype
         self.device = device
+        self.update_model(model)
 
     def update_model(self, model: Optional[nn.Module] = None):
         """
-        Update the wrapped model.
+        Update the wrapped model, moving it to the calculator's device and dtype.
         """
+        if model is not None:
+            model = model.to(device=self.device, dtype=self.dtype)
         self.model = model
 
     def check_model(self):
@@ -155,7 +157,6 @@ class Calculator:
             raise ValueError("sigma_t must be provided when any of noise, score is True and noise_model is False.")
 
         self.check_model()
-        self.model = self.model.to(device=self.device, dtype=self.dtype)
         batch = self.update_neighbors(batch)
         predictions = self.model(batch)
         results = {}
