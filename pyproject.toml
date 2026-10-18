@@ -7,15 +7,16 @@ name = "gpff"
 version = "0.0.1"
 description = "GPFF - Generative Pseudo Force Field for molecule generation."
 readme = "README.md"
-# schnetpack@74940f3 requires Python 3.12.
+# Held at 3.12, the version the numerical stack below was validated on.
 requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 authors = [
     { name = "Stefaan Hessmann", email = "stefaan@posteo.de" },
 ]
 dependencies = [
-    # Numerical stack pinned around torch==2.8.0; newer torch releases gave
-    # different numerical results, so the versions below are held together.
+    # Numerical stack pinned around torch==2.14.1 (CUDA 13 wheels, needs an
+    # NVIDIA driver >= 580); torch releases can change numerical results, so the
+    # versions below are held together and bumped as a set.
     "ase==3.26.0",
     "hydra-core==1.4.0.dev1",
     "matplotlib==3.10.8",
@@ -26,18 +27,18 @@ dependencies = [
     "rdkit==2025.9.6",
     "scikit-learn==1.8.0",
     "scipy==1.16.1",
-    "torch==2.8.0",
+    "torch==2.14.1",
     "torchmetrics==1.8.1",
     "tqdm==4.67.3",
     "wandb==0.25.1",
     "posebusters==0.2.12",
     # Extra numerics pins held to the matred_old versions (transitive deps;
-    # torch==2.8.0 already pins triton + the nvidia-cu12 libs).
+    # torch==2.14.1 already pins triton + the CUDA 13 libs).
     "pandas==2.3.2",
     "sympy==1.14.0",
     "networkx==3.5",
     "lightning-utilities==0.15.2",
-    "schnetpack @ git+https://github.com/atomistic-machine-learning/schnetpack.git@74940f3",
+    "schnetpack @ git+https://github.com/atomistic-machine-learning/schnetpack.git@ab4314d6a328d5f2b4d7a72d5097e3a2e0fef61f",
 ]
 
 [project.optional-dependencies]
