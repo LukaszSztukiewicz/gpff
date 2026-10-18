@@ -241,6 +241,42 @@ def batch_apply_covariances(
     return transformed
 
 
+def _batch_covariances(
+    positions: torch.Tensor,
+    idx_m: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Per-molecule centered positions and covariances, without a Python loop.
+
+    Atoms are scattered into a zero-padded (n_molecules, max_atoms, 3) tensor so
+    the covariances come from one batched matmul, which (unlike index_add_)
+    stays deterministic on CUDA. Molecules are ordered like idx_m.unique().
+
+    Returns:
+        inverse: (n_atoms,) row of each atom's molecule.
+        slot: (n_atoms,) position of each atom within its molecule.
+        counts: (n_molecules,) number of atoms per molecule.
+        centered: (n_molecules, max_atoms, 3) centered positions, zero-padded.
+        centroid: (n_molecules, 3) centroid of each molecule.
+        covariance: (n_molecules, 3, 3) covariance, normalised by the atom count.
+    """
+    _, inverse, counts = idx_m.unique(return_inverse=True, return_counts=True)
+    order = torch.argsort(inverse, stable=True)
+    offsets = torch.cumsum(counts, 0) - counts
+    slot = torch.empty_like(inverse)
+    slot[order] = torch.arange(len(inverse), device=inverse.device) - offsets[inverse[order]]
+
+    n = counts.to(positions.dtype)
+    padded = positions.new_zeros(len(counts), int(counts.max()), positions.shape[-1])
+    padded[inverse, slot] = positions
+    mask = torch.zeros(padded.shape[:2], dtype=torch.bool, device=padded.device)
+    mask[inverse, slot] = True
+    centroid = padded.sum(dim=1) / n[:, None]
+    centered = (padded - centroid[:, None]) * mask[..., None]
+    covariance = centered.mT @ centered / n[:, None, None]
+    return inverse, slot, counts, centered, centroid, covariance
+
+
 def batch_compute_principal_variances(
     positions: torch.Tensor,
     idx_m: torch.Tensor,
@@ -256,31 +292,32 @@ def batch_compute_principal_variances(
         Variance tensor of shape (n_molecules, 3), descending along the last
         axis, ordered like idx_m.unique().
     """
-    variances = []
-    for mol_idx in idx_m.unique():
-        pos = positions[idx_m == mol_idx]
-        pos = pos - pos.mean(dim=0, keepdim=True)
-        variances.append(torch.linalg.eigvalsh(pos.T @ pos / len(pos)).flip(0))
-    return torch.stack(variances)
+    covariance = _batch_covariances(positions, idx_m)[-1]
+    return torch.linalg.eigvalsh(covariance).flip(-1)
 
 
 def _robust_symeig(cov: torch.Tensor, epsilon: float) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Eigendecomposition of a small symmetric matrix that tolerates the
-    ill-conditioned / near-degenerate covariances (repeated principal variances)
-    that make the accelerator's ``eigh`` fail to converge.
+    Eigendecomposition of small symmetric matrices (shape (..., d, d)) that
+    tolerates the ill-conditioned / near-degenerate covariances (repeated
+    principal variances) that make the accelerator's ``eigh`` fail to converge.
 
-    Solves in float64 with a trace-scaled diagonal jitter for conditioning, and
-    retries on CPU if the accelerator's solver still fails to converge. Returns
-    ascending eigenvalues and eigenvectors in the input's dtype and device.
+    Solves in float64 with a trace-scaled diagonal jitter for conditioning. If
+    the batched solve fails, each matrix is solved on its own, retrying on CPU
+    if the accelerator's solver still fails to converge. Returns ascending
+    eigenvalues and eigenvectors in the input's dtype and device.
     """
     dim = cov.shape[-1]
     cov64 = cov.double()
-    jitter = (epsilon * cov64.diagonal(dim1=-2, dim2=-1).abs().mean().clamp(min=epsilon))
-    cov64 = cov64 + jitter * torch.eye(dim, dtype=cov64.dtype, device=cov64.device)
+    jitter = (epsilon * cov64.diagonal(dim1=-2, dim2=-1).abs().mean(-1).clamp(min=epsilon))
+    cov64 = cov64 + jitter[..., None, None] * torch.eye(dim, dtype=cov64.dtype, device=cov64.device)
     try:
         lam, axes = torch.linalg.eigh(cov64)
     except torch.linalg.LinAlgError:
+        if cov.ndim > 2:
+            # isolate the matrices that do not converge; the rest keep their solution
+            pairs = [_robust_symeig(c, epsilon) for c in cov]
+            return torch.stack([lam for lam, _ in pairs]), torch.stack([axes for _, axes in pairs])
         try:
             lam, axes = torch.linalg.eigh(cov64.cpu())
             lam, axes = lam.to(cov.device), axes.to(cov.device)
@@ -305,7 +342,7 @@ def batch_match_principal_variances(
     """
     Rescale each molecule along its own principal axes so that its principal
     variances match the target. Orientation and centroid of each molecule are
-    preserved.
+    preserved. All molecules are processed in one batched eigendecomposition.
 
     Args:
         positions: Position tensor of shape (n_atoms, 3) to reshape.
@@ -319,43 +356,34 @@ def batch_match_principal_variances(
     Returns:
         Reshaped position tensor of shape (n_atoms, 3).
     """
-    reshaped = positions.clone()
+    inverse, slot, counts, centered, centroid, cov = _batch_covariances(positions, idx_m)
 
-    for mol_position, mol_idx in enumerate(idx_m.unique()):
-        mol_mask = idx_m == mol_idx
-        pos = positions[mol_mask]
-        if pos.shape[0] <= 1:
-            continue
+    # A molecule whose denoising diverged carries non-finite positions, so its
+    # covariance is non-finite and eigh cannot converge. Leave it (and
+    # single-atom molecules) untouched — it stays non-finite and is dropped as
+    # invalid downstream — rather than aborting the reshape (and the whole run)
+    # for the batch; an identity covariance keeps the batched eigh well-posed.
+    # The strongly elongated targets (e.g. a [0.9, 0.05, 0.05] rod) are what
+    # occasionally push a molecule there.
+    apply = (counts > 1) & torch.isfinite(cov).all(dim=-1).all(dim=-1)
+    eye = torch.eye(3, dtype=cov.dtype, device=cov.device)
+    cov = torch.where(apply[:, None, None], cov, eye)
 
-        centroid = pos.mean(dim=0, keepdim=True)
-        pos = pos - centroid
+    # eigh returns ascending eigenvalues; flip both to match the descending target.
+    lam, axes = _robust_symeig(cov, epsilon)
+    lam, axes = lam.flip(-1), axes.flip(-1)
 
-        cov = pos.T @ pos / len(pos)
-        # A molecule whose denoising diverged carries non-finite positions, so
-        # its covariance is non-finite and eigh cannot converge. Leave it
-        # untouched — it stays non-finite and is dropped as invalid downstream —
-        # rather than aborting the reshape (and the whole run) for the batch. The
-        # strongly elongated targets (e.g. a [0.9, 0.05, 0.05] rod) are what
-        # occasionally push a molecule there.
-        if not torch.isfinite(cov).all():
-            continue
+    target = target_variances
+    if preserve_spread:
+        target = target / target.sum(-1, keepdim=True).clamp(min=epsilon) * lam.sum(-1, keepdim=True)
 
-        # eigh returns ascending eigenvalues; flip both to match the descending target.
-        lam, axes = _robust_symeig(cov, epsilon)
-        lam, axes = lam.flip(0), axes.flip(1)
+    # Per-axis factor turning each current variance into its target one;
+    # sqrt because positions scale with the standard deviation.
+    scale = (target / lam.clamp(min=epsilon)).sqrt()
 
-        target = target_variances[mol_position]
-        if preserve_spread:
-            target = target / target.sum().clamp(min=epsilon) * lam.sum()
-
-        # Per-axis factor turning each current variance into its target one;
-        # sqrt because positions scale with the standard deviation.
-        scale = (target / lam.clamp(min=epsilon)).sqrt()
-
-        # Rotate into the principal frame, scale there, rotate back.
-        reshaped[mol_mask] = ((pos @ axes) * scale) @ axes.T + centroid
-
-    return reshaped
+    # Rotate into the principal frame, scale there, rotate back.
+    reshaped = ((centered @ axes) * scale[:, None]) @ axes.mT + centroid[:, None]
+    return torch.where(apply[inverse, None], reshaped[inverse, slot], positions)
 
 
 def align_rotation(positions: np.ndarray | torch.Tensor, target_positions: np.ndarray | torch.Tensor) -> np.ndarray | torch.Tensor:
