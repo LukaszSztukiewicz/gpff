@@ -15,25 +15,9 @@ import tempfile
 import uuid
 
 import petname
-import torch
 from omegaconf import OmegaConf
 
 from gpff import keys
-
-# torch >= 2.6 defaults torch.load(weights_only=True), which cannot unpickle the
-# full Lightning checkpoints written by this trainer (they contain schnetpack
-# model objects). pytorch-lightning passes weights_only=True explicitly, so we
-# force it back to False. Safe because we only ever load our own checkpoints.
-_orig_torch_load = torch.load
-
-
-def _torch_load_compat(*args, **kwargs):
-    kwargs["weights_only"] = False
-    return _orig_torch_load(*args, **kwargs)
-
-
-torch.load = _torch_load_compat
-
 
 OmegaConf.register_resolver("uuid", lambda x: str(uuid.uuid1()))
 OmegaConf.register_resolver("petname", lambda x: petname.generate(), use_cache=True)

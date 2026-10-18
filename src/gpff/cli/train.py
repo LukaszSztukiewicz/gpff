@@ -118,20 +118,24 @@ def train(config: DictConfig):
     # log.info("Logging hyperparameters.")
     log_hyperparameters(config=config, model=task, trainer=trainer)
 
+    # Our checkpoints pickle schnetpack model objects (task hyperparameters), so
+    # every Lightning load below needs weights_only=False; Lightning >= 2.6
+    # otherwise falls back to torch's weights_only=True default.
+
     # Train the model
     log.info("Starting training.")
-    trainer.fit(model=task, datamodule=datamodule, ckpt_path=config.run.ckpt_path)
+    trainer.fit(model=task, datamodule=datamodule, ckpt_path=config.run.ckpt_path, weights_only=False)
 
     # Evaluate model on test set after training
     log.info("Starting testing.")
-    trainer.test(model=task, datamodule=datamodule, ckpt_path="best")
+    trainer.test(model=task, datamodule=datamodule, ckpt_path="best", weights_only=False)
 
     # Store best model
     best_path = trainer.checkpoint_callback.best_model_path
     log.info(f"Best checkpoint path:\n{best_path}")
 
     log.info(f"Store best model")
-    best_task = type(task).load_from_checkpoint(best_path)
+    best_task = type(task).load_from_checkpoint(best_path, weights_only=False)
     torch.save(best_task, config.globals.model_path + ".task")
 
     best_task.save_model(config.globals.model_path, do_postprocessing=True)

@@ -12,7 +12,6 @@ from gpff.analysis import get_rdkit_validity
 from ase.db import connect
 from ase import Atoms
 from schnetpack.train.callbacks import ModelCheckpoint as SPKModelCheckpoint
-from schnetpack.train.callbacks import ExponentialMovingAverage as SPKExponentialMovingAverage
 import pytorch_lightning as pl
 import schnetpack.transform as trn
 from schnetpack import properties
@@ -24,39 +23,7 @@ __all__ = [
     "SamplerCallback",
     "ModelCheckpoint",
     "DeterministicDataSeed",
-    "ExponentialMovingAverage",
 ]
-
-
-class ExponentialMovingAverage(SPKExponentialMovingAverage):
-    """schnetpack's EMA callback with a resume fix: checkpoints are saved while
-    the EMA average is ``copy_to()``'d into the model (during validation), so a
-    resumed run must first restore the raw training weights, which are the
-    ``collected_params`` of the checkpointed EMA state.
-    """
-
-    def on_fit_start(self, trainer, pl_module) -> None:
-        if self.ema is None:
-            from torch_ema import ExponentialMovingAverage as EMA
-
-            self.ema = EMA(pl_module.model.parameters(), decay=self.decay)
-        if self._to_load is not None:
-            self.ema.load_state_dict(self._to_load)
-            self._to_load = None
-            if self.ema.collected_params is not None:
-                # put the raw (non-EMA) training weights back into the model
-                self.ema.restore()
-
-        # load average parameters, to have same starting point as after validation
-        self.ema.store()
-        self.ema.copy_to()
-
-    def on_validation_epoch_start(self, trainer, pl_module, *args, **kwargs) -> None:
-        if trainer.sanity_checking:
-            # on_fit_start already stored the raw weights and copied the EMA
-            # average in; storing again would overwrite them with the average
-            return
-        super().on_validation_epoch_start(trainer, pl_module, *args, **kwargs)
 
 
 class DeterministicDataSeed(Callback):
@@ -98,7 +65,7 @@ class DeterministicDataSeed(Callback):
         np.random.seed(seed)
         torch.manual_seed(seed)
 
-        # PL 2.5.3 creates the first training epoch's dataloader iterator before
+        # PL (through 2.6.6) creates the first training epoch's dataloader iterator before
         # this hook fires (in _FitLoop.setup_data), so its shuffle permutation and
         # worker base_seed predate the reseed above — recreate it once. Later
         # epochs create their iterator after this hook and need no special-casing.
