@@ -12,6 +12,9 @@ predicted and need their models:
 
     rdkit_valid, ring_counts, elongation, nfe, smiles   (RDKit pass)
     posebusters_valid                                                (PoseBusters)
+
+Both structure passes run in a pool of --structure_workers processes (default:
+every CPU this process may use).
     gap        needs --gap_model_path
     energy_U0  needs --energy_u0_model_path and --atomrefs_path (the single-atom
                reference energies, e.g. assets/qm9_energy_U0_atomrefs_eV.npy)
@@ -26,8 +29,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import logging
+import multiprocessing
+import os
 import shutil
 import sys
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -136,6 +142,43 @@ def _copy_db_to_workdir(db_path: str, data_workdir: str | None) -> str:
     return str(local_path)
 
 
+def _quiet_posebusters() -> None:
+    """Silence PoseBusters' INFO logging.
+
+    It logs one INFO line per molecule; on the progress bar's stream that leaves
+    it unreadable. Also runs in every worker process, which starts unconfigured.
+    """
+    logging.getLogger("posebusters").setLevel(logging.WARNING)
+
+
+def _analyze_structures(
+    db_path: str,
+    start: int,
+    stop: int,
+    run_rdkit: bool,
+    run_posebusters: bool,
+    timeout: int,
+) -> list[dict]:
+    """Run the requested passes on molecules start..stop-1 (0-based), one dict each.
+
+    Runs in a worker process: each opens the database itself, so only the row
+    range and the results cross process boundaries.
+    """
+    results = []
+    with connect(db_path) as read_db:
+        for i in range(start, stop):
+            atoms_row = read_db.get(i + 1)
+            atoms = atoms_row.toatoms()
+            result = {}
+            if run_rdkit:
+                result.update(analyze_with_rdkit(atoms, timeout=timeout))
+                result["nfe"] = atoms_row.data.get(keys_module.nfe, 0)
+            if run_posebusters:
+                result["posebusters_valid"] = get_posebusters_validity(atoms)
+            results.append(result)
+    return results
+
+
 def compute_structure_arrays(
     db_path: str,
     run_rdkit: bool,
@@ -143,51 +186,67 @@ def compute_structure_arrays(
     timeout: int = 5,
     data_workdir: str | None = None,
     verbose: bool = False,
+    n_workers: int = 1,
 ) -> dict:
     """Walk the database and return the per-structure arrays of the passes that run.
 
     run_rdkit yields rdkit_valid, ring_counts, elongation, nfe and smiles in one
     walk; run_posebusters yields posebusters_valid from a separate, slower one.
+    With n_workers > 1 the molecules are split into chunks analysed by a pool of
+    worker processes; the arrays keep the database order either way.
     """
     read_db_path = _copy_db_to_workdir(db_path, data_workdir)
     n_molecules = count_molecules(read_db_path)
-    rdkit_valid = np.zeros(n_molecules, dtype=bool)
-    posebusters_valid = np.zeros(n_molecules, dtype=bool)
-    ring_counts = np.zeros((n_molecules, 4))
-    elongation = np.zeros(n_molecules)
-    nfe = np.zeros(n_molecules)
-    smiles = []
     passes = [name for name, run in (("rdkit", run_rdkit), ("posebusters", run_posebusters)) if run]
 
-    with connect(read_db_path) as read_db:
-        for i in tqdm(
-            range(n_molecules),
-            desc=f"Computing structure metadata ({', '.join(passes)})",
-            disable=not verbose,
-        ):
-            atoms_row = read_db.get(i + 1)
-            atoms = atoms_row.toatoms()
-            if run_rdkit:
-                result = analyze_with_rdkit(atoms, timeout=timeout)
-                rdkit_valid[i] = result["rdkit_valid"]
-                ring_counts[i] = result["ring_counts"]
-                elongation[i] = result["elongation"]
-                smiles.append(result["smiles"])
-                nfe[i] = atoms_row.data.get(keys_module.nfe, 0)
-            if run_posebusters:
-                posebusters_valid[i] = get_posebusters_validity(atoms)
+    # several chunks per worker keep the pool busy when some molecules are slow
+    chunk_size = max(1, min(256, -(-n_molecules // (n_workers * 8))))
+    chunks = [(start, min(start + chunk_size, n_molecules))
+              for start in range(0, n_molecules, chunk_size)]
+    pass_args = (run_rdkit, run_posebusters, timeout)
+    chunk_results: list = [None] * len(chunks)
+
+    with tqdm(
+        total=n_molecules,
+        desc=f"Computing structure metadata ({', '.join(passes)})",
+        disable=not verbose,
+    ) as progress:
+        if n_workers <= 1:
+            for k, (start, stop) in enumerate(chunks):
+                chunk_results[k] = _analyze_structures(read_db_path, start, stop, *pass_args)
+                progress.update(stop - start)
+        else:
+            # spawn rather than fork: the parent has torch (and its threads)
+            # loaded. Each task runs in its worker's main thread, so the
+            # SIGALRM-based RDKit timeout still works.
+            with ProcessPoolExecutor(
+                max_workers=n_workers,
+                mp_context=multiprocessing.get_context("spawn"),
+                initializer=_quiet_posebusters,
+            ) as pool:
+                futures = {
+                    pool.submit(_analyze_structures, read_db_path, start, stop, *pass_args): k
+                    for k, (start, stop) in enumerate(chunks)
+                }
+                for future in as_completed(futures):
+                    k = futures[future]
+                    chunk_results[k] = future.result()
+                    progress.update(len(chunk_results[k]))
+    results = [result for chunk in chunk_results for result in chunk]
 
     arrays = {}
     if run_rdkit:
         arrays.update(
-            rdkit_valid=rdkit_valid,
-            ring_counts=ring_counts,
-            elongation=elongation,
-            nfe=nfe,
-            smiles=smiles,
+            rdkit_valid=np.array([r["rdkit_valid"] for r in results], dtype=bool),
+            ring_counts=np.array([r["ring_counts"] for r in results], dtype=float).reshape(-1, 4),
+            elongation=np.array([r["elongation"] for r in results], dtype=float),
+            nfe=np.array([r["nfe"] for r in results], dtype=float),
+            smiles=[r["smiles"] for r in results],
         )
     if run_posebusters:
-        arrays["posebusters_valid"] = posebusters_valid
+        arrays["posebusters_valid"] = np.array(
+            [r["posebusters_valid"] for r in results], dtype=bool
+        )
     return arrays
 
 
@@ -317,6 +376,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cutoff", type=float, default=5.0)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--structure_workers", type=int, default=None,
+                        help="Processes for the RDKit and PoseBusters passes. "
+                             "Default: every CPU this process may use; 1 runs them "
+                             "in this process.")
     parser.add_argument("--data_workdir", type=Path, default=None)
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
@@ -324,9 +387,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    # PoseBusters logs one INFO line per molecule; on the progress bars' stream
-    # that leaves them unreadable.
-    logging.getLogger("posebusters").setLevel(logging.WARNING)
+    _quiet_posebusters()
 
     errors = _path_exists_errors(args, PATH_ARGS)
     if errors:
@@ -369,6 +430,7 @@ def main() -> int:
             compute_structure_arrays(
                 samples_db_path, run_rdkit, run_posebusters,
                 data_workdir=data_workdir, verbose=verbose,
+                n_workers=args.structure_workers or os.process_cpu_count() or 1,
             )
         )
     for property_name in PROPERTY_KEYS:
