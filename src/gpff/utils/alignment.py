@@ -280,11 +280,11 @@ def _robust_symeig(cov: torch.Tensor, epsilon: float) -> Tuple[torch.Tensor, tor
     cov64 = cov64 + jitter * torch.eye(dim, dtype=cov64.dtype, device=cov64.device)
     try:
         lam, axes = torch.linalg.eigh(cov64)
-    except torch._C._LinAlgError:
+    except torch.linalg.LinAlgError:
         try:
             lam, axes = torch.linalg.eigh(cov64.cpu())
             lam, axes = lam.to(cov.device), axes.to(cov.device)
-        except torch._C._LinAlgError:
+        except torch.linalg.LinAlgError:
             # A tiny symmetric matrix that neither solver will decompose should
             # not abort a whole sampling run. Fall back to the diagonal with an
             # identity basis: exact when the axes are already aligned, and a
