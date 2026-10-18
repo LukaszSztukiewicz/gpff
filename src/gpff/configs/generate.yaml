@@ -19,7 +19,9 @@ split_path: ???
 
 # Data configuration
 datapath: ???
-batch_size: 32
+# Molecules denoised together; at 32 the GPU mostly waits on per-call overhead.
+# Memory grows with it (fully connected graph: ~1 GB of pair filters at 256).
+batch_size: 128
 num_workers: 12
 data_workdir: null
 
