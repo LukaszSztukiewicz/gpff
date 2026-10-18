@@ -6,6 +6,7 @@ from typing import Optional
 
 import hydra
 import numpy as np
+import torch
 from ase.db import connect
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import seed_everything
@@ -60,6 +61,11 @@ def sample_molecules(config: DictConfig):
         ],
         resolve=True,
     )
+
+    # Set matmul precision if specified
+    if "matmul_precision" in config and config.matmul_precision is not None:
+        log.info(f"Setting float32 matmul precision to <{config.matmul_precision}>")
+        torch.set_float32_matmul_precision(config.matmul_precision)
 
     # seed torch, numpy and python.random: priors, stochastic samplers and the
     # shape GMM fit all draw from the global RNGs

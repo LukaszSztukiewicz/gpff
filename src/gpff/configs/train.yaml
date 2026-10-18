@@ -27,6 +27,10 @@ print_config: True
 # Seed for all RNGs; set per run with seed=<int>
 seed: 999
 
+# float32 matmul precision; "high" uses TF32 on Ampere or newer GPUs. Set to
+# "highest" for full float32 matmuls.
+matmul_precision: high
+
 # Default project (can be overridden by experiments)
 project: default
 

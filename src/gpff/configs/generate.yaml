@@ -28,6 +28,9 @@ data_workdir: null
 # Sampling configuration
 n_samples: 1000
 seed: 42069
+# float32 matmul precision; "high" uses TF32 on Ampere or newer GPUs. Set to
+# "highest" for full float32 matmuls.
+matmul_precision: high
 results_dir: generated_samples
 output_db: ${results_dir}/samples_${now:%Y-%m-%d_%H-%M-%S}.db
 
