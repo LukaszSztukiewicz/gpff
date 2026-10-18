@@ -1,4 +1,5 @@
 """Analysis of single structures (one ase.Atoms in, one result out)."""
+from functools import lru_cache
 from io import StringIO
 import signal
 from typing import Any, Dict
@@ -150,6 +151,12 @@ def get_rdkit_validity(
     return analyze_with_rdkit(atoms, timeout, remove_hs)["rdkit_valid"]
 
 
+@lru_cache(maxsize=None)
+def _posebusters_config() -> Dict[str, Any]:
+    """The PoseBusters "mol" config, read from its YAML file once."""
+    return PoseBusters(config="mol").config
+
+
 def get_posebusters_validity(atoms: Atoms) -> bool:
     """Run the PoseBusters "mol" checks on a single ASE Atoms object.
 
@@ -170,7 +177,10 @@ def get_posebusters_validity(atoms: Atoms) -> bool:
     except Exception:
         return False
 
-    results = PoseBusters(config="mol").bust(mol)
+    # a fresh instance per molecule: posebusters 0.2.x keeps its results on the
+    # instance, keyed by the Mol's address, so a reused one can report stale
+    # checks from an earlier molecule. Only the config loading is shared.
+    results = PoseBusters(config=dict(_posebusters_config())).bust(mol)
     return bool(results.all(axis=1).iloc[0])
 
 
