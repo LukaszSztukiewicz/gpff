@@ -14,6 +14,8 @@ from ase import Atoms
 from schnetpack.train.callbacks import ModelCheckpoint as SPKModelCheckpoint
 from schnetpack.train.callbacks import ExponentialMovingAverage as SPKExponentialMovingAverage
 import pytorch_lightning as pl
+import schnetpack.transform as trn
+from schnetpack import properties
 from gpff.utils.wandb import upload_artifact
 
 
@@ -67,11 +69,28 @@ class DeterministicDataSeed(Callback):
 
     _MOD = 2 ** 32
 
-    def __init__(self, base_seed: int) -> None:
+    def __init__(self, base_seed: int, val_noise_seed: Optional[int] = 0) -> None:
         super().__init__()
         # the run's config seed; identical on launch and resume
         self._base_seed = base_seed
+        # independent of base_seed, so runs with different seeds share val noise
+        self._val_noise_seed = val_noise_seed
         self._first_epoch_reiterated = False
+
+    def setup(self, trainer, pl_module, stage) -> None:
+        # Runs after datamodule.setup, which resets the dataset transforms, so
+        # wrapping here never nests. Pins val/test noise to each molecule's
+        # database index: val/loss becomes a deterministic function of the
+        # weights. Training noise stays fresh every epoch.
+        dm = trainer.datamodule
+        if self._val_noise_seed is None or dm is None:
+            return
+        for dataset, transforms in (
+            (dm.val_dataset, dm.val_transforms),
+            (dm.test_dataset, dm.test_transforms),
+        ):
+            if dataset is not None:
+                dataset.transforms = [_PinnedNoise(self._val_noise_seed, transforms)]
 
     def on_train_epoch_start(self, trainer, pl_module) -> None:
         seed = (self._base_seed + int(trainer.current_epoch)) % self._MOD
@@ -88,6 +107,28 @@ class DeterministicDataSeed(Callback):
             fetcher = trainer.fit_loop._data_fetcher
             if fetcher is not None:
                 iter(fetcher)
+
+
+class _PinnedNoise(trn.Transform):
+    """Applies ``transforms`` with torch and python RNGs seeded from the
+    sample's database index, leaving the caller's RNG state untouched."""
+
+    def __init__(self, seed: int, transforms: List[trn.Transform]) -> None:
+        super().__init__()
+        self.seed = seed
+        self.transforms = torch.nn.Sequential(*transforms)
+
+    def forward(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        # keep all entropy in the low 32 bits: torch's CPU MT19937 drops the rest
+        seed = (self.seed * 1_000_003 + int(inputs[properties.idx])) & 0xFFFFFFFF
+        py_state = random.getstate()
+        try:
+            with torch.random.fork_rng(devices=[]):
+                torch.manual_seed(seed)
+                random.seed(seed)
+                return self.transforms(inputs)
+        finally:
+            random.setstate(py_state)
 
 
 class StopOnNaN(Callback):
