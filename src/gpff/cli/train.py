@@ -19,7 +19,7 @@ from gpff.cli import header
 log = logging.getLogger(__name__)
 
 
-@hydra.main(config_path="../configs", config_name="train", version_base="1.2")
+@hydra.main(config_path="../configs", config_name="train")
 def train(config: DictConfig):
     """
     General training routine for all models defined by the provided hydra configs.

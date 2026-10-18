@@ -40,7 +40,7 @@ def _get_trajectory_db_path(output_db: str) -> str:
     return f"{base}_trajectories{extension}"
 
 
-@hydra.main(config_path="../configs", config_name="generate", version_base="1.2")
+@hydra.main(config_path="../configs", config_name="generate")
 def sample_molecules(config: DictConfig):
     """
     Sample molecules from the model.

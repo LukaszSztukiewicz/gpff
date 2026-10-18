@@ -7,8 +7,8 @@ name = "gpff"
 version = "0.0.1"
 description = "GPFF - Generative Pseudo Force Field for molecule generation."
 readme = "README.md"
-# Held at 3.12, the version the numerical stack below was validated on.
-requires-python = ">=3.12,<3.13"
+# Held to a single Python version, like the pinned numerical stack below.
+requires-python = ">=3.13,<3.14"
 license = { text = "MIT" }
 authors = [
     { name = "Stefaan Hessmann", email = "stefaan@posteo.de" },
@@ -18,12 +18,12 @@ dependencies = [
     # NVIDIA driver >= 580); torch releases can change numerical results, so the
     # versions below are held together and bumped as a set.
     "ase==3.26.0",
-    "hydra-core==1.4.0.dev1",
+    "hydra-core==1.4.0rc1",
     "matplotlib==3.10.8",
     "numpy==2.3.2",
-    "omegaconf==2.4.0.dev4",
+    "omegaconf==2.4.0",
     "petname==2.9",
-    "pytorch-lightning>=2.6.1",
+    "pytorch-lightning==2.6.6",
     "rdkit==2025.9.6",
     "scikit-learn==1.8.0",
     "scipy==1.16.1",

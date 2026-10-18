@@ -41,8 +41,8 @@ pip install -e .
 `pip install -e .` resolves all standard dependencies plus the pinned
 `schnetpack` git URL declared in `pyproject.toml`.
 
-Python 3.12 only (`>=3.12,<3.13`): the pinned schnetpack ref declares
-`requires-python = ">=3.12,<3.13"`, so it cannot be installed on 3.13 or newer.
+Python 3.13 only (`>=3.13,<3.14`): the numerical stack is pinned as a set and
+held to a single interpreter version.
 CUDA-capable GPU recommended for training and large-scale sampling.
 
 ## Command-line interface

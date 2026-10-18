@@ -35,11 +35,11 @@ def _torch_load_compat(*args, **kwargs):
 torch.load = _torch_load_compat
 
 
-OmegaConf.register_new_resolver("uuid", lambda x: str(uuid.uuid1()))
-OmegaConf.register_new_resolver("petname", lambda x: petname.generate(), use_cache=True)
-OmegaConf.register_new_resolver("tmpdir", tempfile.mkdtemp, use_cache=True)
-OmegaConf.register_new_resolver("mul", lambda x, y: x * y)
-OmegaConf.register_new_resolver("key", lambda key_name: getattr(keys, key_name))
+OmegaConf.register_resolver("uuid", lambda x: str(uuid.uuid1()))
+OmegaConf.register_resolver("petname", lambda x: petname.generate(), use_cache=True)
+OmegaConf.register_resolver("tmpdir", tempfile.mkdtemp, use_cache=True)
+OmegaConf.register_resolver("mul", lambda x, y: x * y)
+OmegaConf.register_resolver("key", lambda key_name: getattr(keys, key_name))
 
 header = r""" --- Hello from Generative Pseudo-Force Field (GPFF) model repo! --- \n"""
 
