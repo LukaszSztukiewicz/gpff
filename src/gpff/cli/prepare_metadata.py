@@ -17,7 +17,7 @@ predicted and need their models:
                reference energies, e.g. assets/qm9_energy_U0_atomrefs_eV.npy)
 
 Both structure passes run in a pool of --structure_workers processes (default:
-every CPU this process may use).
+4, or fewer if this process may use fewer CPUs).
 
 Only the requested arrays are (re)written; any other file already in the folder
 is left as it is. Computing one array of a pass runs the whole pass (the RDKit
@@ -65,6 +65,11 @@ PROPERTY_MODEL_ARGS = {"gap": "gap_model_path", "energy_U0": "energy_u0_model_pa
 
 # arguments that name files; each is checked to exist when given
 PATH_ARGS = ("samples_db_path", "gap_model_path", "energy_u0_model_path", "atomrefs_path")
+
+# default pool size of the structure passes. More workers do not help, since
+# PoseBusters' conformer embedding already uses every core of the node, and each
+# worker holds about 1 GiB.
+DEFAULT_STRUCTURE_WORKERS = 4
 
 
 def _path_exists_errors(args, names) -> list[str]:
@@ -383,8 +388,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--structure_workers", type=int, default=None,
                         help="Processes for the RDKit and PoseBusters passes. "
-                             "Default: every CPU this process may use; 1 runs them "
-                             "in this process.")
+                             f"Default: {DEFAULT_STRUCTURE_WORKERS}, or fewer if this "
+                             "process may use fewer CPUs; 1 runs them in this process.")
     parser.add_argument("--data_workdir", type=Path, default=None)
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
@@ -435,7 +440,8 @@ def main() -> int:
             compute_structure_arrays(
                 samples_db_path, run_rdkit, run_posebusters,
                 data_workdir=data_workdir, verbose=verbose,
-                n_workers=args.structure_workers or os.process_cpu_count() or 1,
+                n_workers=args.structure_workers
+                or min(DEFAULT_STRUCTURE_WORKERS, os.process_cpu_count() or 1),
             )
         )
     for property_name in PROPERTY_KEYS:
