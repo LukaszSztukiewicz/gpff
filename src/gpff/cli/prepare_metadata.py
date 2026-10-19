@@ -12,12 +12,12 @@ predicted and need their models:
 
     rdkit_valid, ring_counts, elongation, nfe, smiles   (RDKit pass)
     posebusters_valid                                                (PoseBusters)
-
-Both structure passes run in a pool of --structure_workers processes (default:
-every CPU this process may use).
     gap        needs --gap_model_path
     energy_U0  needs --energy_u0_model_path and --atomrefs_path (the single-atom
                reference energies, e.g. assets/qm9_energy_U0_atomrefs_eV.npy)
+
+Both structure passes run in a pool of --structure_workers processes (default:
+every CPU this process may use).
 
 Only the requested arrays are (re)written; any other file already in the folder
 is left as it is. Computing one array of a pass runs the whole pass (the RDKit
@@ -143,12 +143,15 @@ def _copy_db_to_workdir(db_path: str, data_workdir: str | None) -> str:
 
 
 def _quiet_posebusters() -> None:
-    """Silence PoseBusters' INFO logging.
+    """Silence PoseBusters' per-molecule INFO and WARNING logging.
 
-    It logs one INFO line per molecule; on the progress bar's stream that leaves
-    it unreadable. Also runs in every worker process, which starts unconfigured.
+    It logs an INFO line for every molecule and a WARNING for every check that
+    fails internally, e.g. the energy-ratio check when RDKit cannot embed the
+    reference conformer ensemble (that check, and so the molecule, then fails);
+    on the progress bar's stream they leave it unreadable. Also runs in every
+    worker process, which starts unconfigured.
     """
-    logging.getLogger("posebusters").setLevel(logging.WARNING)
+    logging.getLogger("posebusters").setLevel(logging.ERROR)
 
 
 def _analyze_structures(
@@ -193,7 +196,9 @@ def compute_structure_arrays(
     run_rdkit yields rdkit_valid, ring_counts, elongation, nfe and smiles in one
     walk; run_posebusters yields posebusters_valid from a separate, slower one.
     With n_workers > 1 the molecules are split into chunks analysed by a pool of
-    worker processes; the arrays keep the database order either way.
+    worker processes; the arrays keep the database order either way. The workers
+    are spawned, so a script calling this with n_workers > 1 needs an
+    ``if __name__ == "__main__":`` guard.
     """
     read_db_path = _copy_db_to_workdir(db_path, data_workdir)
     n_molecules = count_molecules(read_db_path)

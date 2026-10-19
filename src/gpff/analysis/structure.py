@@ -177,9 +177,10 @@ def get_posebusters_validity(atoms: Atoms) -> bool:
     except Exception:
         return False
 
-    # a fresh instance per molecule: posebusters 0.2.x keeps its results on the
-    # instance, keyed by the Mol's address, so a reused one can report stale
-    # checks from an earlier molecule. Only the config loading is shared.
+    # a fresh instance per molecule: posebusters 0.2.12 never clears the results
+    # it keeps on the instance, keyed by str(mol), i.e. the Mol's reused address,
+    # so a shared one piles every molecule's entries onto a few keys. Only the
+    # config loading is shared.
     results = PoseBusters(config=dict(_posebusters_config())).bust(mol)
     return bool(results.all(axis=1).iloc[0])
 
