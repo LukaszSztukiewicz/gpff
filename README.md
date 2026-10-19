@@ -73,6 +73,11 @@ gpff_train -m experiment=gpff seed=0,1,2
 # Resume an interrupted run from its last checkpoint by passing its id and path:
 gpff_train experiment=gpff run.id=<run-name> run.path=runs/<project>/<date>
 
+# Runs also keep the model after 100, 200, 500, 1k, 2k, 5k, 10k and 15k epochs
+# in milestones/ (epoch_<N>.ckpt for Lightning, epoch_<N>_model as the
+# model_path for gpff_generate); choose other epochs, or [] for none, with:
+gpff_train experiment=gpff 'callbacks.milestone_checkpoint.epochs=[50,100]'
+
 # Sample with a local checkpoint; model_path and split_path are required and
 # are the only way to point gpff_generate at a model:
 gpff_generate \

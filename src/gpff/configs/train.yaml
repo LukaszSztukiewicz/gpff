@@ -6,6 +6,7 @@ defaults:
   - trainer: default_trainer
   - callbacks:
       - checkpoint
+      - milestones
       - rng
       - earlystopping
       - lrmonitor

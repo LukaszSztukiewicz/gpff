@@ -21,6 +21,7 @@ from gpff.utils.wandb import upload_artifact
 __all__ = [
     "SamplerCallback",
     "ModelCheckpoint",
+    "MilestoneCheckpoint",
     "DeterministicDataSeed",
 ]
 
@@ -291,3 +292,35 @@ class ModelCheckpoint(SPKModelCheckpoint):
                 self.model_path,
                 trainer,
             )
+
+
+class MilestoneCheckpoint(Callback):
+    """Keep the model after fixed numbers of training epochs, independent of
+    which epoch is best; milestones a run stops before are skipped. ``N``
+    counts completed epochs, so milestone ``N`` holds the weights a run with
+    ``trainer.max_epochs=N`` ends with (Lightning's 0-based ``epoch=N-1``).
+
+    Writes ``epoch_<N>.ckpt`` (Lightning checkpoint, to resume or evaluate
+    from) and ``epoch_<N>_model`` (inference model, the ``model_path`` for
+    ``gpff_generate``) to ``dirpath``. Both are saved after the epoch's
+    validation, so like ``best_model`` they hold the validated weights (the
+    EMA average when the EMA callback is on).
+    """
+
+    def __init__(self, epochs: List[int], dirpath: str = "milestones") -> None:
+        super().__init__()
+        self.epochs = set(epochs)
+        self.dirpath = dirpath
+
+    def on_train_epoch_end(
+        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
+    ) -> None:
+        # current_epoch only advances after this hook
+        n_epochs = trainer.current_epoch + 1
+        if n_epochs not in self.epochs:
+            return
+        os.makedirs(self.dirpath, exist_ok=True)
+        path = os.path.join(self.dirpath, f"epoch_{n_epochs}")
+        # save_checkpoint must run on every rank; save_model writes on rank 0
+        trainer.save_checkpoint(f"{path}.ckpt")
+        pl_module.save_model(f"{path}_model", do_postprocessing=True)
