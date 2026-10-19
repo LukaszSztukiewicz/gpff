@@ -1,7 +1,8 @@
 # Keeps the model after each listed number of completed training epochs, next
 # to best_model and checkpoints/last.ckpt. Epochs the run never reaches (early
-# stopping, max_epochs) are skipped; set epochs to [] to save none.
+# stopping, max_epochs) are skipped. None by default; for example
+# 'callbacks.milestone_checkpoint.epochs=[100,200,500,1000,2000,5000,10000,15000]'
 milestone_checkpoint:
     _target_: gpff.callbacks.MilestoneCheckpoint
-    epochs: [100, 200, 500, 1000, 2000, 5000, 10000, 15000]
+    epochs: []
     dirpath: "milestones/"
