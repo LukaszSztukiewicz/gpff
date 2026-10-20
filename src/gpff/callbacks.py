@@ -77,7 +77,7 @@ class DeterministicDataSeed(Callback):
 
 
 class _PinnedNoise(trn.Transform):
-    """Applies ``transforms`` with torch and python RNGs seeded from the
+    """Applies ``transforms`` with the CPU torch and python RNGs seeded from the
     sample's database index, leaving the caller's RNG state untouched."""
 
     def __init__(self, seed: int, transforms: List[trn.Transform]) -> None:
@@ -91,7 +91,9 @@ class _PinnedNoise(trn.Transform):
         py_state = random.getstate()
         try:
             with torch.random.fork_rng(devices=[]):
-                torch.manual_seed(seed)
+                # the CPU generator only: torch.manual_seed also seeds every
+                # accelerator backend and costs ~0.75 ms per call
+                torch.default_generator.manual_seed(seed)
                 random.seed(seed)
                 return self.transforms(inputs)
         finally:
