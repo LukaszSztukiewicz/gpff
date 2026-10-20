@@ -9,6 +9,7 @@ samplers for molecular structure generation on QM9.
 gpff/
 ├── pyproject.toml
 ├── LICENSE
+├── tests/                          # pytest
 └── src/
     └── gpff/                       # the importable package
         ├── cli/                    # one module per console entry point
@@ -16,7 +17,8 @@ gpff/
         │   ├── train.py            # gpff_train
         │   ├── generate.py         # gpff_generate
         │   ├── prepare_metadata.py  # gpff_prepare_metadata
-        │   └── calculate_metrics.py # gpff_calculate_metrics
+        │   ├── calculate_metrics.py # gpff_calculate_metrics
+        │   └── evaluate.py         # gpff_evaluate
         ├── callbacks.py
         ├── keys.py
         ├── task.py
@@ -39,7 +41,8 @@ pip install -e .
 ```
 
 `pip install -e .` resolves all standard dependencies plus the pinned
-`schnetpack` git URL declared in `pyproject.toml`.
+`schnetpack` git URL declared in `pyproject.toml`. `pip install -e ".[test]"`
+adds pytest; run the tests with `pytest tests`.
 
 Python 3.13 only (`>=3.13,<3.14`): the numerical stack is pinned as a set and
 held to a single interpreter version.
@@ -55,6 +58,7 @@ After install the entry points are on `PATH`:
 | `gpff_generate`  | Sample molecules from a checkpoint. Wraps `gpff.cli.generate:sample_molecules()`. |
 | `gpff_prepare_metadata`  | Compute the per-sample arrays of a sampled DB into `evaluation/metadata/`. Wraps `gpff.cli.prepare_metadata:main()`. |
 | `gpff_calculate_metrics` | Reduce those arrays to `evaluation/results.json`. Wraps `gpff.cli.calculate_metrics:main()`. |
+| `gpff_evaluate`  | Loss and force errors of a model on pinned val/test noise, optionally paired against another model. Wraps `gpff.cli.evaluate:main()`. |
 
 `gpfftrain` still works as a deprecated alias for `gpff_train`.
 
@@ -138,6 +142,39 @@ gpff_prepare_metadata --samples_db_path samples.db \
   --targets rdkit_valid posebusters_valid smiles
 gpff_calculate_metrics --samples_db_path samples.db \
   --metrics rdkit_validity posebusters_validity uniqueness mean_tanimoto_similarity
+```
+
+Validation and test noise is pinned (`data.eval_noise_seed`, default 0): each
+molecule's noise is seeded by the seed and its database index, and the noise
+levels are a stratified sample of the training distribution. `val/loss` is then
+a deterministic function of the weights, the same for every run on the same
+split (pass one `data.split_file` to all runs you compare), and independent of
+batch size, workers and the training seed.
+
+`gpff_evaluate` makes the same kind of inputs for one model, with the data
+transforms of its run's `.hydra/config.yaml` (next to `--model_path`; `--config`
+takes another run's, `--experiment` a packaged experiment). `--compare` checks
+that both files hold the same molecules, noise levels and targets, so runs
+trained with different noise or alignment settings are compared on one
+`--config`. Its interval resamples molecules: it tells whether two trained
+models differ on the split, not whether one training setup beats another,
+which needs several training seeds.
+
+```bash
+# Compare two models on the same pinned inputs (val, noise seed 1, 4 draws per
+# molecule): per-sigma force errors and the paired loss difference with a 95% CI
+gpff_evaluate --model_path runs/a/best_model --split_path split.npz \
+  --datapath qm9_filtered.db --output a_dev.npz
+gpff_evaluate --model_path runs/b/best_model --split_path split.npz \
+  --datapath qm9_filtered.db --output b_dev.npz --compare a_dev.npz
+
+# A model trained with other noise settings, on run a's inputs
+gpff_evaluate --model_path runs/c/best_model --config runs/a/.hydra/config.yaml \
+  --split_path split.npz --datapath qm9_filtered.db --output c_dev.npz --compare a_dev.npz
+
+# Final numbers: test split, its own noise seed, more draws
+gpff_evaluate --model_path runs/b/best_model --split_path split.npz \
+  --datapath qm9_filtered.db --subset test --noise_seed 2 --n_draws 8 --output b_test.npz
 ```
 
 ## Citation

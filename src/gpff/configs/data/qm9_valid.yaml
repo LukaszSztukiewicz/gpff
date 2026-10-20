@@ -11,3 +11,6 @@ num_workers: 16
 pin_memory: true
 n_atoms_allowed: null
 indices_path: ${run.data_dir}/n_atoms_indices.pkl
+# val/test noise pinned per molecule and stratified over the noise levels;
+# runs on the same split see the same inputs (null: fresh noise every epoch)
+eval_noise_seed: 0

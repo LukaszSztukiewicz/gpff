@@ -7,6 +7,7 @@ import torch
 import numpy as np
 from torch import nn as nn
 from torchmetrics import Metric
+from schnetpack import properties
 from schnetpack.task import ModelOutput as SPKModelOutput
 from schnetpack.task import AtomisticTask as SPKAtomisticTask
 from schnetpack.task import UnsupervisedModelOutput
@@ -309,7 +310,13 @@ class AtomisticTask(SPKAtomisticTask):
 
         #     return None
 
-        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        # the loss is a mean over the batch's force components; weighting the
+        # batches by that count makes the epoch value the mean over all of them,
+        # whatever the batch size
+        self.log(
+            "val/loss", loss, on_step=False, on_epoch=True, prog_bar=True,
+            batch_size=batch[properties.R].numel(),
+        )
         self.log_metrics(pred, targets, "val")
 
         # log skipped nan
@@ -333,6 +340,9 @@ class AtomisticTask(SPKAtomisticTask):
 
         loss = self.loss_fn(pred, targets)
 
-        self.log("test/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log(
+            "test/loss", loss, on_step=False, on_epoch=True, prog_bar=True,
+            batch_size=batch[properties.R].numel(),
+        )
         self.log_metrics(pred, targets, "test")
         return {"test/loss": loss}

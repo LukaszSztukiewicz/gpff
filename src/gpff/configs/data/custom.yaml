@@ -6,6 +6,8 @@ batch_size: 10
 num_train: ???
 num_val: ???
 num_test: null
+# give runs one split file to compare them on the same molecules
+split_file: split.npz
 num_workers: 8
 num_val_workers: null
 num_test_workers: null

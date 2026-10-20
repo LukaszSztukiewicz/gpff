@@ -4,6 +4,7 @@ from random import randint, random, choice
 
 import numpy as np
 import torch
+from scipy.special import ndtr, ndtri
 
 from gpff.utils.alignment import sample_covariance_noise, align_permutation
 
@@ -60,6 +61,15 @@ class VarianceExplodingGeometries(Geometries):
         self.destroy_signal = destroy_signal
         self.sample_uniformly = sample_uniformly
 
+    def sigma_quantile(self, u: np.ndarray) -> np.ndarray:
+        """Inverse CDF of the noise levels get_noisy_geometry draws: the level at quantile u in (0, 1)."""
+        if self.sample_uniformly:
+            return u * self.sigma_max + 1e-4
+        # ln(sigma) ~ N(sigma_mean, sigma_std), drawn again while sigma > sigma_max,
+        # is the normal truncated at ln(sigma_max): invert its CDF
+        top = ndtr((np.log(self.sigma_max) - self.sigma_mean) / self.sigma_std)
+        return np.exp(self.sigma_mean + self.sigma_std * ndtri(u * top))
+
     def get_noisy_geometry(
         self, 
         x_0: torch.Tensor,
@@ -79,7 +89,8 @@ class VarianceExplodingGeometries(Geometries):
             t: (N, 1) tensor of timesteps
             noise: (N, 3) tensor of noise
         """
-        # sample noise level
+        # sample noise level; sigma_quantile must describe these draws, since
+        # the pinned validation noise (gpff.data.eval_noise) is drawn through it
         if t is not None:
             sigma_t = t * self.sigma_max
         elif self.sample_uniformly:

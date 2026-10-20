@@ -4,6 +4,7 @@ import pickle
 
 from ase.db import connect
 import numpy as np
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from schnetpack.datasets import QM9
@@ -11,6 +12,7 @@ from schnetpack import properties
 from schnetpack.data import AtomsDataModuleError, load_dataset
 
 from gpff.analysis import analyze_with_rdkit, get_rdkit_validity
+from gpff.data.eval_noise import pin_noise
 
 __all__ = ["QM9Valid", "build_filtered_qm9"]
 
@@ -127,6 +129,7 @@ class QM9Valid(QM9):
         load_properties: Optional[List[str]] = None,
         raw_datapath: Optional[str] = None,
         filter_timeout: int = 5,
+        eval_noise_seed: Optional[int] = None,
         **kwargs
     ):
         """
@@ -140,6 +143,9 @@ class QM9Valid(QM9):
                           database is built from. Defaults to "qm9.db" next to
                           ``datapath``. It is downloaded if it does not exist.
             filter_timeout: seconds allowed per molecule when checking validity.
+            eval_noise_seed: pin the val/test noise with this seed (see
+                gpff.data.eval_noise), the same for every run on the same
+                split. None draws fresh noise every epoch.
         """
         super().__init__(
             datapath=datapath,
@@ -153,6 +159,27 @@ class QM9Valid(QM9):
             os.path.dirname(os.path.abspath(datapath)), RAW_QM9_FILENAME
         )
         self.filter_timeout = filter_timeout
+        self.eval_noise_seed = eval_noise_seed
+        # split -> pinned batches, built on first use and then kept
+        self._pinned_batches = {}
+
+    def val_dataloader(self):
+        if self.eval_noise_seed is None:
+            return super().val_dataloader()
+        return self._pinned_dataloader("val", self.val_dataset, self.val_batch_size, self.num_val_workers)
+
+    def test_dataloader(self):
+        if self.eval_noise_seed is None:
+            return super().test_dataloader()
+        return self._pinned_dataloader("test", self.test_dataset, self.test_batch_size, self.num_test_workers)
+
+    def _pinned_dataloader(self, split, dataset, batch_size, num_workers):
+        if split not in self._pinned_batches:
+            self._pinned_batches[split] = pin_noise(
+                dataset, self.eval_noise_seed, batch_size, num_workers=num_workers
+            )
+        # the batches are already collated: hand them out one by one
+        return DataLoader(self._pinned_batches[split], batch_size=None)
 
     def prepare_data(self):
         if not os.path.exists(self.datapath):
