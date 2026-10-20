@@ -80,6 +80,15 @@ gpff_train experiment=gpff run.id=<run-name> run.path=runs/<project>/<date>
 gpff_train experiment=gpff +callbacks=milestones
 gpff_train experiment=gpff +callbacks=milestones 'callbacks.milestone_checkpoint.epochs=[50,100]'
 
+# Train faster (all off by default): skip the QM9 property columns gpff does
+# not use, serve the database from memory, keep the DataLoader workers between
+# epochs (needs per-sample training noise, a different but equally valid noise
+# stream) and compile the model. torch.compile needs a C and a C++ compiler at
+# run time, found through CC/CXX or as gcc/g++ on PATH:
+gpff_train experiment=gpff data.load_properties=[] data.cache_in_memory=true \
+  data.persistent_workers=true callbacks.deterministic_data_seed.per_sample_train_noise=true \
+  'compile={dynamic:true}'
+
 # Sample with a local checkpoint; model_path and split_path are required and
 # are the only way to point gpff_generate at a model:
 gpff_generate \
