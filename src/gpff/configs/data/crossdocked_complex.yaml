@@ -1,0 +1,10 @@
+defaults:
+  - crossdocked_ligand
+
+# the same rows as crossdocked_ligand, each ligand followed by its pocket's heavy
+# atoms (~390 on average, up to ~700); "n_ligand_atoms" says where the pocket
+# starts. Every atom is noised in training, there is no pocket conditioning yet.
+datapath: ${run.data_dir}/crossdocked_complex.db
+# under the all-to-all graph of experiment=gpff one complex has about as many
+# edges as a QM9 batch of 512; two complexes already exceed an A100 40 GB
+batch_size: 1

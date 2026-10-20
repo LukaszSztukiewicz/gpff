@@ -1,17 +1,15 @@
 import os
 from typing import List, Optional
-import pickle
 
 from ase.db import connect
 import numpy as np
 from tqdm import tqdm
 
 from schnetpack.datasets import QM9
-from schnetpack import properties
-from schnetpack.data import AtomsDataModuleError, AtomsLoader, load_dataset
+from schnetpack.data import AtomsDataModuleError, load_dataset
 
 from gpff.analysis import analyze_with_rdkit, get_rdkit_validity
-from gpff.data.datasets.memory import InMemoryASEAtomsData
+from gpff.data.datasets.prepared import PreparedAtomsData
 
 __all__ = ["QM9Valid", "build_filtered_qm9"]
 
@@ -112,10 +110,12 @@ def build_filtered_qm9(
     return len(valid_indices)
 
 
-class QM9Valid(QM9):
+class QM9Valid(QM9, PreparedAtomsData):
     """
-    Filtered version of QM9 dataset without invalid molecules.
-    Also allows to only load molecules with a specified number of atoms.
+    Filtered version of QM9 dataset without invalid molecules, built from the
+    raw QM9 database when it does not exist yet. Everything else (molecules with
+    a specified number of atoms, serving from memory, persistent workers) comes
+    from ``PreparedAtomsData``.
     todo: also allow with uncharacterized molecules
     """
 
@@ -123,29 +123,20 @@ class QM9Valid(QM9):
         self,
         datapath: str,
         batch_size: int,
-        n_atoms_allowed: Optional[bool] = None,
-        indices_path: str = "n_atoms_indices.pkl",
         load_properties: Optional[List[str]] = None,
         raw_datapath: Optional[str] = None,
         filter_timeout: int = 5,
-        cache_in_memory: bool = False,
-        persistent_workers: bool = False,
         **kwargs
     ):
         """
         Args:
             datapath: path to directory containing QM9 database.
             batch_size: batch size.
-            n_atoms_allowed: the exact number of atoms in each molecule.
-            indices_path: path to pickle file containing indices of molecules
-                          with specific number of atoms.
             raw_datapath: path of the unfiltered QM9 database that the filtered
                           database is built from. Defaults to "qm9.db" next to
                           ``datapath``. It is downloaded if it does not exist.
             filter_timeout: seconds allowed per molecule when checking validity.
-            cache_in_memory: read the database into memory once in setup and
-                          serve samples from there instead of from the database.
-            persistent_workers: keep the DataLoader workers alive between epochs.
+            **kwargs: passed on to ``QM9`` and ``PreparedAtomsData``.
         """
         super().__init__(
             datapath=datapath,
@@ -153,14 +144,10 @@ class QM9Valid(QM9):
             load_properties=load_properties,
             **kwargs,
         )
-        self.n_atoms_allowed = n_atoms_allowed
-        self.indices_path = indices_path
         self.raw_datapath = raw_datapath or os.path.join(
             os.path.dirname(os.path.abspath(datapath)), RAW_QM9_FILENAME
         )
         self.filter_timeout = filter_timeout
-        self.cache_in_memory = cache_in_memory
-        self.persistent_workers = persistent_workers
 
     def prepare_data(self):
         if not os.path.exists(self.datapath):
@@ -185,115 +172,3 @@ class QM9Valid(QM9):
             raise AtomsDataModuleError(
                 "The dataset at the chosen location contains the invalid molecules! "
             )
-
-    def setup(self, stage: Optional[str] = None):
-        """
-        Overwrites the ``setup`` method to load molecules with given number of atoms.
-        Copied from MoreRed.
-        """
-        if self.data_workdir is None:
-            datapath = self.datapath
-        else:
-            datapath = self._copy_to_workdir()
-
-        # (re)load datasets
-        if self.dataset is None:
-            if self.cache_in_memory:
-                self.dataset = InMemoryASEAtomsData(
-                    datapath,
-                    property_units=self.property_units,
-                    distance_unit=self.distance_unit,
-                    load_properties=self.load_properties,
-                )
-                self.dataset.fill_cache()
-            else:
-                self.dataset = load_dataset(
-                    datapath,
-                    self.format,
-                    property_units=self.property_units,
-                    distance_unit=self.distance_unit,
-                    load_properties=self.load_properties,
-                )
-
-            # use only molecules with specific number of atoms
-            if self.n_atoms_allowed is not None and self.n_atoms_allowed > 0:
-                # load indices
-                if os.path.exists(self.indices_path):
-                    with open(self.indices_path, "rb") as file:
-                        indices = pickle.load(file)
-                else:
-                    indices = {}
-
-                # get indices of molecules with specific number of atoms
-                if self.n_atoms_allowed in indices.keys():
-                    indices = indices[self.n_atoms_allowed]
-                else:
-                    tmp = []
-                    for i in tqdm(range(len(self.dataset)), f"getting molecules with {self.n_atoms_allowed} atoms"):
-                        if self.dataset[i][properties.n_atoms] == self.n_atoms_allowed:  # type: ignore
-                            tmp.append(i)
-                    indices[self.n_atoms_allowed] = tmp
-
-                    # persist indices
-                    with open(self.indices_path, "wb") as file:
-                        pickle.dump(indices, file)
-                    indices = indices[self.n_atoms_allowed]
-
-            # get all indices (with any number of atoms)
-            else:
-                indices = list(range(len(self.dataset)))
-
-            # subset dataset
-            self.dataset = self.dataset.subset(indices)
-
-            # load and generate partitions if needed
-            if self.train_idx is None:
-                self._load_partitions()
-
-            # partition dataset
-            self._train_dataset = self.dataset.subset(self.train_idx)
-            self._val_dataset = self.dataset.subset(self.val_idx)
-            self._test_dataset = self.dataset.subset(self.test_idx)
-
-        self._setup_transforms()
-
-    # schnetpack's loaders take no persistent_workers; these mirror them with it
-    def train_dataloader(self) -> AtomsLoader:
-        if self._train_dataloader is None:
-            train_batch_sampler = self._setup_sampler(
-                sampler_cls=self.train_sampler_cls,
-                sampler_args=self.train_sampler_args,
-                dataset=self._train_dataset,
-            )
-            self._train_dataloader = AtomsLoader(
-                self.train_dataset,
-                batch_size=self.batch_size if train_batch_sampler is None else 1,
-                shuffle=train_batch_sampler is None,
-                batch_sampler=train_batch_sampler,
-                num_workers=self.num_workers,
-                pin_memory=self._pin_memory,
-                persistent_workers=self.persistent_workers and self.num_workers > 0,
-            )
-        return self._train_dataloader
-
-    def val_dataloader(self) -> AtomsLoader:
-        if self._val_dataloader is None:
-            self._val_dataloader = AtomsLoader(
-                self.val_dataset,
-                batch_size=self.val_batch_size,
-                num_workers=self.num_val_workers,
-                pin_memory=self._pin_memory,
-                persistent_workers=self.persistent_workers and self.num_val_workers > 0,
-            )
-        return self._val_dataloader
-
-    def test_dataloader(self) -> AtomsLoader:
-        if self._test_dataloader is None:
-            self._test_dataloader = AtomsLoader(
-                self.test_dataset,
-                batch_size=self.test_batch_size,
-                num_workers=self.num_test_workers,
-                pin_memory=self._pin_memory,
-                persistent_workers=self.persistent_workers and self.num_test_workers > 0,
-            )
-        return self._test_dataloader
