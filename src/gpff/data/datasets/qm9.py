@@ -11,6 +11,7 @@ from schnetpack import properties
 from schnetpack.data import AtomsDataModuleError, load_dataset
 
 from gpff.analysis import analyze_with_rdkit, get_rdkit_validity
+from gpff.data.datasets.memory import InMemoryASEAtomsData
 
 __all__ = ["QM9Valid", "build_filtered_qm9"]
 
@@ -127,6 +128,7 @@ class QM9Valid(QM9):
         load_properties: Optional[List[str]] = None,
         raw_datapath: Optional[str] = None,
         filter_timeout: int = 5,
+        cache_in_memory: bool = False,
         **kwargs
     ):
         """
@@ -140,6 +142,8 @@ class QM9Valid(QM9):
                           database is built from. Defaults to "qm9.db" next to
                           ``datapath``. It is downloaded if it does not exist.
             filter_timeout: seconds allowed per molecule when checking validity.
+            cache_in_memory: read the database into memory once in setup and
+                          serve samples from there instead of from the database.
         """
         super().__init__(
             datapath=datapath,
@@ -153,6 +157,7 @@ class QM9Valid(QM9):
             os.path.dirname(os.path.abspath(datapath)), RAW_QM9_FILENAME
         )
         self.filter_timeout = filter_timeout
+        self.cache_in_memory = cache_in_memory
 
     def prepare_data(self):
         if not os.path.exists(self.datapath):
@@ -190,13 +195,22 @@ class QM9Valid(QM9):
 
         # (re)load datasets
         if self.dataset is None:
-            self.dataset = load_dataset(
-                datapath,
-                self.format,
-                property_units=self.property_units,
-                distance_unit=self.distance_unit,
-                load_properties=self.load_properties,
-            )
+            if self.cache_in_memory:
+                self.dataset = InMemoryASEAtomsData(
+                    datapath,
+                    property_units=self.property_units,
+                    distance_unit=self.distance_unit,
+                    load_properties=self.load_properties,
+                )
+                self.dataset.fill_cache()
+            else:
+                self.dataset = load_dataset(
+                    datapath,
+                    self.format,
+                    property_units=self.property_units,
+                    distance_unit=self.distance_unit,
+                    load_properties=self.load_properties,
+                )
 
             # use only molecules with specific number of atoms
             if self.n_atoms_allowed is not None and self.n_atoms_allowed > 0:
