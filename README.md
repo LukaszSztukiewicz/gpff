@@ -42,13 +42,14 @@ pip install --no-deps git+https://github.com/khaledkah/MoreRed.git
 `pip install -e .` resolves all standard dependencies plus the pinned
 `schnetpack` git URL declared in `pyproject.toml`. `morered` must be installed
 separately with `--no-deps` because its own pyproject pins `schnetpack==2.0.3`,
-which is not compatible with the pinned `torch==2.8.0`. `gpff` only relies on
+which conflicts with the pinned `schnetpack` git ref. `gpff` only relies on
 `morered.transform.AllToAllNeighborList`, `morered.transform.Diffuse`, and
 `morered.noise_schedules.linear_decay`, all of which work against the newer
 schnetpack ref.
 
-Python ≥ 3.10. CUDA-capable GPU recommended for training and large-scale
-sampling.
+Python 3.12 only (`>=3.12,<3.13`): the pinned schnetpack ref declares
+`requires-python = ">=3.12,<3.13"`, so it cannot be installed on 3.13 or newer.
+CUDA-capable GPU recommended for training and large-scale sampling.
 
 ## Command-line interface
 
