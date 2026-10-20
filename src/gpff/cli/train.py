@@ -73,6 +73,10 @@ def train(config: DictConfig):
     # Init model
     log.info(f"Instantiating model <{config.model._target_}>")
     model = hydra.utils.instantiate(config.model)
+    if config.get("compile") is not None:
+        log.info(f"Compiling the model with <{config.compile}>")
+        # in place, so state_dict keys and the pickled model keep their names
+        model.compile(**OmegaConf.to_container(config.compile))
 
     # Init LightningModule
     log.info(f"Instantiating task <{config.task._target_}>")

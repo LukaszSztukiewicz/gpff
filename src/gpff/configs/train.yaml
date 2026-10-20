@@ -31,6 +31,10 @@ seed: 999
 # "highest" for full float32 matmuls.
 matmul_precision: high
 
+# torch.compile arguments for the model, e.g. {} or {dynamic: true}; null runs
+# it eagerly. Needs a C and a C++ compiler (gcc, g++) at run time.
+compile: null
+
 # Default project (can be overridden by experiments)
 project: default
 
