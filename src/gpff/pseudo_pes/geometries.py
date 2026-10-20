@@ -51,7 +51,17 @@ class VarianceExplodingGeometries(Geometries):
         destroy_signal: bool | str = False,
         mean_free_noise: bool = False,
         sample_uniformly: bool = False,
-    ):  
+        anchor_fraction: float = 0.0,
+        small_sigma_fraction: float = 0.0,
+        small_sigma_range: tuple[float, float] = (0.01, 0.1),
+    ):
+        """
+        Args:
+            anchor_fraction: share of log-normal draws replaced by sigma=0, so that
+                x_t = x_0 and the label is zero force at the reference structure
+            small_sigma_fraction: share of log-normal draws replaced by a log-uniform
+                draw from small_sigma_range
+        """
 
         super().__init__(mean_free_noise)
         self.sigma_max = sigma_max
@@ -59,6 +69,9 @@ class VarianceExplodingGeometries(Geometries):
         self.sigma_std = sigma_std
         self.destroy_signal = destroy_signal
         self.sample_uniformly = sample_uniformly
+        self.anchor_fraction = anchor_fraction
+        self.small_sigma_fraction = small_sigma_fraction
+        self.small_sigma_range = (float(small_sigma_range[0]), float(small_sigma_range[1]))
 
     def get_noisy_geometry(
         self, 
@@ -85,10 +98,19 @@ class VarianceExplodingGeometries(Geometries):
         elif self.sample_uniformly:
             sigma_t = torch.rand(size=(1,), device=x_0.device, dtype=x_0.dtype) * self.sigma_max + 1e-4
         else:
-            sigma_t = torch.exp(torch.normal(mean=self.sigma_mean, std=self.sigma_std, size=(1,), device=x_0.device, dtype=x_0.dtype))
-            while sigma_t > self.sigma_max:
+            # skip the mixture draw when it is unused, which keeps the default random stream
+            mixed = self.anchor_fraction + self.small_sigma_fraction > 0
+            u = torch.rand(size=(1,), device=x_0.device, dtype=x_0.dtype) if mixed else 1.0
+            if u < self.anchor_fraction:
+                sigma_t = torch.zeros(size=(1,), device=x_0.device, dtype=x_0.dtype)
+            elif u < self.anchor_fraction + self.small_sigma_fraction:
+                lo, hi = self.small_sigma_range
+                sigma_t = lo * (hi / lo) ** torch.rand(size=(1,), device=x_0.device, dtype=x_0.dtype)
+            else:
                 sigma_t = torch.exp(torch.normal(mean=self.sigma_mean, std=self.sigma_std, size=(1,), device=x_0.device, dtype=x_0.dtype))
-        
+                while sigma_t > self.sigma_max:
+                    sigma_t = torch.exp(torch.normal(mean=self.sigma_mean, std=self.sigma_std, size=(1,), device=x_0.device, dtype=x_0.dtype))
+
         # calculate t
         if t is None:
             t = sigma_t/self.sigma_max

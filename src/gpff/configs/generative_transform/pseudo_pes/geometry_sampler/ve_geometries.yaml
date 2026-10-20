@@ -8,3 +8,7 @@ sigma_std: 1.2
 destroy_signal: false
 mean_free_noise: true
 sample_uniformly: false
+# share of draws replaced by sigma=0 anchors / log-uniform draws from small_sigma_range
+anchor_fraction: 0.
+small_sigma_fraction: 0.
+small_sigma_range: [0.01, 0.1]
