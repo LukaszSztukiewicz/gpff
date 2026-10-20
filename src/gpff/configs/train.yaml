@@ -24,6 +24,9 @@ defaults:
 
 print_config: True
 
+# Seed for all RNGs; set per run with seed=<int>
+seed: 999
+
 # Default project (can be overridden by experiments)
 project: default
 

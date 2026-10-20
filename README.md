@@ -72,6 +72,9 @@ sampler's calculator, so those overrides are addressed as
 ```bash
 gpff_train experiment=gpff data=qm9_valid trainer.max_epochs=300
 
+# Runs are seeded from `seed` (default 999); vary it to repeat an experiment:
+gpff_train -m experiment=gpff seed=0,1,2
+
 # Also keep the model after 100, 200, 500, 1k, 2k, 5k, 10k and 15k epochs in
 # milestones/ (epoch_<N>.ckpt for Lightning, epoch_<N>_model as the model_path
 # for gpff_generate), regardless of early stopping and the best epoch. Off by
