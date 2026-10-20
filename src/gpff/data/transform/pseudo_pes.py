@@ -22,6 +22,7 @@ class PseudoPESTransform(trn.Transform):
         weight_generator: Optional[LossWeights] = None,
         align_permutation: bool = False,
         align_rotation: bool = False,
+        align_rotation_max_sigma: Optional[float] = None,
     ):
         """
         Args:
@@ -36,6 +37,8 @@ class PseudoPESTransform(trn.Transform):
                 the noisy geometry to the reference geometry
             align_rotation: whether to align the rotation of 
                 the noisy geometry to the reference geometry
+            align_rotation_max_sigma: align the rotation only below this noise level,
+                where x_t still pins it down (None aligns at every noise level)
         """
         super().__init__()
         self.geometry_sampler = geometry_sampler
@@ -43,6 +46,7 @@ class PseudoPESTransform(trn.Transform):
         self.weight_generator = weight_generator
         self.align_permutation = align_permutation
         self.align_rotation = align_rotation
+        self.align_rotation_max_sigma = align_rotation_max_sigma
 
     def forward(
         self,
@@ -75,7 +79,10 @@ class PseudoPESTransform(trn.Transform):
             )
 
         # align rotation of x_t to x_0
-        if self.align_rotation:
+        if self.align_rotation and (
+            self.align_rotation_max_sigma is None
+            or sigma_t[0, 0] < self.align_rotation_max_sigma
+        ):
             x_t = align_rotation(positions=x_t, target_positions=x_0)
 
         inputs.update(

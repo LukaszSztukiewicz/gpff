@@ -12,6 +12,8 @@ defaults:
 _target_: gpff.data.transform.PseudoPESTransform
 align_permutation: ${globals.align_permutation}
 align_rotation: ${globals.align_rotation}
+# only align the rotation below this sigma (null aligns at every sigma)
+align_rotation_max_sigma: null
 geometry_sampler: ${pseudo_pes.geometry_sampler}
 energy_function: ${pseudo_pes.energy_function}
 weight_generator: ${pseudo_pes.weight_generator}
