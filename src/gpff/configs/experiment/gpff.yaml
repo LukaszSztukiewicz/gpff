@@ -52,7 +52,7 @@ model:
 data:
   transforms:
     - ${generative_transform}
-    - _target_: morered.transform.AllToAllNeighborList
+    - _target_: gpff.utils.neighbors.AllToAllNeighborList
     - _target_: schnetpack.transform.CastTo32
 
 task:

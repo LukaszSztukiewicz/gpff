@@ -36,19 +36,14 @@ gpff/
 git clone https://github.com/stefaanhessmann/gpff.git
 cd gpff
 pip install -e .
-pip install --no-deps git+https://github.com/khaledkah/MoreRed.git
 ```
 
 `pip install -e .` resolves all standard dependencies plus the pinned
-`schnetpack` git URL declared in `pyproject.toml`. `morered` must be installed
-separately with `--no-deps` because its own pyproject pins `schnetpack==2.0.3`,
-which is not compatible with the pinned `torch==2.8.0`. `gpff` only relies on
-`morered.transform.AllToAllNeighborList`, `morered.transform.Diffuse`, and
-`morered.noise_schedules.linear_decay`, all of which work against the newer
-schnetpack ref.
+`schnetpack` git URL declared in `pyproject.toml`.
 
-Python ≥ 3.10. CUDA-capable GPU recommended for training and large-scale
-sampling.
+Python 3.13 only (`>=3.13,<3.14`): the numerical stack is pinned as a set and
+held to a single interpreter version.
+CUDA-capable GPU recommended for training and large-scale sampling.
 
 ## Command-line interface
 
@@ -71,6 +66,12 @@ sampler's calculator, so those overrides are addressed as
 
 ```bash
 gpff_train experiment=gpff data=qm9_valid trainer.max_epochs=300
+
+# Runs are seeded from `seed` (default 999); vary it to repeat an experiment:
+gpff_train -m experiment=gpff seed=0,1,2
+
+# Resume an interrupted run from its last checkpoint by passing its id and path:
+gpff_train experiment=gpff run.id=<run-name> run.path=runs/<project>/<date>
 
 # Sample with a local checkpoint; model_path and split_path are required and
 # are the only way to point gpff_generate at a model:

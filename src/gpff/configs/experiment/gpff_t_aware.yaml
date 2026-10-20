@@ -29,7 +29,7 @@ globals:
   model_path: "best_model"
 
   # Keys
-  time_target_key: t
+  time_target_key: ${key:t}
 
 run:
   experiment: gpff_t_aware
@@ -61,7 +61,7 @@ model:
 data:
   transforms:
     - ${generative_transform}
-    - _target_: morered.transform.AllToAllNeighborList
+    - _target_: gpff.utils.neighbors.AllToAllNeighborList
     - _target_: schnetpack.transform.CastTo32
 
 task:

@@ -30,8 +30,8 @@ globals:
 
   # Keys
   noise_target_key: ${key:noise}
-  noise_output_key: eps_pred
-  time_target_key: t
+  noise_output_key: ${key:eps_pred}
+  time_target_key: ${key:t}
 
 run:
   experiment: dm_t_aware
@@ -66,7 +66,7 @@ pseudo_pes:
 data:
   transforms:
     - ${generative_transform}
-    - _target_: morered.transform.AllToAllNeighborList
+    - _target_: gpff.utils.neighbors.AllToAllNeighborList
     - _target_: schnetpack.transform.CastTo32
 
 task:

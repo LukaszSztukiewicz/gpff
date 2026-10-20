@@ -1,13 +1,12 @@
 """Training entry point (``gpff_train``)."""
 import logging
 import os
-import random
 import socket
 from typing import List
 
 import hydra
 import torch
-from omegaconf import DictConfig, OmegaConf, open_dict
+from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import Callback, LightningDataModule, Trainer, seed_everything
 from pytorch_lightning.loggers.logger import Logger
 
@@ -20,7 +19,7 @@ from gpff.cli import header
 log = logging.getLogger(__name__)
 
 
-@hydra.main(config_path="../configs", config_name="train", version_base="1.2")
+@hydra.main(config_path="../configs", config_name="train")
 def train(config: DictConfig):
     """
     General training routine for all models defined by the provided hydra configs.
@@ -40,37 +39,10 @@ def train(config: DictConfig):
             f"""
         Config incomplete! You have to specify at least `data` and `model`!
         For an example, try one of our pre-defined experiments:
-        > spktrain experiment=qm9_atomwise
+        > gpff_train experiment=gpff
         """
         )
         return
-
-    if os.path.exists("config.yaml"):
-        log.info(
-            f"Config already exists in given directory {os.path.abspath('.')}."
-            + " Attempting to continue training."
-        )
-
-        # save old config
-        old_config = OmegaConf.load("config.yaml")
-        count = 1
-        while os.path.exists(f"config.old.{count}.yaml"):
-            count += 1
-        with open(f"config.old.{count}.yaml", "w") as f:
-            OmegaConf.save(old_config, f, resolve=False)
-
-        # resume from latest checkpoint
-        if config.run.ckpt_path is None:
-            if os.path.exists("checkpoints/last.ckpt"):
-                config.run.ckpt_path = "checkpoints/last.ckpt"
-
-        if config.run.ckpt_path is not None:
-            log.info(
-                f"Resuming from checkpoint {os.path.abspath(config.run.ckpt_path)}"
-            )
-    else:
-        with open("config.yaml", "w") as f:
-            OmegaConf.save(config, f, resolve=False)
 
     # Set matmul precision if specified
     if "matmul_precision" in config and config.matmul_precision is not None:
@@ -78,13 +50,7 @@ def train(config: DictConfig):
         torch.set_float32_matmul_precision(config.matmul_precision)
 
     # Set seed for random number generators in pytorch, numpy and python.random
-    if "seed" in config:
-        log.info(f"Seed with <{config.seed}>")
-    else:
-        # choose seed randomly
-        with open_dict(config):
-            config.seed = random.randint(0, 2**32 - 1)
-        log.info(f"Seed randomly with <{config.seed}>")
+    log.info(f"Seed with <{config.seed}>")
     seed_everything(seed=config.seed, workers=True)
 
     if config.get("print_config"):
@@ -152,21 +118,24 @@ def train(config: DictConfig):
     # log.info("Logging hyperparameters.")
     log_hyperparameters(config=config, model=task, trainer=trainer)
 
+    # Our checkpoints pickle schnetpack model objects (task hyperparameters), so
+    # every Lightning load below needs weights_only=False; Lightning >= 2.6
+    # otherwise falls back to torch's weights_only=True default.
+
     # Train the model
     log.info("Starting training.")
-    trainer.fit(model=task, datamodule=datamodule, ckpt_path=config.run.ckpt_path)
+    trainer.fit(model=task, datamodule=datamodule, ckpt_path=config.run.ckpt_path, weights_only=False)
 
     # Evaluate model on test set after training
     log.info("Starting testing.")
-    trainer.test(model=task, datamodule=datamodule, ckpt_path="best")
+    trainer.test(model=task, datamodule=datamodule, ckpt_path="best", weights_only=False)
 
     # Store best model
     best_path = trainer.checkpoint_callback.best_model_path
     log.info(f"Best checkpoint path:\n{best_path}")
 
     log.info(f"Store best model")
-    best_task = type(task).load_from_checkpoint(best_path)
-    torch.save(best_task, config.globals.model_path + ".task")
+    best_task = type(task).load_from_checkpoint(best_path, weights_only=False)
 
     best_task.save_model(config.globals.model_path, do_postprocessing=True)
     log.info(f"Best model stored at {os.path.abspath(config.globals.model_path)}")

@@ -73,49 +73,19 @@ def load_split(entity: str, project: str, run_id: str, return_path: bool = False
         return np.load(split_path)
 
 
-def load_last_state_dict(
-    wandb_project: str,
-    run_id: str,
-    base_dir: str = "experiments/runs",
-    map_location: str = "cpu",
-) -> Optional[dict]:
-    """Load the state dict of a run's *last* checkpoint from the local run tree.
+def load_last_state_dict(run_dir: str, map_location: str = "cpu") -> Optional[dict]:
+    """State dict (EMA weights, ``model.`` prefix stripped) of a run's newest last*.ckpt.
 
-    Unlike :func:`load_latest_model`, which fetches the best-model artifact from
-    W&B, this searches the local Hydra output tree
-    ``<base_dir>/<wandb_project>/<date>/<run_id>/checkpoints/last.ckpt``. Returns
-    ``None`` when no such checkpoint exists.
-
-    TODO: Find clean solution for saving or getting last checkpoint.
+    Picks the newest ``last*.ckpt`` like Lightning's ``ckpt_path="last"``, so a
+    ``last-v1.ckpt`` written after a moved run is resumed is found too. Returns
+    ``None`` when the run has no last checkpoint.
     """
-    base_path = Path(base_dir) / wandb_project
-
-    if not base_path.exists():
+    ckpts = list(Path(run_dir, "checkpoints").glob("last*.ckpt"))
+    if not ckpts:
         return None
-
-    # Search through all date folders
-    for date_folder in base_path.iterdir():
-        if not date_folder.is_dir():
-            continue
-
-        # Check if the experiment exists in this date folder
-        experiment_path = date_folder / run_id
-        if experiment_path.exists() and experiment_path.is_dir():
-            ckpt_path = experiment_path / "checkpoints" / "last.ckpt"
-            if ckpt_path.exists():
-                state_dict = torch.load(
-                    ckpt_path, map_location=map_location, weights_only=False
-                )["state_dict"]
-                # Remove "model." prefix from all keys
-                new_state_dict = {
-                    k.replace("model.", "", 1): v
-                    for k, v in state_dict.items()
-                    if k.startswith("model.")
-                }
-                # Include non-prefixed keys as-is
-                for k, v in state_dict.items():
-                    if not k.startswith("model."):
-                        new_state_dict[k] = v
-                return new_state_dict
-
-    return None
+    ckpt = torch.load(
+        max(ckpts, key=lambda p: p.stat().st_mtime),
+        map_location=map_location,
+        weights_only=False,
+    )
+    return {k.removeprefix("model."): v for k, v in ckpt["state_dict"].items()}

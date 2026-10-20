@@ -3,5 +3,5 @@ data_dir: ${run.work_dir}/data
 path: ${run.work_dir}/runs/${project}/${now:%y-%m-%d}
 experiment: default
 id: ${petname:1}
-ckpt_path: null
+ckpt_path: last  # resume from checkpoints/last*.ckpt if present; or an explicit path
 git_hash: null

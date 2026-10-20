@@ -2,6 +2,9 @@ wandb:
   _target_: pytorch_lightning.loggers.WandbLogger
   project: ${project}
   entity: null
-  name: ${run.id}
-  notes: "none"
-  tags: null
+  name: ${run.experiment}-${run.id}
+  id: ${run.id}
+  resume: allow  # continue the same wandb run when resuming
+  group: ${run.experiment}
+  tags: ${oc.select:run.tags,null}
+  notes: null

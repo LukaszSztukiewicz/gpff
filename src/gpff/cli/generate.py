@@ -8,6 +8,7 @@ import hydra
 import numpy as np
 from ase.db import connect
 from omegaconf import DictConfig, OmegaConf
+from pytorch_lightning import seed_everything
 
 from schnetpack.utils import load_model
 from schnetpack.utils.script import print_config
@@ -39,7 +40,7 @@ def _get_trajectory_db_path(output_db: str) -> str:
     return f"{base}_trajectories{extension}"
 
 
-@hydra.main(config_path="../configs", config_name="generate", version_base="1.2")
+@hydra.main(config_path="../configs", config_name="generate")
 def sample_molecules(config: DictConfig):
     """
     Sample molecules from the model.
@@ -59,6 +60,11 @@ def sample_molecules(config: DictConfig):
         ],
         resolve=True,
     )
+
+    # seed torch, numpy and python.random: priors, stochastic samplers and the
+    # shape GMM fit all draw from the global RNGs
+    log.info(f"Seed with <{config.seed}>")
+    seed_everything(seed=config.seed, workers=True)
 
     # load model; the checkpoint always comes from a local file, there is no
     # remote lookup that could substitute a different model

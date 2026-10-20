@@ -12,49 +12,17 @@ from gpff.analysis import get_rdkit_validity
 from ase.db import connect
 from ase import Atoms
 from schnetpack.train.callbacks import ModelCheckpoint as SPKModelCheckpoint
-from schnetpack.train.callbacks import ExponentialMovingAverage as SPKExponentialMovingAverage
 import pytorch_lightning as pl
+import schnetpack.transform as trn
+from schnetpack import properties
 from gpff.utils.wandb import upload_artifact
 
 
 __all__ = [
-    "StopOnNaN",
     "SamplerCallback",
     "ModelCheckpoint",
     "DeterministicDataSeed",
-    "ExponentialMovingAverage",
 ]
-
-
-class ExponentialMovingAverage(SPKExponentialMovingAverage):
-    """schnetpack's EMA callback with a resume fix: checkpoints are saved while
-    the EMA average is ``copy_to()``'d into the model (during validation), so a
-    resumed run must first restore the raw training weights, which are the
-    ``collected_params`` of the checkpointed EMA state.
-    """
-
-    def on_fit_start(self, trainer, pl_module) -> None:
-        if self.ema is None:
-            from torch_ema import ExponentialMovingAverage as EMA
-
-            self.ema = EMA(pl_module.model.parameters(), decay=self.decay)
-        if self._to_load is not None:
-            self.ema.load_state_dict(self._to_load)
-            self._to_load = None
-            if self.ema.collected_params is not None:
-                # put the raw (non-EMA) training weights back into the model
-                self.ema.restore()
-
-        # load average parameters, to have same starting point as after validation
-        self.ema.store()
-        self.ema.copy_to()
-
-    def on_validation_epoch_start(self, trainer, pl_module, *args, **kwargs) -> None:
-        if trainer.sanity_checking:
-            # on_fit_start already stored the raw weights and copied the EMA
-            # average in; storing again would overwrite them with the average
-            return
-        super().on_validation_epoch_start(trainer, pl_module, *args, **kwargs)
 
 
 class DeterministicDataSeed(Callback):
@@ -67,24 +35,36 @@ class DeterministicDataSeed(Callback):
 
     _MOD = 2 ** 32
 
-    def __init__(self) -> None:
+    def __init__(self, base_seed: int, val_noise_seed: Optional[int] = 0) -> None:
         super().__init__()
-        self._base_seed: Optional[int] = None
+        # the run's config seed; identical on launch and resume
+        self._base_seed = base_seed
+        # independent of base_seed, so runs with different seeds share val noise
+        self._val_noise_seed = val_noise_seed
         self._first_epoch_reiterated = False
 
-    def on_train_start(self, trainer, pl_module) -> None:
-        # the seed set by seed_everything in cli.py; identical on launch and resume
-        self._base_seed = int(torch.initial_seed()) % self._MOD
+    def setup(self, trainer, pl_module, stage) -> None:
+        # Runs after datamodule.setup, which resets the dataset transforms, so
+        # wrapping here never nests. Pins val/test noise to each molecule's
+        # database index: val/loss becomes a deterministic function of the
+        # weights. Training noise stays fresh every epoch.
+        dm = trainer.datamodule
+        if self._val_noise_seed is None or dm is None:
+            return
+        for dataset, transforms in (
+            (dm.val_dataset, dm.val_transforms),
+            (dm.test_dataset, dm.test_transforms),
+        ):
+            if dataset is not None:
+                dataset.transforms = [_PinnedNoise(self._val_noise_seed, transforms)]
 
     def on_train_epoch_start(self, trainer, pl_module) -> None:
-        if self._base_seed is None:
-            self._base_seed = int(torch.initial_seed()) % self._MOD
         seed = (self._base_seed + int(trainer.current_epoch)) % self._MOD
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
 
-        # PL 2.5.3 creates the first training epoch's dataloader iterator before
+        # PL (through 2.6.6) creates the first training epoch's dataloader iterator before
         # this hook fires (in _FitLoop.setup_data), so its shuffle permutation and
         # worker base_seed predate the reseed above — recreate it once. Later
         # epochs create their iterator after this hook and need no special-casing.
@@ -95,13 +75,26 @@ class DeterministicDataSeed(Callback):
                 iter(fetcher)
 
 
-class StopOnNaN(Callback):
-    def on_after_backward(self, trainer, pl_module):
-        for n, p in pl_module.named_parameters():
-            if p.grad is not None and not torch.isfinite(p.grad).all():
-                print(f"⚠️ NaN/Inf in grad of {n} at step {trainer.global_step}")
-                trainer.should_stop = True
-                break
+class _PinnedNoise(trn.Transform):
+    """Applies ``transforms`` with torch and python RNGs seeded from the
+    sample's database index, leaving the caller's RNG state untouched."""
+
+    def __init__(self, seed: int, transforms: List[trn.Transform]) -> None:
+        super().__init__()
+        self.seed = seed
+        self.transforms = torch.nn.Sequential(*transforms)
+
+    def forward(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        # keep all entropy in the low 32 bits: torch's CPU MT19937 drops the rest
+        seed = (self.seed * 1_000_003 + int(inputs[properties.idx])) & 0xFFFFFFFF
+        py_state = random.getstate()
+        try:
+            with torch.random.fork_rng(devices=[]):
+                torch.manual_seed(seed)
+                random.seed(seed)
+                return self.transforms(inputs)
+        finally:
+            random.setstate(py_state)
 
 
 class SamplerCallback(Callback):
