@@ -9,6 +9,9 @@ num_train: 0.8
 num_val: 0.1
 num_workers: 16
 pin_memory: true
+# keep the DataLoader workers between epochs; needs
+# callbacks.deterministic_data_seed.per_sample_train_noise=true
+persistent_workers: false
 # read the database into memory once in setup (5-25 s) instead of per sample
 cache_in_memory: false
 # QM9 properties to load; null loads all 19, which gpff training does not use;

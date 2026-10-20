@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from schnetpack.datasets import QM9
 from schnetpack import properties
-from schnetpack.data import AtomsDataModuleError, load_dataset
+from schnetpack.data import AtomsDataModuleError, AtomsLoader, load_dataset
 
 from gpff.analysis import analyze_with_rdkit, get_rdkit_validity
 from gpff.data.datasets.memory import InMemoryASEAtomsData
@@ -129,6 +129,7 @@ class QM9Valid(QM9):
         raw_datapath: Optional[str] = None,
         filter_timeout: int = 5,
         cache_in_memory: bool = False,
+        persistent_workers: bool = False,
         **kwargs
     ):
         """
@@ -144,6 +145,7 @@ class QM9Valid(QM9):
             filter_timeout: seconds allowed per molecule when checking validity.
             cache_in_memory: read the database into memory once in setup and
                           serve samples from there instead of from the database.
+            persistent_workers: keep the DataLoader workers alive between epochs.
         """
         super().__init__(
             datapath=datapath,
@@ -158,6 +160,7 @@ class QM9Valid(QM9):
         )
         self.filter_timeout = filter_timeout
         self.cache_in_memory = cache_in_memory
+        self.persistent_workers = persistent_workers
 
     def prepare_data(self):
         if not os.path.exists(self.datapath):
@@ -253,3 +256,44 @@ class QM9Valid(QM9):
             self._test_dataset = self.dataset.subset(self.test_idx)
 
         self._setup_transforms()
+
+    # schnetpack's loaders take no persistent_workers; these mirror them with it
+    def train_dataloader(self) -> AtomsLoader:
+        if self._train_dataloader is None:
+            train_batch_sampler = self._setup_sampler(
+                sampler_cls=self.train_sampler_cls,
+                sampler_args=self.train_sampler_args,
+                dataset=self._train_dataset,
+            )
+            self._train_dataloader = AtomsLoader(
+                self.train_dataset,
+                batch_size=self.batch_size if train_batch_sampler is None else 1,
+                shuffle=train_batch_sampler is None,
+                batch_sampler=train_batch_sampler,
+                num_workers=self.num_workers,
+                pin_memory=self._pin_memory,
+                persistent_workers=self.persistent_workers and self.num_workers > 0,
+            )
+        return self._train_dataloader
+
+    def val_dataloader(self) -> AtomsLoader:
+        if self._val_dataloader is None:
+            self._val_dataloader = AtomsLoader(
+                self.val_dataset,
+                batch_size=self.val_batch_size,
+                num_workers=self.num_val_workers,
+                pin_memory=self._pin_memory,
+                persistent_workers=self.persistent_workers and self.num_val_workers > 0,
+            )
+        return self._val_dataloader
+
+    def test_dataloader(self) -> AtomsLoader:
+        if self._test_dataloader is None:
+            self._test_dataloader = AtomsLoader(
+                self.test_dataset,
+                batch_size=self.test_batch_size,
+                num_workers=self.num_test_workers,
+                pin_memory=self._pin_memory,
+                persistent_workers=self.persistent_workers and self.num_test_workers > 0,
+            )
+        return self._test_dataloader

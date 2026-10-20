@@ -32,25 +32,54 @@ class DeterministicDataSeed(Callback):
     of ``DistributedSampler.set_epoch``. PL does not checkpoint RNG state, so
     without this a resumed run consumes a different RNG stream than a continuous
     run and silently diverges from it.
+
+    By default each worker draws the noise of its batches from its own stream,
+    so the noise also depends on the number of workers. With
+    ``per_sample_train_noise`` it is a function of ``(base_seed, epoch,
+    database index)`` alone, which persistent workers need: their RNG state
+    would otherwise carry over from the epochs before a resume.
     """
 
     _MOD = 2 ** 32
 
-    def __init__(self, base_seed: int, val_noise_seed: Optional[int] = 0) -> None:
+    def __init__(
+        self,
+        base_seed: int,
+        val_noise_seed: Optional[int] = 0,
+        per_sample_train_noise: bool = False,
+    ) -> None:
         super().__init__()
         # the run's config seed; identical on launch and resume
         self._base_seed = base_seed
         # independent of base_seed, so runs with different seeds share val noise
         self._val_noise_seed = val_noise_seed
+        self._per_sample_train_noise = per_sample_train_noise
+        # the epoch the training noise is seeded from; in shared memory so that
+        # persistent DataLoader workers see the main process' updates
+        self._epoch = torch.zeros((), dtype=torch.int64).share_memory_()
         self._first_epoch_reiterated = False
 
     def setup(self, trainer, pl_module, stage) -> None:
         # Runs after datamodule.setup, which resets the dataset transforms, so
         # wrapping here never nests. Pins val/test noise to each molecule's
         # database index: val/loss becomes a deterministic function of the
-        # weights. Training noise stays fresh every epoch.
+        # weights. Training noise stays fresh every epoch; with
+        # per_sample_train_noise it is pinned to (base_seed, epoch, index).
         dm = trainer.datamodule
-        if self._val_noise_seed is None or dm is None:
+        if dm is None:
+            return
+        if self._per_sample_train_noise:
+            if dm.train_dataset is not None:
+                dm.train_dataset.transforms = [
+                    _PinnedNoise(self._base_seed, dm.train_transforms, epoch=self._epoch)
+                ]
+        elif getattr(dm, "persistent_workers", False):
+            raise ValueError(
+                "Persistent workers carry their RNG state across epochs, so a resumed "
+                "run would draw different training noise. Set "
+                "callbacks.deterministic_data_seed.per_sample_train_noise=true."
+            )
+        if self._val_noise_seed is None:
             return
         for dataset, transforms in (
             (dm.val_dataset, dm.val_transforms),
@@ -64,6 +93,8 @@ class DeterministicDataSeed(Callback):
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
+        # read by the training transforms of the iterator created below
+        self._epoch.fill_(int(trainer.current_epoch))
 
         # PL (through 2.6.6) creates the first training epoch's dataloader iterator before
         # this hook fires (in _FitLoop.setup_data), so its shuffle permutation and
@@ -78,16 +109,30 @@ class DeterministicDataSeed(Callback):
 
 class _PinnedNoise(trn.Transform):
     """Applies ``transforms`` with the CPU torch and python RNGs seeded from the
-    sample's database index, leaving the caller's RNG state untouched."""
+    sample's database index (and the current epoch, if ``epoch`` is given),
+    leaving the caller's RNG state untouched."""
 
-    def __init__(self, seed: int, transforms: List[trn.Transform]) -> None:
+    def __init__(
+        self,
+        seed: int,
+        transforms: List[trn.Transform],
+        epoch: Optional[torch.Tensor] = None,
+    ) -> None:
         super().__init__()
         self.seed = seed
+        self.epoch = epoch
         self.transforms = torch.nn.Sequential(*transforms)
 
+    def _sample_seed(self, idx: int) -> int:
+        if self.epoch is None:
+            # keep all entropy in the low 32 bits: torch's CPU MT19937 drops the rest
+            return (self.seed * 1_000_003 + idx) & 0xFFFFFFFF
+        # hashed, so that the streams of different seeds and epochs do not overlap
+        entropy = (self.seed, int(self.epoch), idx)
+        return int(np.random.SeedSequence(entropy).generate_state(1)[0])
+
     def forward(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        # keep all entropy in the low 32 bits: torch's CPU MT19937 drops the rest
-        seed = (self.seed * 1_000_003 + int(inputs[properties.idx])) & 0xFFFFFFFF
+        seed = self._sample_seed(int(inputs[properties.idx]))
         py_state = random.getstate()
         try:
             with torch.random.fork_rng(devices=[]):
