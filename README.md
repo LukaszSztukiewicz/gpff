@@ -72,6 +72,13 @@ sampler's calculator, so those overrides are addressed as
 ```bash
 gpff_train experiment=gpff data=qm9_valid trainer.max_epochs=300
 
+# Also keep the model after 100, 200, 500, 1k, 2k, 5k, 10k and 15k epochs in
+# milestones/ (epoch_<N>.ckpt for Lightning, epoch_<N>_model as the model_path
+# for gpff_generate), regardless of early stopping and the best epoch. Off by
+# default; the second line picks other epochs:
+gpff_train experiment=gpff +callbacks=milestones
+gpff_train experiment=gpff +callbacks=milestones 'callbacks.milestone_checkpoint.epochs=[50,100]'
+
 # Sample with a local checkpoint; model_path and split_path are required and
 # are the only way to point gpff_generate at a model:
 gpff_generate \
