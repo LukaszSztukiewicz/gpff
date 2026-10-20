@@ -4,7 +4,7 @@ import abc
 import torch
 
 
-__all__ = ["LossWeights", "SigmaWeights", "NormWeights"]
+__all__ = ["LossWeights", "SigmaWeights", "SoftSigmaWeights", "NormWeights"]
 
 
 class LossWeights(abc.ABC):
@@ -55,6 +55,34 @@ class SigmaWeights(LossWeights):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         energy_weight = 1 / sigma**4
         force_weight = 1 / sigma**2 * torch.ones_like(x_0[:, 0]).unsqueeze(-1)
+
+        return energy_weight, force_weight
+
+
+class SoftSigmaWeights(LossWeights):
+    """
+    Force weight 1/sigma^2 above sigma_knee and 1/(sigma * sigma_knee) below it, held
+    constant under sigma_floor. Below the knee the force error shrinks like sigma, so
+    every noise level sends a gradient of similar size instead of fading out.
+    """
+
+    def __init__(self, sigma_knee: float = 1.0, sigma_floor: float = 0.03, **kwargs):
+        """
+        Args:
+            sigma_knee: noise level where the weight changes from 1/sigma^2 to 1/sigma
+            sigma_floor: noise level below which the weight stays constant
+        """
+        super().__init__(**kwargs)
+        self.sigma_knee = sigma_knee
+        self.sigma_floor = sigma_floor
+
+    def _get_weights(
+        self, sigma: torch.Tensor, x_0: torch.Tensor, **kwargs
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        sigma = sigma.clamp_min(self.sigma_floor)
+        weight = 1 / (sigma * sigma.clamp_min(self.sigma_knee))
+        energy_weight = weight**2
+        force_weight = weight * torch.ones_like(x_0[:, 0]).unsqueeze(-1)
 
         return energy_weight, force_weight
 

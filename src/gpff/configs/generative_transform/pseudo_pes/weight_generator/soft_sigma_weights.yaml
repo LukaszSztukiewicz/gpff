@@ -1,0 +1,7 @@
+# @package pseudo_pes.weight_generator
+# Soft sigma weights: 1/sigma^2 above sigma_knee, 1/(sigma * sigma_knee) down to sigma_floor
+_target_: gpff.pseudo_pes.weights.SoftSigmaWeights
+sigma_knee: 1.
+sigma_floor: 0.03
+min_clipping: null
+max_clipping: null
