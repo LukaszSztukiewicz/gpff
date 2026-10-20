@@ -1,0 +1,4 @@
+# @package pseudo_pes.weight_generator
+_target_: gpff.pseudo_pes.weights.NormWeights
+min_clipping: 0.
+max_clipping: 1.

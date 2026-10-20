@@ -1,0 +1,21 @@
+defaults:
+  - custom
+
+_target_: gpff.data.datasets.QM9Valid
+
+datapath: ${run.data_dir}/qm9_filtered.db
+batch_size: 128
+num_train: 0.8
+num_val: 0.1
+num_workers: 16
+pin_memory: true
+# keep the DataLoader workers between epochs; needs
+# callbacks.deterministic_data_seed.per_sample_train_noise=true
+persistent_workers: false
+# read the database into memory once in setup (5-25 s) instead of per sample
+cache_in_memory: false
+# QM9 properties to load; null loads all 19, which gpff training does not use;
+# [] loads none and more than halves the cost of reading a sample
+load_properties: null
+n_atoms_allowed: null
+indices_path: ${run.data_dir}/n_atoms_indices.pkl
