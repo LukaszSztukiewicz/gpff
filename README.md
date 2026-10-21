@@ -70,6 +70,10 @@ gpff_train experiment=gpff data=qm9_valid trainer.max_epochs=300
 # Runs are seeded from `seed` (default 999); vary it to repeat an experiment:
 gpff_train -m experiment=gpff seed=0,1,2
 
+# Weight the force loss by 1/(sigma^2 + 0.03^2) instead of 1/sigma^2 clipped at
+# 1, which levels off below 1 Å (sigma_floor sets the 0.03):
+gpff_train experiment=gpff generative_transform/pseudo_pes/weight_generator=floored_sigma_weights
+
 # Resume an interrupted run from its last checkpoint by passing its id and path:
 gpff_train experiment=gpff run.id=<run-name> run.path=runs/<project>/<date>
 
