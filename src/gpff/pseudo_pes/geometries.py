@@ -103,7 +103,11 @@ class VarianceExplodingGeometries(Geometries):
         else:
             if noise.shape != x_0.shape:
                 raise ValueError("noise must have the same shape as x_0")
-        
+
+        # center noise
+        if self.mean_free_noise:
+            noise = noise - noise.mean(0, keepdim=True)
+
         # calculate x_t
         offset = noise * sigma_t
         x_t = x_0 + offset
