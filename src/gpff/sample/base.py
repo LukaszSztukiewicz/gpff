@@ -53,6 +53,9 @@ class Calculator:
         else:
             self.dtype = dtype
         self.device = device
+        # observers of the running denoise call, notified of every model
+        # evaluation; set by Sampler.denoise
+        self.observers: List[SamplerObserver] = []
         self.update_model(model)
 
     def update_model(self, model: Optional[nn.Module] = None):
@@ -104,6 +107,7 @@ class Calculator:
         self,
         idx_m: torch.Tensor,
         target_property: torch.Tensor,
+        per_atom: bool = True,
     ) -> torch.Tensor:
         """
         Compute the standard deviation of target_property for each molecule.
@@ -111,10 +115,12 @@ class Calculator:
         Args:
             idx_m: Molecule index tensor of shape (n_atoms,) mapping each atom to its molecule.
             target_property: Property tensor of shape (n_atoms, 3).
+            per_atom: if False, return one value per molecule instead.
 
         Returns:
             sigma_t: Standard deviation tensor of shape (n_atoms, 1) with
-                     corresponding std values for each atom.
+                     corresponding std values for each atom, or of shape
+                     (n_molecules,) if per_atom is False.
         """
         inverse, _, counts, padded, mask = _pad_by_molecule(target_property, idx_m)
         n = (counts * target_property.shape[-1]).to(target_property.dtype)
@@ -122,6 +128,8 @@ class Calculator:
         centered = (padded - mean[:, None, None]) * mask[..., None]
         # unbiased, like torch.std over the molecule's flattened values
         std = (centered.square().sum(dim=(1, 2)) / (n - 1)).sqrt()
+        if not per_atom:
+            return std
         return std[inverse].unsqueeze(-1)
 
     def calculate(
@@ -137,7 +145,8 @@ class Calculator:
         """
         Run one model forward pass and return the requested quantities.
 
-        Increments the batch NFE counter for unconverged molecules.
+        Increments the batch NFE counter for unconverged molecules and passes
+        the raw model predictions to the observers' ``on_evaluate``.
 
         Args:
             batch: Input dictionary containing molecular data.
@@ -159,6 +168,8 @@ class Calculator:
         self.check_model()
         batch = self.update_neighbors(batch)
         predictions = self.model(batch)
+        for observer in self.observers:
+            observer.on_evaluate(batch, predictions)
         results = {}
 
         # noise model
@@ -383,6 +394,7 @@ class Sampler(ABC):
         active_observers = list(self.observers) + list(observers or [])
 
         self._active_observers = active_observers
+        self.calculator.observers = active_observers
         try:
             for observer in active_observers:
                 observer.on_start(self, batch)
@@ -406,6 +418,7 @@ class Sampler(ABC):
                 observer.on_end(batch)
         finally:
             self._active_observers = None
+            self.calculator.observers = []
 
         return clone_batch(batch)
 

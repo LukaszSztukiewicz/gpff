@@ -97,6 +97,13 @@ gpff_generate \
   datapath=/path/to/qm9_filtered.db \
   n_samples=10000
 
+# Also record the noise level the model sees at every evaluation, std(F_hat / 2)
+# per molecule, as an (n_samples, n_evaluations) array `sigma` in
+# sigmas_<...>.npz next to the samples DB; the log summarizes where it went:
+gpff_generate \
+  model_path=/path/to/best_model split_path=/path/to/split.npz \
+  datapath=/path/to/qm9_filtered.db n_samples=1000 store_sigmas=true
+
 # The shape prior draws positions with a prescribed covariance per molecule, so
 # it needs a condition generator to supply one variance vector per molecule:
 gpff_generate \

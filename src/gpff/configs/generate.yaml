@@ -36,6 +36,10 @@ output_db: ${results_dir}/samples_${now:%Y-%m-%d_%H-%M-%S}.db
 
 # debug configuration
 store_trajectories: false
+# Noise level the model sees at every evaluation, std(F_hat / 2) per molecule,
+# saved as an (n_samples, n_evaluations) array next to output_db
+# (samples_*.db -> sigmas_*.npz, NaN once a sample has converged)
+store_sigmas: false
 
 # hydra configuration
 hydra:

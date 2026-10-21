@@ -3,11 +3,12 @@
 import torch
 from typing import Any, Dict, List, Optional
 from tqdm import tqdm
+from schnetpack import properties
 from gpff import keys
 from gpff.sample.results import clone_batch
 
 
-__all__ = ["SamplerObserver", "ProgressReporter", "TrajectoryRecorder"]
+__all__ = ["SamplerObserver", "ProgressReporter", "TrajectoryRecorder", "SigmaRecorder"]
 
 
 class SamplerObserver:
@@ -23,6 +24,9 @@ class SamplerObserver:
 
     def on_log(self, **kwargs) -> None:
         """Called with sampler-specific values from inside denoise_step."""
+
+    def on_evaluate(self, batch: Dict[str, torch.Tensor], predictions: Dict[str, torch.Tensor]) -> None:
+        """Called after every model evaluation with the raw model predictions."""
 
     def on_step_end(self, batch: Dict[str, torch.Tensor], step: int) -> None:
         """Called after each denoising step (including postprocessing)."""
@@ -48,6 +52,48 @@ class TrajectoryRecorder(SamplerObserver):
 
     def on_step_end(self, batch: Dict[str, torch.Tensor], step: int) -> None:
         self.snapshots.append(clone_batch(batch))
+
+
+class SigmaRecorder(SamplerObserver):
+    """
+    Record the noise level the model sees at every model evaluation.
+
+    For force models this is the per-molecule std of F_hat / 2, the sigma
+    estimate of direct denoising and the adaptive samplers, taken at every
+    evaluation (both of a Heun step) whether or not the sampler uses it.
+    Converged molecules still pass through the model but no longer count as
+    evaluated (their NFE stays), so they get NaN.
+
+    After ``denoise`` returns, ``recorder.sigmas`` is a CPU tensor of shape
+    (n_evaluations, n_molecules). The recorder resets on ``on_start`` so it
+    can be reused across multiple ``denoise`` calls.
+
+    Args:
+        forces_key: the prediction key holding the forces.
+    """
+
+    def __init__(self, forces_key: str = keys.forces):
+        self.forces_key = forces_key
+        self.sigmas = torch.empty(0, 0)
+        self._sigmas: List[torch.Tensor] = []
+        self._calculator: Optional[Any] = None
+
+    def on_start(self, sampler: Any, batch: Dict[str, torch.Tensor]) -> None:
+        self._calculator = sampler.calculator
+        self._sigmas = []
+        self.sigmas = torch.empty(0, batch[properties.n_atoms].shape[0])
+
+    def on_evaluate(self, batch: Dict[str, torch.Tensor], predictions: Dict[str, torch.Tensor]) -> None:
+        sigma = self._calculator._compute_std_per_molecule(
+            batch[properties.idx_m],
+            predictions[self.forces_key].detach() / 2,
+            per_atom=False,
+        )
+        self._sigmas.append(sigma.masked_fill(batch[keys.converged], float("nan")).cpu())
+
+    def on_end(self, batch: Dict[str, torch.Tensor]) -> None:
+        if self._sigmas:
+            self.sigmas = torch.stack(self._sigmas)
 
 
 class ProgressReporter(SamplerObserver):

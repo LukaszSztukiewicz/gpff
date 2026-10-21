@@ -2,7 +2,7 @@
 import logging
 import os
 import socket
-from typing import Optional
+from typing import List, Optional
 
 import hydra
 import numpy as np
@@ -19,10 +19,13 @@ from gpff.analysis import get_rdkit_validity
 from gpff.cli import header
 from gpff.data.datasets.qm9 import QM9Valid
 from gpff.sample import Calculator, ConditionGenerator, Prior, Sampler
-from gpff.sample.observers import TrajectoryRecorder
+from gpff.sample.observers import SigmaRecorder, TrajectoryRecorder
 from gpff.sample.results import batches_to_relaxed, batches_to_trajectories
 
 log = logging.getLogger(__name__)
+
+# sigma_hat thresholds for the summary of where the model was evaluated
+_SIGMA_SUMMARY_THRESHOLDS = (0.03, 0.1, 0.3, 1.0, 3.0)
 
 
 def _get_trajectory_db_path(output_db: str) -> str:
@@ -39,6 +42,47 @@ def _get_trajectory_db_path(output_db: str) -> str:
     if extension == "":
         return f"{output_db}_trajectories.db"
     return f"{base}_trajectories{extension}"
+
+
+def _get_sigmas_path(output_db: str) -> str:
+    """
+    Derive the sigma record path (.npz) from the sample database path.
+
+    Uses ``samples -> sigmas`` replacement when possible, otherwise adds a
+    ``_sigmas`` suffix, like the trajectory database path.
+    """
+    directory, filename = os.path.split(output_db)
+    base, _ = os.path.splitext(filename)
+    if "samples" in base:
+        return os.path.join(directory, base.replace("samples", "sigmas", 1) + ".npz")
+    return os.path.join(directory, f"{base}_sigmas.npz")
+
+
+def _save_sigmas(sigmas_path: str, sigma_records: List[torch.Tensor]) -> None:
+    """
+    Save the per-batch (n_evaluations, n_molecules) sigma records as one
+    (n_samples, max_evaluations) array ``sigma``, rows in database order and
+    NaN where a sample was not evaluated, and log the share of model
+    evaluations below a few noise levels.
+    """
+    n_evaluations = max(record.shape[0] for record in sigma_records)
+    sigma = np.concatenate([
+        np.pad(
+            record.T.numpy().astype(np.float32),
+            ((0, 0), (0, n_evaluations - record.shape[0])),
+            constant_values=np.nan,
+        )
+        for record in sigma_records
+    ])
+    np.savez_compressed(sigmas_path, sigma=sigma)
+
+    evaluated = sigma[~np.isnan(sigma)]
+    shares = ", ".join(
+        f"<{threshold:g}: {np.mean(evaluated < threshold):.1%}"
+        for threshold in _SIGMA_SUMMARY_THRESHOLDS
+    )
+    log.info(f"Model evaluations by sigma_hat ({evaluated.size}): {shares}")
+    log.info(f"Sigma records stored at {sigmas_path}")
 
 
 @hydra.main(config_path="../configs", config_name="generate")
@@ -151,6 +195,7 @@ def sample_molecules(config: DictConfig):
     # run sampling loop
     n_samples_written = 0
     trajectory_idx = 0
+    sigma_records = []
     test_loader = qm9_valid.test_dataloader()
     for batch in test_loader:
         if n_samples_written >= config.n_samples:
@@ -166,10 +211,12 @@ def sample_molecules(config: DictConfig):
 
         # denoise and process
         recorder = TrajectoryRecorder() if config.store_trajectories else None
+        sigma_recorder = SigmaRecorder() if config.store_sigmas else None
+        observers = [o for o in (recorder, sigma_recorder) if o is not None]
         final_batch = sampler.denoise(
             batch,
             conditions=conditions,
-            observers=[recorder] if recorder is not None else None,
+            observers=observers or None,
         )
         relaxed_atoms = batches_to_relaxed([final_batch])
         if config.store_trajectories:
@@ -219,7 +266,13 @@ def sample_molecules(config: DictConfig):
                         )
                     trajectory_idx += 1
 
+        if config.store_sigmas:
+            sigma_records.append(sigma_recorder.sigmas[:, :n_to_store])
+
         n_samples_written += n_to_store
 
     # log final sample count
     print(f"+ final samples written: {n_samples_written} +")
+
+    if config.store_sigmas and sigma_records:
+        _save_sigmas(_get_sigmas_path(config.output_db), sigma_records)
