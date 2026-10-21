@@ -4,7 +4,7 @@ This module contains the molecule samplers for pseudo-PES based models.
 
 # python
 import torch
-from typing import Dict, Optional, Sequence
+from typing import Dict, Optional
 import warnings
 
 # gpff
@@ -42,7 +42,6 @@ class DirectDenoisingSampler(Sampler):
         time_aware_model: bool = False,
         stochastic_lambda: float = 1.0,
         f_max: float = 0.0,
-        atom_types: Sequence[int] = (1, 6, 7, 8, 9),
         **kwargs,
     ):
         if time_aware_model:
@@ -54,8 +53,6 @@ class DirectDenoisingSampler(Sampler):
         super().__init__(time_aware_model=False, **kwargs)
         self.stochastic_lambda = stochastic_lambda
         self.f_max = f_max
-        # atomic numbers of the entries of noisy one-hot types, if the batch has them
-        self.atom_types = torch.tensor(atom_types)
 
     def add_noise(self, x: torch.Tensor, step: int) -> torch.Tensor:
         """
@@ -140,10 +137,9 @@ class DirectDenoisingSampler(Sampler):
                 keys.sigma_curr: sigma_curr,
             },
         )
-        # noisy types take the same step; their largest entry names the element
+        # noisy types take the same step as the positions
         if keys.h_0 in predictions:
-            batch = self.update_batch(batch, updates={keys.h: predictions[keys.h_0]})
-            batch[properties.Z] = self.atom_types.to(batch[keys.h].device)[batch[keys.h].argmax(-1)]
+            batch = self.update_types(batch, predictions[keys.h_0])
         batch = self.postprocess_step(batch, step, conditions=conditions, **kwargs)
 
         return batch

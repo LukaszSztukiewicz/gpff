@@ -142,7 +142,8 @@ class PaiNN(nn.Module):
             filter_list = torch.split(filters, 3 * self.n_atom_basis, dim=-1)
 
         # compute initial embeddings
-        q = self.embedding(inputs[self.embedding_key])
+        # models pickled before embedding_key existed embed the atomic numbers
+        q = self.embedding(inputs[getattr(self, "embedding_key", properties.Z)])
         for embedding in self.electronic_embeddings:
             q = q + embedding(q, inputs)
         q = q.unsqueeze(1)

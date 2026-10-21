@@ -42,6 +42,7 @@ class HeunSampler(DiffusionSampler):
         sigma_curr = self.noise_schedule.get_sigma(step)
         sigma_next = self.noise_schedule.get_sigma(step - 1)
         x_curr = batch[properties.R]
+        h_curr = batch.get(keys.h)
         
         # step 0: calculate x_0_predicted (=x_0)
         if self.time_aware_model:
@@ -57,10 +58,16 @@ class HeunSampler(DiffusionSampler):
         # step 1:calculate d_1 and x_next
         slope_1 = 1 / sigma_curr * (x_curr - x_pred0)
         x_next = x_curr + (sigma_next - sigma_curr) * slope_1
+        types = keys.h_0 in predictions
+        if types:
+            h_slope_1 = 1 / sigma_curr * (h_curr - predictions[keys.h_0])
+            h_next = h_curr + (sigma_next - sigma_curr) * h_slope_1
 
         # step_2: second order step
         if sigma_next > 0:
             batch[properties.R] = x_next
+            if types:
+                batch[keys.h] = h_next
             if self.time_aware_model:
                 batch[keys.t] = self.noise_schedule.get_time_tensor(
                     batch[properties.idx_m],
@@ -72,6 +79,9 @@ class HeunSampler(DiffusionSampler):
             x_pred0 = predictions[keys.x_0]
             slope_2 = 1 / sigma_next * (x_next - x_pred0)
             x_next = x_curr + (sigma_next - sigma_curr) * (slope_2 + slope_1) / 2
+            if types:
+                h_slope_2 = 1 / sigma_next * (h_next - predictions[keys.h_0])
+                h_next = h_curr + (sigma_next - sigma_curr) * (h_slope_2 + h_slope_1) / 2
 
         # print log
         self._log(
@@ -82,6 +92,8 @@ class HeunSampler(DiffusionSampler):
 
         # update batch
         batch[properties.R] = x_next
+        if types:
+            batch = self.update_types(batch, h_next)
 
         return batch
 
@@ -362,6 +374,10 @@ class StochasticHeunSampler(DiffusionSampler):
             gamma = min(self.sigma_churn / self.n_steps, 2**0.5 - 1)
         sigma_hat = sigma_curr + gamma * sigma_curr
         x_hat = x_curr + noise * (sigma_hat**2 - sigma_curr**2)**0.5
+        h_curr = batch.get(keys.h)
+        if h_curr is not None:
+            h_noise = torch.randn_like(h_curr) * self.sigma_noise
+            batch[keys.h] = h_hat = h_curr + h_noise * (sigma_hat**2 - sigma_curr**2)**0.5
 
         # === Step 1 ===
         # calculate d_1 and x_next
@@ -377,11 +393,17 @@ class StochasticHeunSampler(DiffusionSampler):
         x_pred0 = predictions[keys.x_0]
         slope_1 = (x_hat - x_pred0) / sigma_hat
         x_next = x_hat + (sigma_next - sigma_hat) * slope_1
+        types = keys.h_0 in predictions
+        if types:
+            h_slope_1 = (h_hat - predictions[keys.h_0]) / sigma_hat
+            h_next = h_hat + (sigma_next - sigma_hat) * h_slope_1
 
         # === Step 2 ===
         # second order step
         if sigma_next > 0:
             batch[properties.R] = x_next
+            if types:
+                batch[keys.h] = h_next
             if self.time_aware_model:
                 batch[keys.t] = self.noise_schedule.get_time_tensor(
                     batch[properties.idx_m],
@@ -393,6 +415,9 @@ class StochasticHeunSampler(DiffusionSampler):
             x_pred0 = predictions[keys.x_0]
             slope_2 = (x_next - x_pred0) / sigma_next
             x_next = x_hat + (sigma_next - sigma_hat) * (slope_2 + slope_1) / 2
+            if types:
+                h_slope_2 = (h_next - predictions[keys.h_0]) / sigma_next
+                h_next = h_hat + (sigma_next - sigma_hat) * (h_slope_2 + h_slope_1) / 2
 
         # print log
         self._log(
@@ -402,5 +427,7 @@ class StochasticHeunSampler(DiffusionSampler):
 
         # update batch
         batch[properties.R] = x_next
+        if types:
+            batch = self.update_types(batch, h_next)
 
         return batch
