@@ -1,6 +1,7 @@
 from token import OP
-from typing import Optional, Dict, List, Type, Any
+from typing import Optional, Dict, List, Sequence, Type, Any
 import logging
+import math
 import os
 import datetime
 import torch
@@ -12,14 +13,23 @@ from schnetpack.task import AtomisticTask as SPKAtomisticTask
 from schnetpack.task import UnsupervisedModelOutput
 from schnetpack.model.base import AtomisticModel
 
+from gpff import keys
+
 
 log = logging.getLogger(__name__)
 
 
-__all__ = ["ModelOutput", "AtomisticTask"]
+__all__ = ["ModelOutput", "AtomisticTask", "LearnedSigmaWeights"]
 
 
-def loss_fn(pred, target, weights=None, scale_loss: Optional[str] = None, epsilon: float = 1e-8):
+def loss_fn(
+    pred,
+    target,
+    weights=None,
+    scale_loss: Optional[str] = None,
+    epsilon: float = 1e-8,
+    reduce: bool = True,
+):
     # todo: do we need to normalize with sum(weights)?
     if weights is None:
         weights = torch.ones_like(target)
@@ -35,7 +45,75 @@ def loss_fn(pred, target, weights=None, scale_loss: Optional[str] = None, epsilo
     else:
         raise ValueError(f"Invalid scale_loss: {scale_loss}")
 
+    if not reduce:
+        return weighted_diff
     return torch.mean(weighted_diff)
+
+
+class LearnedSigmaWeights(nn.Module):
+    r"""
+    Loss weights per noise level, learned together with the model as in EDM2
+    (Karras et al. 2024, "Analyzing and Improving the Training Dynamics of Diffusion Models").
+
+    A small network :math:`u(\sigma)` of random Fourier features of :math:`\ln\sigma` turns
+    every loss term :math:`\ell` into :math:`\ell / e^{u(\sigma)} + u(\sigma)`. At balance
+    :math:`e^{u(\sigma)}` is the mean loss at that noise level, so each noise level counts by
+    its share of the draws and improves at the same relative rate. The weights from the
+    weight generator then only set where training starts. sigma enters the loss only, so a
+    time-free model stays time-free.
+    """
+
+    def __init__(
+        self,
+        n_features: int = 128,
+        sigma_min: float = 1e-4,
+        tolerance: Optional[float] = None,
+        log_sigmas: Sequence[float] = (0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0),
+    ):
+        """
+        Args:
+            n_features: number of random Fourier features of ln(sigma)
+            sigma_min: sigma is clamped to this before taking the log, which allows sigma = 0
+            tolerance: mean loss (after the weight generator's weights) below which a noise
+                level stops gaining weight, i.e. the weight is at most 1/tolerance. None, as
+                in EDM2, lets the weight grow as long as the loss shrinks, without bound
+                where the error can reach zero (sigma = 0 anchors).
+            log_sigmas: noise levels at which the task logs u(sigma) after each validation
+        """
+        super().__init__()
+        # fixed random frequencies and phases, as EDM2's MPFourier
+        self.register_buffer("frequencies", 2 * math.pi * torch.randn(n_features))
+        self.register_buffer("phases", 2 * math.pi * torch.rand(n_features))
+        # a plain linear layer started at zero, in place of EDM2's magnitude-preserving
+        # one, so that training starts from the weight generator's weights alone
+        self.linear = nn.Linear(n_features, 1)
+        nn.init.zeros_(self.linear.weight)
+        nn.init.zeros_(self.linear.bias)
+        self.sigma_min = sigma_min
+        self.tolerance = tolerance
+        self.log_sigmas = tuple(log_sigmas)
+
+    def log_variance(self, sigma: torch.Tensor) -> torch.Tensor:
+        """
+        u(sigma), the learned log of the mean loss at sigma, in the shape of sigma.
+        """
+        c_noise = torch.log(sigma.clamp_min(self.sigma_min)) / 4
+        features = torch.cos(c_noise.unsqueeze(-1) * self.frequencies + self.phases) * math.sqrt(2)
+        log_variance = self.linear(features).squeeze(-1)
+        if self.tolerance is not None:
+            log_variance = torch.logaddexp(
+                log_variance, torch.full_like(log_variance, math.log(self.tolerance))
+            )
+        return log_variance
+
+    def forward(self, loss: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            loss: elementwise loss terms, e.g. (n_atoms, 3)
+            sigma: noise level of each atom, (n_atoms, 1)
+        """
+        log_variance = self.log_variance(sigma)
+        return loss / torch.exp(log_variance) + log_variance
 
 
 class ModelOutput(SPKModelOutput):
@@ -62,6 +140,8 @@ class ModelOutput(SPKModelOutput):
         weights_key: Optional[str] = None,
         scale_loss: Optional[str] = None,
         warmup_steps: int = 0,
+        sigma_weighting: Optional[LearnedSigmaWeights] = None,
+        sigma_key: str = keys.sigma_curr,
     ):
         r"""
         Args:
@@ -73,6 +153,8 @@ class ModelOutput(SPKModelOutput):
             metrics: dictionary of metrics with names as keys
             weights_key: Name of weights key in training batch.
             max_weight: Maximum weight for the loss.
+            sigma_weighting: learned per-noise-level weights applied on top of weights_key.
+            sigma_key: Name of the per-atom noise level in training batch, read by sigma_weighting.
         """
         super().__init__(
             name=name,
@@ -84,6 +166,8 @@ class ModelOutput(SPKModelOutput):
         self.scale_loss = scale_loss
         self.warmup_steps = warmup_steps
         self.global_step = 0
+        self.sigma_weighting = sigma_weighting
+        self.sigma_key = sigma_key
 
     def calculate_loss(self, pred, target):
         # calculate weighted loss
@@ -95,11 +179,17 @@ class ModelOutput(SPKModelOutput):
                 dampening = self.global_step / self.warmup_steps
                 weights = (1-dampening) * torch.ones_like(weights) + dampening * weights
 
-        loss = self.loss_weight * loss_fn(
-            pred[self.name], target[self.target_property], weights, self.scale_loss
-        )
+        if self.sigma_weighting is None:
+            loss = loss_fn(
+                pred[self.name], target[self.target_property], weights, self.scale_loss
+            )
+        else:
+            elementwise_loss = loss_fn(
+                pred[self.name], target[self.target_property], weights, self.scale_loss, reduce=False
+            )
+            loss = torch.mean(self.sigma_weighting(elementwise_loss, target[self.sigma_key]))
 
-        return loss
+        return self.loss_weight * loss
 
 
 class AtomisticTask(SPKAtomisticTask):
@@ -197,6 +287,9 @@ class AtomisticTask(SPKAtomisticTask):
             # add loss weights if available
             if hasattr(output, "weights_key") and output.weights_key is not None:
                 targets[output.weights_key] = batch[output.weights_key]
+            # add noise levels for learned per-noise-level weights
+            if getattr(output, "sigma_weighting", None) is not None:
+                targets[output.sigma_key] = batch[output.sigma_key]
 
         # todo: what is this? Why do we need try except here?
         try:
@@ -322,6 +415,24 @@ class AtomisticTask(SPKAtomisticTask):
         )
 
         return {"val/loss": loss}
+
+    def on_validation_epoch_end(self):
+        # log the learned per-noise-level weights as u(sigma) = log(mean loss at sigma)
+        for output in self.outputs:
+            sigma_weighting = getattr(output, "sigma_weighting", None)
+            if sigma_weighting is None:
+                continue
+            with torch.no_grad():
+                sigmas = sigma_weighting.frequencies.new_tensor(sigma_weighting.log_sigmas)
+                log_variance = sigma_weighting.log_variance(sigmas)
+            for sigma, value in zip(sigma_weighting.log_sigmas, log_variance):
+                self.log(
+                    f"{output.name}_logvar/sigma_{sigma:g}",
+                    value,
+                    on_step=False,
+                    on_epoch=True,
+                    prog_bar=False,
+                )
 
     def test_step(self, batch, batch_idx):
         torch.set_grad_enabled(self.grad_enabled)

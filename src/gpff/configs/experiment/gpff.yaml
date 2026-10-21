@@ -21,6 +21,9 @@ globals:
   # Training
   weights_key: ${key:forces_weight}
   scale_loss: null
+  # Learned per-noise-level loss weights (EDM2), e.g.
+  # {_target_: gpff.task.LearnedSigmaWeights}; null keeps the weight generator alone
+  sigma_weighting: null
   lr: 1e-4
   
   # Metadata
@@ -70,3 +73,4 @@ task:
       scale_loss: ${globals.scale_loss}
       weights_key: ${globals.weights_key}
       warmup_steps: 0
+      sigma_weighting: ${globals.sigma_weighting}

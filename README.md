@@ -73,6 +73,11 @@ gpff_train -m experiment=gpff seed=0,1,2
 # Resume an interrupted run from its last checkpoint by passing its id and path:
 gpff_train experiment=gpff run.id=<run-name> run.path=runs/<project>/<date>
 
+# Learn a loss weight per noise level together with the model, as in EDM2; the
+# weight generator then only sets where training starts. The learned
+# u(sigma) = log(mean loss at sigma) is logged as forces_logvar/sigma_<s>:
+gpff_train experiment=gpff 'globals.sigma_weighting={_target_:gpff.task.LearnedSigmaWeights}'
+
 # Also keep the model after 100, 200, 500, 1k, 2k, 5k, 10k and 15k epochs in
 # milestones/ (epoch_<N>.ckpt for Lightning, epoch_<N>_model as the model_path
 # for gpff_generate), regardless of early stopping and the best epoch. Off by
