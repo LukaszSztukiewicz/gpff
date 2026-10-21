@@ -42,8 +42,15 @@ class Prior(ABC):
 
 
 class GaussianPrior(Prior):
-    def __init__(self, sigma: float = 1.):
+    def __init__(self, sigma: float = 1., n_types: int = 0):
+        """
+        Args:
+            sigma: std of the positions.
+            n_types: if > 0, also draw noisy one-hot atom types of this size
+                with the same std; the batch's atomic numbers are then unused.
+        """
         self.sigma = sigma
+        self.n_types = n_types
 
     def sample_from_batch(
         self,
@@ -51,6 +58,9 @@ class GaussianPrior(Prior):
         conditions: Optional[Dict[str, torch.Tensor]] = None,
     ) -> Dict[str, torch.Tensor]:
         batch[properties.R] = torch.randn_like(batch[properties.R]) * self.sigma
+        if self.n_types > 0:
+            n_atoms = batch[properties.R].shape[0]
+            batch[keys.h] = batch[properties.R].new_empty(n_atoms, self.n_types).normal_() * self.sigma
         return batch
 
 

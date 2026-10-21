@@ -187,6 +187,8 @@ class Calculator:
                 results[keys.score] = predicted_forces / (2*sigma_t**2)
             if x0:
                 results[keys.x_0] = batch[properties.R] + predicted_forces / 2
+                if keys.type_forces in predictions:
+                    results[keys.h_0] = batch[keys.h] + predictions[keys.type_forces].detach() / 2
 
         # update number of function evaluations
         batch[keys.nfe] += ~batch[keys.converged]

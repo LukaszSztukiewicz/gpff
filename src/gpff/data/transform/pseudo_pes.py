@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import torch
 
@@ -22,6 +22,8 @@ class PseudoPESTransform(trn.Transform):
         weight_generator: Optional[LossWeights] = None,
         align_permutation: bool = False,
         align_rotation: bool = False,
+        atom_types: Optional[List[int]] = None,
+        type_scale: float = 1.0,
     ):
         """
         Args:
@@ -36,6 +38,9 @@ class PseudoPESTransform(trn.Transform):
                 the noisy geometry to the reference geometry
             align_rotation: whether to align the rotation of 
                 the noisy geometry to the reference geometry
+            atom_types: if given, the atom types are diffused as well, as a
+                one-hot vector over these atomic numbers
+            type_scale: value of the one-hot entries
         """
         super().__init__()
         self.geometry_sampler = geometry_sampler
@@ -43,6 +48,8 @@ class PseudoPESTransform(trn.Transform):
         self.weight_generator = weight_generator
         self.align_permutation = align_permutation
         self.align_rotation = align_rotation
+        self.atom_types = None if atom_types is None else torch.tensor(atom_types)
+        self.type_scale = type_scale
 
     def forward(
         self,
@@ -64,9 +71,25 @@ class PseudoPESTransform(trn.Transform):
 
         # sample noisy geometry
         x_t, sigma_t, t, noise = self.geometry_sampler(x_0=x_0, atom_types=atom_types, t=t, noise=noise)
-            
+
+        # noise the scaled one-hot types with the same sigma as the positions
+        if self.atom_types is not None:
+            h_0 = self.type_scale * (atom_types[:, None] == self.atom_types).to(x_0.dtype)
+            h_t = h_0 + sigma_t * torch.randn_like(h_0)
+
         # align best permutation of x_t to x_0
-        if self.align_permutation:
+        if self.align_permutation and self.atom_types is not None:
+            # noisy atoms have no element yet: match on the cost |Δx|² + |Δh|²
+            # instead, with equal numbers so no pair is ruled out
+            no_numbers = torch.zeros_like(atom_types)
+            xh_t, _ = align_permutation(
+                positions=torch.cat([x_t, h_t], dim=-1),
+                target_positions=torch.cat([x_0, h_0], dim=-1),
+                numbers=no_numbers,
+                target_numbers=no_numbers,
+            )
+            x_t, h_t = xh_t.split([x_t.shape[-1], h_t.shape[-1]], dim=-1)
+        elif self.align_permutation:
             x_t, atom_types = align_permutation(
                 positions=x_t,
                 target_positions=x_0,
@@ -99,6 +122,17 @@ class PseudoPESTransform(trn.Transform):
                 keys.forces: forces,
             }
         )
+
+        # E = |x_t - x_0|² + |h_t - h_0|², with a second force on the types
+        if self.atom_types is not None:
+            energy = energy + self.energy_function.get_energy(x_0=h_0, x_t=h_t)
+            inputs.update(
+                {
+                    keys.energy: energy,
+                    keys.h: h_t,
+                    keys.type_forces: self.energy_function.get_forces_analytic(x_0=h_0, x_t=h_t),
+                }
+            )
 
         # generate weights
         if self.weight_generator is not None:

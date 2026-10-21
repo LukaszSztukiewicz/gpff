@@ -1,0 +1,89 @@
+# @package _global_
+# GPFF that also generates the atom types. The scaled one-hot types h get the
+# same Gaussian noise as the positions, the pseudo-energy becomes
+# E = |x_t - x_0|^2 + |h_t - h_0|^2, and the model reads h_t instead of the
+# atomic numbers and predicts a second force 2(h_0 - h_t) on the types.
+# Same as experiment=gpff otherwise.
+defaults:
+  - gpff
+  - _self_
+
+globals:
+  # elements of the one-hot types; n_types is their count
+  atom_types: [1, 6, 7, 8, 9]
+  n_types: 5
+  # value of the one-hot entries: the types become readable roughly once
+  # sigma drops below it
+  type_scale: 1.0
+
+run:
+  experiment: gpff_types
+  tags:
+    - gpff
+    - gpff_types
+
+generative_transform:
+  atom_types: ${globals.atom_types}
+  type_scale: ${globals.type_scale}
+
+prior:
+  n_types: ${globals.n_types}
+
+model:
+  representation:
+    embedding_key: ${key:h}
+    # h_t grows with sigma, and read by a plain linear layer it overflows
+    # PaiNN at sigma_max. So like the distances it goes through a Gaussian
+    # basis first, with the same spacing over [-cutoff, cutoff].
+    nuclear_embedding:
+      _target_: torch.nn.Sequential
+      _args_:
+        - _target_: schnetpack.nn.radial.GaussianRBF
+          n_rbf: ${mul:${globals.n_rbf}, 2}
+          start: ${mul:${globals.cutoff}, -1}
+          cutoff: ${globals.cutoff}
+        - _target_: torch.nn.Flatten
+        - _target_: torch.nn.Linear
+          in_features: ${mul:${mul:${globals.n_rbf}, 2}, ${globals.n_types}}
+          out_features: ${globals.n_atom_basis}
+  output_modules:
+    - _target_: gpff.model.heads.GatedEquivariant
+      n_in: ${globals.n_atom_basis}
+      n_hidden: null
+      n_layers: 3
+      output_key: ${key:forces}
+    - _target_: schnetpack.atomistic.Atomwise
+      n_in: ${globals.n_atom_basis}
+      n_out: ${globals.n_types}
+      n_hidden: null
+      n_layers: 3
+      aggregation_mode: null
+      output_key: ${key:type_forces}
+      per_atom_output_key: ${key:type_forces}
+
+task:
+  outputs:
+    - _target_: gpff.task.ModelOutput
+      name: ${key:forces}
+      metrics:
+        mae:
+          _target_: torchmetrics.regression.MeanAbsoluteError
+        mse:
+          _target_: torchmetrics.regression.MeanSquaredError
+          squared: True
+      loss_weight: 1.
+      scale_loss: ${globals.scale_loss}
+      weights_key: ${globals.weights_key}
+      warmup_steps: 0
+    - _target_: gpff.task.ModelOutput
+      name: ${key:type_forces}
+      metrics:
+        mae:
+          _target_: torchmetrics.regression.MeanAbsoluteError
+        mse:
+          _target_: torchmetrics.regression.MeanSquaredError
+          squared: True
+      loss_weight: 1.
+      scale_loss: ${globals.scale_loss}
+      weights_key: ${globals.weights_key}
+      warmup_steps: 0

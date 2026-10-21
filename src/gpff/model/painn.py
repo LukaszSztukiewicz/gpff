@@ -37,6 +37,7 @@ class PaiNN(nn.Module):
         norm_epsilon: float = 1,
         nuclear_embedding: Optional[nn.Module] = None,
         electronic_embeddings: Optional[List] = None,
+        embedding_key: str = properties.Z,
     ):
         """
         Args:
@@ -54,6 +55,8 @@ class PaiNN(nn.Module):
             nuclear_embedding: custom nuclear embedding (e.g. spk.nn.embeddings.NuclearEmbedding)
             electronic_embeddings: list of electronic embeddings. E.g. for spin and
                 charge (see spk.nn.embeddings.ElectronicEmbedding)
+            embedding_key: input the nuclear embedding reads, e.g. noisy one-hot
+                atom types for a linear embedding instead of atomic numbers
         """
         super(PaiNN, self).__init__()
 
@@ -70,6 +73,7 @@ class PaiNN(nn.Module):
         if nuclear_embedding is None:
             nuclear_embedding = nn.Embedding(100, n_atom_basis)
         self.embedding = nuclear_embedding
+        self.embedding_key = embedding_key
         if electronic_embeddings is None:
             electronic_embeddings = []
         electronic_embeddings = nn.ModuleList(electronic_embeddings)
@@ -138,7 +142,7 @@ class PaiNN(nn.Module):
             filter_list = torch.split(filters, 3 * self.n_atom_basis, dim=-1)
 
         # compute initial embeddings
-        q = self.embedding(atomic_numbers)
+        q = self.embedding(inputs[self.embedding_key])
         for embedding in self.electronic_embeddings:
             q = q + embedding(q, inputs)
         q = q.unsqueeze(1)
