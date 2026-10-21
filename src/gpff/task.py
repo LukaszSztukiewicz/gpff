@@ -69,6 +69,7 @@ class LearnedSigmaWeights(nn.Module):
         sigma_min: float = 1e-4,
         tolerance: Optional[float] = None,
         log_sigmas: Sequence[float] = (0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0),
+        seed: int = 0,
     ):
         """
         Args:
@@ -79,14 +80,20 @@ class LearnedSigmaWeights(nn.Module):
                 in EDM2, lets the weight grow as long as the loss shrinks, without bound
                 where the error can reach zero (sigma = 0 anchors).
             log_sigmas: noise levels at which the task logs u(sigma) after each validation
+            seed: seed of the Fourier features' own generator
         """
         super().__init__()
-        # fixed random frequencies and phases, as EDM2's MPFourier
-        self.register_buffer("frequencies", 2 * math.pi * torch.randn(n_features))
-        self.register_buffer("phases", 2 * math.pi * torch.rand(n_features))
+        # fixed random frequencies and phases, as EDM2's MPFourier, from their own
+        # generator: the task is built before the data split is drawn, so taking them
+        # from the global RNG would change the split
+        generator = torch.Generator().manual_seed(seed)
+        self.register_buffer("frequencies", 2 * math.pi * torch.randn(n_features, generator=generator))
+        self.register_buffer("phases", 2 * math.pi * torch.rand(n_features, generator=generator))
         # a plain linear layer started at zero, in place of EDM2's magnitude-preserving
-        # one, so that training starts from the weight generator's weights alone
-        self.linear = nn.Linear(n_features, 1)
+        # one, so that training starts from the weight generator's weights alone;
+        # skip_init leaves out nn.Linear's random init, which would also draw from the
+        # global RNG
+        self.linear = nn.utils.skip_init(nn.Linear, n_features, 1)
         nn.init.zeros_(self.linear.weight)
         nn.init.zeros_(self.linear.bias)
         self.sigma_min = sigma_min

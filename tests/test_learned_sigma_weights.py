@@ -15,6 +15,17 @@ def test_learned_sigma_weights_start_from_the_plain_loss():
     torch.testing.assert_close(weighting(loss, sigma), loss)
 
 
+def test_learned_sigma_weights_leave_the_global_rng_alone():
+    # the task is built before the data split is drawn from the global RNG
+    torch.manual_seed(999)
+    expected = torch.rand(5)
+    torch.manual_seed(999)
+    weighting = LearnedSigmaWeights()
+    torch.testing.assert_close(torch.rand(5), expected)
+
+    torch.testing.assert_close(weighting.frequencies, LearnedSigmaWeights().frequencies)
+
+
 def test_learned_sigma_weights_learn_the_mean_loss_per_noise_level():
     torch.manual_seed(0)
     weighting = LearnedSigmaWeights()
