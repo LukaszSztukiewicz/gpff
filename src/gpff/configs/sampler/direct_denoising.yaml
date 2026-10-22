@@ -14,4 +14,13 @@ stochastic_lambda: 1.0
 # instead of jumping to x_0; null jumps from the start
 transport_sigma: null
 transport_ratio: 0.5
+# adaptive DD (see adaptive_direct_denoising.yaml): an EDM grid of transport_steps
+# levels instead of transport_ratio, DDPM-like noise in the DDIM steps, and the
+# update below transport_sigma
+transport_steps: null
+transport_sigma_max: 30.0
+transport_rho: 5.0
+transport_gamma: 0.0
+refine_step: 1.0
+refine_rigid_free: false
 f_max: 0.0
