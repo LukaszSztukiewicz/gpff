@@ -35,6 +35,15 @@ class DirectDenoisingSampler(Sampler):
     positions), one model inference, and ``postprocess_step`` (constraint
     enforcement, a no-op here). Subclasses customize behavior by overriding the
     two hooks.
+
+    The update x + F/2 jumps to the predicted x_0, which is the DDIM step from the
+    current noise level all the way to sigma = 0. That is only accurate where the
+    posterior over x_0 is narrow: from the sigma = 30 prior it lands on a posterior
+    mean that is no molecule (atoms too close, the prior draw's shape). With
+    ``transport_sigma`` set, molecules whose sigma estimate (std of F/2) is above it
+    take the DDIM step to ``transport_ratio`` * sigma instead, x + (1 - transport_ratio)
+    F/2 (sigma cancels), and are not perturbed, so the model's inputs stay noisy
+    molecules until the jumps take over below ``transport_sigma``.
     """
 
     def __init__(
@@ -42,8 +51,16 @@ class DirectDenoisingSampler(Sampler):
         time_aware_model: bool = False,
         stochastic_lambda: float = 1.0,
         f_max: float = 0.0,
+        transport_sigma: Optional[float] = None,
+        transport_ratio: float = 0.5,
         **kwargs,
     ):
+        """
+        Args:
+            transport_sigma: noise level above which molecules take DDIM steps
+                instead of jumps; None jumps from the start.
+            transport_ratio: noise level after a DDIM step over the one before.
+        """
         if time_aware_model:
             warnings.warn(
                 f"time_aware_model is not supported for {type(self).__name__} and will be ignored.",
@@ -53,13 +70,31 @@ class DirectDenoisingSampler(Sampler):
         super().__init__(time_aware_model=False, **kwargs)
         self.stochastic_lambda = stochastic_lambda
         self.f_max = f_max
+        self.transport_sigma = transport_sigma
+        self.transport_ratio = transport_ratio
 
-    def add_noise(self, x: torch.Tensor, step: int) -> torch.Tensor:
+    def add_noise(self, x: torch.Tensor, step: int, in_transport: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
-        Add schedule-scaled stochastic noise to positions.
+        Add schedule-scaled stochastic noise to positions, except where in_transport.
         """
         noise_scale = self.stochastic_lambda * self.get_noise_ratio(step)
-        return x + noise_scale * torch.randn_like(x)
+        noise = noise_scale * torch.randn_like(x)
+        if in_transport is not None:
+            noise = noise * ~in_transport
+        return x + noise
+
+    def transport_mask(self, batch: Dict[str, torch.Tensor]) -> Optional[torch.Tensor]:
+        """
+        Per-atom (n_atoms, 1) mask of the molecules still in transport: their last
+        sigma estimate is above transport_sigma, or there is none yet. None if
+        transport is off.
+        """
+        if self.transport_sigma is None:
+            return None
+        sigma = batch.get(keys.sigma_curr)
+        if sigma is None:
+            return torch.ones_like(batch[properties.R][:, :1], dtype=torch.bool)
+        return sigma > self.transport_sigma
 
     def preprocess_step(
         self,
@@ -71,7 +106,7 @@ class DirectDenoisingSampler(Sampler):
         """
         Perturb the positions stochastically before the model call.
         """
-        batch[properties.R] = self.add_noise(batch[properties.R], step)
+        batch[properties.R] = self.add_noise(batch[properties.R], step, self.transport_mask(batch))
         return batch
 
     def postprocess_step(
@@ -111,6 +146,12 @@ class DirectDenoisingSampler(Sampler):
         x_next = predictions[keys.x_0]
         forces = predictions[keys.forces]
         sigma_curr = predictions[keys.sigma_curr]
+
+        # above transport_sigma, the DDIM step to transport_ratio * sigma instead
+        # of the jump to x_0
+        if self.transport_sigma is not None:
+            step_size = torch.where(sigma_curr > self.transport_sigma, 1 - self.transport_ratio, 1.0)
+            x_next = batch[properties.R] + step_size * forces / 2
 
         # mid-step on purpose: molecules converging now must not take this
         # step's position update
@@ -222,7 +263,10 @@ class ScaffoldDirectDenoisingSampler(DirectDenoisingSampler):
         Perturb the free atoms; scaffold atoms are untouched.
         """
         free_mask = ~conditions[keys.scaffold_mask]
-        batch[properties.R][free_mask] = self.add_noise(batch[properties.R][free_mask], step)
+        in_transport = self.transport_mask(batch)
+        batch[properties.R][free_mask] = self.add_noise(
+            batch[properties.R][free_mask], step, None if in_transport is None else in_transport[free_mask]
+        )
         return batch
 
     def postprocess_step(
@@ -276,7 +320,10 @@ class ShapeScaffoldDirectDenoisingSampler(ScaffoldDirectDenoisingSampler):
         """
         free_mask = ~conditions[keys.scaffold_mask]
         idx_m = batch[properties.idx_m]
-        x_free = self.add_noise(batch[properties.R][free_mask], step)
+        in_transport = self.transport_mask(batch)
+        x_free = self.add_noise(
+            batch[properties.R][free_mask], step, None if in_transport is None else in_transport[free_mask]
+        )
         batch[properties.R][free_mask] = self.apply_shape(
             x_free,
             idx_m[free_mask],

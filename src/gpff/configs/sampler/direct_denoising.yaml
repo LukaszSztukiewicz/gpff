@@ -10,4 +10,8 @@ observers:
     verbose: false
     show_progressbar: false
 stochastic_lambda: 1.0
+# noise level above which molecules take DDIM steps to transport_ratio * sigma
+# instead of jumping to x_0; null jumps from the start
+transport_sigma: null
+transport_ratio: 0.5
 f_max: 0.0
