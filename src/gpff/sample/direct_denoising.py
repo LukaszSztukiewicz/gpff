@@ -9,6 +9,7 @@ import warnings
 
 # gpff
 from gpff.sample.base import Sampler
+from gpff.sample.jump_optimizers import JumpOptimizer
 from gpff import keys
 from gpff.utils.alignment import (
     batch_apply_covariances,
@@ -27,16 +28,10 @@ __all__ = [
 ]
 
 # sampler state between steps; keys starting with "_" stay out of the results
-_X0_HISTORY = "_x0_history"  # (n_atoms, depth, 3) clean estimates of the last calls, newest first
-_RESIDUAL_HISTORY = "_residual_history"  # (n_atoms, depth, 3) their residuals x_0 - x
-_HISTORY_LENGTH = "_history_length"  # (n_atoms, 1) consecutive clean jumps in the history
+_X0_PREV = "_x0_prev"  # (n_atoms, 3) clean estimate of the last call
 _AFTER_TRANSPORT = "_after_transport"  # (n_atoms, 1) the last call was a transport step
-
-
-def _molecule_sum(values: torch.Tensor, idx_m: torch.Tensor, n_molecules: int) -> torch.Tensor:
-    return torch.zeros(
-        (n_molecules, *values.shape[1:]), device=values.device, dtype=values.dtype
-    ).index_add_(0, idx_m, values)
+_AFTER_CLEAN_JUMP = "_after_clean_jump"  # (n_atoms, 1) the last call was a jump without noise
+_JUMP_STATE = "_jump_"  # prefix of the jump optimizer's state
 
 
 class DirectDenoisingSampler(Sampler):
@@ -64,11 +59,10 @@ class DirectDenoisingSampler(Sampler):
     constant ratio. It needs transport to stop near the data's own spread: far
     below it the clean estimate saturates and the extrapolation overshoots, while
     DDIM steps contract. The jumps are the fixed-point iteration x <- x_0(x), which
-    converges linearly and slows down near its end; with ``anderson_depth`` > 0 a
-    jump without noise after other such jumps combines them by Anderson
-    acceleration (DIIS). It restarts when the residual grows and moves at most
-    ``anderson_max`` times the plain jump beyond x_0. ``relax_steps`` takes the
-    noise off the last steps, so stochastic sampling can end with such jumps.
+    converges linearly and slows down near its end; a ``jump_optimizer`` (see
+    :mod:`gpff.sample.jump_optimizers`, e.g. Anderson acceleration) takes over the
+    jumps without noise. ``relax_steps`` takes the noise off the last steps, so
+    stochastic sampling can end with such jumps.
     """
 
     def __init__(
@@ -79,8 +73,7 @@ class DirectDenoisingSampler(Sampler):
         transport_sigma: Optional[float] = None,
         transport_ratio: float = 0.5,
         transport_order: int = 1,
-        anderson_depth: int = 0,
-        anderson_max: float = 10.0,
+        jump_optimizer: Optional[JumpOptimizer] = None,
         relax_steps: int = 1,
         **kwargs,
     ):
@@ -91,9 +84,7 @@ class DirectDenoisingSampler(Sampler):
             transport_ratio: noise level after a DDIM step over the one before.
             transport_order: 1 for DDIM transport steps, 2 for second-order
                 multistep ones.
-            anderson_depth: number of earlier jumps Anderson acceleration combines;
-                0 takes plain jumps.
-            anderson_max: largest move beyond x_0, relative to the plain jump.
+            jump_optimizer: moves the jumps without noise; None takes plain jumps.
             relax_steps: number of final steps without noise; 1 is the last step
                 only, as in the plain schedule.
         """
@@ -106,8 +97,6 @@ class DirectDenoisingSampler(Sampler):
         super().__init__(time_aware_model=False, **kwargs)
         if transport_order not in (1, 2):
             raise ValueError(f"transport_order must be 1 or 2, got {transport_order}")
-        if anderson_depth < 0:
-            raise ValueError(f"anderson_depth must be non-negative, got {anderson_depth}")
         if not 1 <= relax_steps <= self.n_steps:
             raise ValueError(f"relax_steps must be between 1 and n_steps {self.n_steps}, got {relax_steps}")
         self.stochastic_lambda = stochastic_lambda
@@ -115,13 +104,12 @@ class DirectDenoisingSampler(Sampler):
         self.transport_sigma = transport_sigma
         self.transport_ratio = transport_ratio
         self.transport_order = transport_order
-        self.anderson_depth = anderson_depth
-        self.anderson_max = anderson_max
+        self.jump_optimizer = jump_optimizer
         self.relax_steps = relax_steps
 
     @property
     def _uses_history(self) -> bool:
-        return self.transport_order == 2 or self.anderson_depth > 0
+        return self.transport_order == 2 or self.jump_optimizer is not None
 
     def _init_state(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """
@@ -130,11 +118,13 @@ class DirectDenoisingSampler(Sampler):
         batch = super()._init_state(batch)
         if self._uses_history:
             positions = batch[properties.R]
-            depth = max(self.anderson_depth, 1)
-            batch[_X0_HISTORY] = positions.new_zeros(positions.shape[0], depth, 3)
-            batch[_RESIDUAL_HISTORY] = positions.new_zeros(positions.shape[0], depth, 3)
-            batch[_HISTORY_LENGTH] = torch.zeros(positions.shape[0], 1, dtype=torch.long, device=positions.device)
-            batch[_AFTER_TRANSPORT] = torch.zeros(positions.shape[0], 1, dtype=torch.bool, device=positions.device)
+            no_call = torch.zeros(positions.shape[0], 1, dtype=torch.bool, device=positions.device)
+            batch[_X0_PREV] = torch.zeros_like(positions)
+            batch[_AFTER_TRANSPORT] = no_call
+            batch[_AFTER_CLEAN_JUMP] = no_call.clone()
+            if self.jump_optimizer is not None:
+                for name, value in self.jump_optimizer.init_state(positions).items():
+                    batch[_JUMP_STATE + name] = value
         return batch
 
     def get_noise_ratio(self, step: int) -> float:
@@ -267,15 +257,12 @@ class DirectDenoisingSampler(Sampler):
         x_next: torch.Tensor,
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """
-        Replace x_next by the second-order transport step or the Anderson jump
-        where the history allows it, and push this call into the history.
+        Replace x_next by the second-order transport step or the jump optimizer's
+        step where the history allows it, and record this call.
         """
         x_0 = predictions[keys.x_0]
         residual = predictions[keys.forces] / 2
         sigma_curr = predictions[keys.sigma_curr]
-        x0_history = batch[_X0_HISTORY]
-        residual_history = batch[_RESIDUAL_HISTORY]
-        length = batch[_HISTORY_LENGTH]
 
         in_transport = (
             sigma_curr > self.transport_sigma
@@ -288,65 +275,29 @@ class DirectDenoisingSampler(Sampler):
             transport_before = self.transport_mask(batch)
             perturbed = ~transport_before if transport_before is not None else ~perturbed
         clean = ~in_transport & ~perturbed
+        history = {_X0_PREV: x_0, _AFTER_TRANSPORT: in_transport, _AFTER_CLEAN_JUMP: clean}
 
         if self.transport_order == 2:
             # h_now / (2 h_prev) = 1/2: both steps shrink sigma by transport_ratio
             second_order = batch[properties.R] + (1 - self.transport_ratio) * (
-                residual + (x_0 - x0_history[:, 0]) / 2
+                residual + (x_0 - batch[_X0_PREV]) / 2
             )
             x_next = torch.where(in_transport & batch[_AFTER_TRANSPORT], second_order, x_next)
 
-        if self.anderson_depth > 0:
-            idx_m = batch[properties.idx_m]
-            n_molecules = batch[properties.n_atoms].shape[0]
-            grew = _molecule_sum(residual.square().sum(-1), idx_m, n_molecules) > _molecule_sum(
-                residual_history[:, 0].square().sum(-1), idx_m, n_molecules
+        if self.jump_optimizer is not None:
+            state = {key[len(_JUMP_STATE):]: value for key, value in batch.items() if key.startswith(_JUMP_STATE)}
+            x_jump, state = self.jump_optimizer.step(
+                batch[properties.R],
+                residual,
+                state,
+                fresh=~batch[_AFTER_CLEAN_JUMP],
+                idx_m=batch[properties.idx_m],
+                n_molecules=batch[properties.n_atoms].shape[0],
+                last=step == 1,
             )
-            length = torch.where(grew[idx_m].unsqueeze(-1), 0, length)
-            accelerated = self._anderson(x_0, residual, x0_history, residual_history, length, idx_m, n_molecules)
-            x_next = torch.where(clean & (length > 0), accelerated, x_next)
-
-        depth = x0_history.shape[1]
-        history = {
-            _X0_HISTORY: torch.cat([x_0.unsqueeze(1), x0_history[:, :-1]], dim=1),
-            _RESIDUAL_HISTORY: torch.cat([residual.unsqueeze(1), residual_history[:, :-1]], dim=1),
-            _HISTORY_LENGTH: torch.where(clean, (length + 1).clamp(max=depth), 0),
-            _AFTER_TRANSPORT: in_transport,
-        }
+            x_next = torch.where(clean, x_jump, x_next)
+            history.update({_JUMP_STATE + name: value for name, value in state.items()})
         return x_next, history
-
-    def _anderson(
-        self,
-        x_0: torch.Tensor,
-        residual: torch.Tensor,
-        x0_history: torch.Tensor,
-        residual_history: torch.Tensor,
-        length: torch.Tensor,
-        idx_m: torch.Tensor,
-        n_molecules: int,
-    ) -> torch.Tensor:
-        """
-        Anderson step per molecule: x_0 - sum_j gamma_j (x_0 - x_0_j), with gamma
-        minimizing |residual - sum_j gamma_j (residual - residual_j)| over the
-        first ``length`` history entries.
-        """
-        valid = (torch.arange(x0_history.shape[1], device=length.device) < length).unsqueeze(-1)
-        d_residual = (residual.unsqueeze(1) - residual_history) * valid
-        d_x0 = (x_0.unsqueeze(1) - x0_history) * valid
-
-        gram = _molecule_sum(torch.einsum("aic,ajc->aij", d_residual, d_residual), idx_m, n_molecules).double()
-        rhs = _molecule_sum(torch.einsum("aic,ac->ai", d_residual, residual), idx_m, n_molecules).double()
-        # empty entries get gamma = 0, a small relative ridge keeps the rest well posed
-        diagonal = gram.diagonal(dim1=1, dim2=2)
-        ridge = 1e-6 * diagonal.amax(-1, keepdim=True) + (diagonal == 0).double()
-        gamma = torch.linalg.solve(gram + torch.diag_embed(ridge), rhs).to(x_0.dtype)
-        correction = -torch.einsum("ai,aic->ac", gamma[idx_m], d_x0)
-
-        # at most anderson_max times the plain jump
-        jump_norm = _molecule_sum(residual.square().sum(-1), idx_m, n_molecules).sqrt()
-        correction_norm = _molecule_sum(correction.square().sum(-1), idx_m, n_molecules).sqrt()
-        scale = (self.anderson_max * jump_norm / correction_norm.clamp_min(torch.finfo(x_0.dtype).tiny)).clamp(max=1)
-        return x_0 + scale[idx_m].unsqueeze(-1) * correction
 
 
 class ShapeDirectDenoisingSampler(DirectDenoisingSampler):

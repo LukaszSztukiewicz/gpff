@@ -5,7 +5,7 @@ from torch import nn
 from schnetpack import properties
 
 from gpff import keys
-from gpff.sample import Calculator, DirectDenoisingSampler
+from gpff.sample import Anderson, Calculator, DirectDenoisingSampler
 
 
 class _Contraction(nn.Module):
@@ -54,7 +54,7 @@ def _denoise(model, batch, **kwargs):
 def test_anderson_converges_where_plain_jumps_crawl():
     plain = _denoise(_Contraction(), _batch(), n_steps=6, stochastic_lambda=0.0)
     accelerated = _denoise(
-        _Contraction(), _batch(), n_steps=6, stochastic_lambda=0.0, anderson_depth=2, anderson_max=1e6
+        _Contraction(), _batch(), n_steps=6, stochastic_lambda=0.0, jump_optimizer=Anderson(depth=2, max_step=1e6)
     )
 
     # the fixed point is 0; the slow coordinate keeps 0.95^6 = 0.74 of its start
@@ -66,14 +66,14 @@ def test_anderson_converges_where_plain_jumps_crawl():
 
 def test_anderson_max_zero_takes_plain_jumps():
     plain = _denoise(_Contraction(), _batch(), n_steps=5, stochastic_lambda=0.0)
-    capped = _denoise(_Contraction(), _batch(), n_steps=5, stochastic_lambda=0.0, anderson_depth=2, anderson_max=0.0)
+    capped = _denoise(_Contraction(), _batch(), n_steps=5, stochastic_lambda=0.0, jump_optimizer=Anderson(depth=2, max_step=0.0))
     torch.testing.assert_close(capped, plain)
 
 
 def test_anderson_skips_perturbed_jumps():
     # with noise on every step but the last, no two clean jumps follow each other
     plain = _denoise(_Contraction(), _batch(), n_steps=5, stochastic_lambda=1.0)
-    accelerated = _denoise(_Contraction(), _batch(), n_steps=5, stochastic_lambda=1.0, anderson_depth=2)
+    accelerated = _denoise(_Contraction(), _batch(), n_steps=5, stochastic_lambda=1.0, jump_optimizer=Anderson(depth=2))
     torch.testing.assert_close(accelerated, plain)
 
 
@@ -81,7 +81,7 @@ def test_anderson_converges_the_noise_free_finish_of_stochastic_sampling():
     # noise on steps 8..6, then five jumps without noise; the noise draws match
     kwargs = dict(n_steps=8, stochastic_lambda=1.0, relax_steps=5)
     plain = _denoise(_Contraction(), _batch(), **kwargs)
-    accelerated = _denoise(_Contraction(), _batch(), anderson_depth=2, anderson_max=1e6, **kwargs)
+    accelerated = _denoise(_Contraction(), _batch(), jump_optimizer=Anderson(depth=2, max_step=1e6), **kwargs)
 
     assert accelerated.abs().max() < 1e-6 * plain.abs().max()
 

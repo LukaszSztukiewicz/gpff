@@ -16,9 +16,9 @@ transport_sigma: null
 transport_ratio: 0.5
 # 2: second-order multistep transport steps (DPM-Solver++ 2M)
 transport_order: 1
-# earlier jumps that Anderson acceleration combines; 0 takes plain jumps
-anderson_depth: 0
-anderson_max: 10.0
+# optimizer for the jumps without noise, e.g.
+# {_target_: gpff.sample.jump_optimizers.Anderson, depth: 2}; null takes plain jumps
+jump_optimizer: null
 # final steps without noise; 1 is the last step only
 relax_steps: 1
 f_max: 0.0
