@@ -10,7 +10,7 @@ from schnetpack.atomistic import Atomwise as SPKAtomwise
 from gpff import keys
 
 
-__all__ = ["GatedEquivariant", "Atomwise", "TimeAwareEquivariant", "DiffusionTime", "TypeForces"]
+__all__ = ["GatedEquivariant", "Atomwise", "TimeAwareEquivariant", "DiffusionTime", "TypeForces", "TypeProbabilities"]
 
 
 class GatedEquivariant(nn.Module):
@@ -503,4 +503,54 @@ class TypeForces(nn.Module):
     def forward(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         h_0 = self.outnet(inputs["scalar_representation"])
         inputs[self.output_key] = 2 * (h_0 - inputs[self.type_key])
+        return inputs
+
+
+class TypeProbabilities(nn.Module):
+    """
+    Invariant head for noisy one-hot atom types that predicts each atom's
+    element probabilities p. The clean types h_0 = s * one-hot are estimated by
+    their expectation s * p, which is what the samplers move h towards; the
+    logits are for a cross-entropy loss.
+    """
+
+    def __init__(
+        self,
+        n_in: int,
+        n_types: int,
+        type_scale: float,
+        n_hidden: Optional[Union[int, Sequence[int]]] = None,
+        n_layers: int = 2,
+        activation: Callable = F.silu,
+        logits_key: str = keys.type_logits,
+        output_key: str = keys.h_0,
+    ):
+        """
+        Args:
+            n_in: input dimension of the representation.
+            n_types: number of atom types.
+            type_scale: value of the one-hot entries, s.
+            n_hidden: size of hidden layers (see schnetpack.nn.build_mlp).
+            n_layers: number of layers.
+            activation: activation function.
+            logits_key: the key under which the element logits are stored.
+            output_key: the key under which the clean-type estimate s * p is stored.
+        """
+        super().__init__()
+        self.outnet = snn.build_mlp(
+            n_in=n_in,
+            n_out=n_types,
+            n_hidden=n_hidden,
+            n_layers=n_layers,
+            activation=activation,
+        )
+        self.type_scale = type_scale
+        self.logits_key = logits_key
+        self.output_key = output_key
+        self.model_outputs = [logits_key, output_key]
+
+    def forward(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        logits = self.outnet(inputs["scalar_representation"])
+        inputs[self.logits_key] = logits
+        inputs[self.output_key] = self.type_scale * torch.softmax(logits, dim=-1)
         return inputs

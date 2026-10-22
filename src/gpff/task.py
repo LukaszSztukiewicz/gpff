@@ -38,6 +38,18 @@ def loss_fn(pred, target, weights=None, scale_loss: Optional[str] = None, epsilo
     return torch.mean(weighted_diff)
 
 
+def cross_entropy_loss(logits, target, weights=None):
+    """
+    Cross-entropy of logits against non-negative targets normalized to
+    probabilities, e.g. a scaled one-hot.
+    """
+    probabilities = target / target.sum(dim=-1, keepdim=True)
+    nll = -(probabilities * torch.log_softmax(logits, dim=-1)).sum(dim=-1, keepdim=True)
+    if weights is not None:
+        nll = weights * nll
+    return torch.mean(nll)
+
+
 class ModelOutput(SPKModelOutput):
     r"""
     Subclass of SPKModelOutput that adds magnitude weighting of elements in the loss.
@@ -62,6 +74,7 @@ class ModelOutput(SPKModelOutput):
         weights_key: Optional[str] = None,
         scale_loss: Optional[str] = None,
         warmup_steps: int = 0,
+        cross_entropy: bool = False,
     ):
         r"""
         Args:
@@ -73,6 +86,9 @@ class ModelOutput(SPKModelOutput):
             metrics: dictionary of metrics with names as keys
             weights_key: Name of weights key in training batch.
             max_weight: Maximum weight for the loss.
+            cross_entropy: if True, the output holds logits and the loss is their
+                cross-entropy against the target (see cross_entropy_loss)
+                instead of the squared error.
         """
         super().__init__(
             name=name,
@@ -83,6 +99,7 @@ class ModelOutput(SPKModelOutput):
         self.weights_key = weights_key
         self.scale_loss = scale_loss
         self.warmup_steps = warmup_steps
+        self.cross_entropy = cross_entropy
         self.global_step = 0
 
     def calculate_loss(self, pred, target):
@@ -95,9 +112,14 @@ class ModelOutput(SPKModelOutput):
                 dampening = self.global_step / self.warmup_steps
                 weights = (1-dampening) * torch.ones_like(weights) + dampening * weights
 
-        loss = self.loss_weight * loss_fn(
-            pred[self.name], target[self.target_property], weights, self.scale_loss
-        )
+        if self.cross_entropy:
+            loss = self.loss_weight * cross_entropy_loss(
+                pred[self.name], target[self.target_property], weights
+            )
+        else:
+            loss = self.loss_weight * loss_fn(
+                pred[self.name], target[self.target_property], weights, self.scale_loss
+            )
 
         return loss
 

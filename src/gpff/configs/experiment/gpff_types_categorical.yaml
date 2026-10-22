@@ -1,0 +1,89 @@
+# @package _global_
+# experiment=gpff_types with the atom types treated as categorical. The model
+# predicts each atom's element probabilities p, trained with cross-entropy, and
+# the clean types are estimated by their expectation s * p, which is what the
+# samplers move h towards (the force on the types stays 2(s p - h_t)). The
+# squared error of experiment=gpff_types has the same minimizer, the true p, so
+# only the optimization changes. h_t is read only over the range where it
+# carries information about the element; beyond it the basis is exactly zero,
+# so fully noised types read as unknown.
+defaults:
+  - gpff_types
+  - _self_
+
+globals:
+  # the evidence of h_t for an element scales with type_scale / sigma^2, so
+  # beyond |h| ~ 10 type_scale there is practically none; the basis has the
+  # spacing of the distance basis (0.25) over [-type_range, type_range]
+  type_range: 10
+  n_type_rbf: 81
+
+run:
+  experiment: gpff_types_categorical
+  tags:
+    - gpff
+    - gpff_types
+    - gpff_types_categorical
+
+model:
+  representation:
+    nuclear_embedding:
+      _target_: torch.nn.Sequential
+      _args_:
+        - _target_: schnetpack.nn.radial.GaussianRBF
+          n_rbf: ${globals.n_type_rbf}
+          start: ${mul:${globals.type_range}, -1}
+          cutoff: ${globals.type_range}
+        - _target_: torch.nn.Flatten
+        - _target_: torch.nn.Linear
+          in_features: ${mul:${globals.n_type_rbf}, ${globals.n_types}}
+          out_features: ${globals.n_atom_basis}
+  output_modules:
+    - _target_: gpff.model.heads.GatedEquivariant
+      n_in: ${globals.n_atom_basis}
+      n_hidden: null
+      n_layers: 3
+      output_key: ${key:forces}
+    - _target_: gpff.model.heads.TypeProbabilities
+      n_in: ${globals.n_atom_basis}
+      n_types: ${globals.n_types}
+      type_scale: ${globals.type_scale}
+      n_hidden: null
+      n_layers: 3
+
+task:
+  outputs:
+    - _target_: gpff.task.ModelOutput
+      name: ${key:forces}
+      metrics:
+        mae:
+          _target_: torchmetrics.regression.MeanAbsoluteError
+        mse:
+          _target_: torchmetrics.regression.MeanSquaredError
+          squared: True
+      loss_weight: 1.
+      scale_loss: ${globals.scale_loss}
+      weights_key: ${globals.weights_key}
+      warmup_steps: 0
+    # cross-entropy of the element logits against the clean types h_0, with
+    # the positions' 1/sigma^2 weights
+    - _target_: gpff.task.ModelOutput
+      name: ${key:type_logits}
+      target_property: ${key:h_0}
+      cross_entropy: true
+      metrics: {}
+      loss_weight: 1.
+      weights_key: ${globals.weights_key}
+      warmup_steps: 0
+    # not trained on: the error of s * p, comparable to experiment=gpff_types
+    - _target_: gpff.task.ModelOutput
+      name: ${key:h_0}
+      metrics:
+        mae:
+          _target_: torchmetrics.regression.MeanAbsoluteError
+        mse:
+          _target_: torchmetrics.regression.MeanSquaredError
+          squared: True
+      loss_weight: 0.
+      weights_key: ${globals.weights_key}
+      warmup_steps: 0
