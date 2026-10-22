@@ -10,7 +10,7 @@ from schnetpack.atomistic import Atomwise as SPKAtomwise
 from gpff import keys
 
 
-__all__ = ["GatedEquivariant", "Atomwise", "TimeAwareEquivariant", "DiffusionTime"]
+__all__ = ["GatedEquivariant", "Atomwise", "TimeAwareEquivariant", "DiffusionTime", "TypeForces"]
 
 
 class GatedEquivariant(nn.Module):
@@ -455,4 +455,49 @@ class DiffusionTime(nn.Module):
         if self.aggregation_mode is None:
             inputs[self.output_key] = inputs[self.output_key]
 
+        return inputs
+
+
+class TypeForces(nn.Module):
+    """
+    Invariant head for the force 2(h_0 - h_t) on noisy one-hot atom types.
+    It predicts the clean types h_0 per atom and subtracts the input h_t
+    exactly, so the network never has to reproduce h_t, which grows with sigma.
+    """
+
+    def __init__(
+        self,
+        n_in: int,
+        n_out: int,
+        n_hidden: Optional[Union[int, Sequence[int]]] = None,
+        n_layers: int = 2,
+        activation: Callable = F.silu,
+        output_key: str = keys.type_forces,
+        type_key: str = keys.h,
+    ):
+        """
+        Args:
+            n_in: input dimension of the representation.
+            n_out: number of atom types.
+            n_hidden: size of hidden layers (see schnetpack.nn.build_mlp).
+            n_layers: number of layers.
+            activation: activation function.
+            output_key: the key under which the type forces are stored.
+            type_key: the key of the noisy types h_t.
+        """
+        super().__init__()
+        self.outnet = snn.build_mlp(
+            n_in=n_in,
+            n_out=n_out,
+            n_hidden=n_hidden,
+            n_layers=n_layers,
+            activation=activation,
+        )
+        self.output_key = output_key
+        self.type_key = type_key
+        self.model_outputs = [output_key]
+
+    def forward(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        h_0 = self.outnet(inputs["scalar_representation"])
+        inputs[self.output_key] = 2 * (h_0 - inputs[self.type_key])
         return inputs
