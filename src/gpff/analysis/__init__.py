@@ -8,6 +8,7 @@ from .relaxation import (
     get_bond_lengths,
     mol_from_atoms,
     relax_with_uff,
+    relax_with_xtb,
 )
 from .collection import (
     calculate_js_divergence,
@@ -28,4 +29,5 @@ __all__ = [
     "get_rdkit_validity",
     "mol_from_atoms",
     "relax_with_uff",
+    "relax_with_xtb",
 ]

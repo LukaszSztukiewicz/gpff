@@ -1,10 +1,13 @@
-"""UFF relaxation and bond lengths of single structures (one ase.Atoms in, one result out)."""
+"""UFF and GFN2-xTB relaxation and bond lengths of single structures (one ase.Atoms in, one result out)."""
+import os
+import subprocess
+import tempfile
 from io import StringIO
 from typing import Any, Dict
 
 import numpy as np
-from ase import Atoms
-from ase.io import write
+from ase import Atoms, units
+from ase.io import read, write
 from rdkit import Chem
 from rdkit.Chem import rdDetermineBonds, rdForceFieldHelpers
 from rdkit.rdBase import BlockLogs
@@ -12,6 +15,7 @@ from rdkit.rdBase import BlockLogs
 __all__ = [
     "mol_from_atoms",
     "relax_with_uff",
+    "relax_with_xtb",
     "get_bond_lengths",
 ]
 
@@ -104,6 +108,77 @@ def relax_with_uff(
         converged=status == 0,
         energy_before=energy_before,
         energy_after=energy_after,
+    )
+    return result
+
+
+def relax_with_xtb(
+    atoms: Atoms,
+    xtb_command: str = "xtb",
+    charge: int = 0,
+    uhf: int = 0,
+    max_iters: int = 500,
+    timeout: float = 300,
+) -> Dict[str, Any]:
+    """
+    Minimize a structure with GFN2-xTB, by running the xtb program.
+
+    Unlike UFF, xTB takes no bonds: it relaxes any geometry, and bonds can
+    form or break on the way.
+
+    Args:
+        atoms: ASE Atoms object to relax.
+        xtb_command: the xtb executable. It finds its parameter files through
+            XTBPATH, and OMP_NUM_THREADS sets its threads.
+        charge: total charge.
+        uhf: number of unpaired electrons.
+        max_iters: maximum number of optimization cycles.
+        timeout: seconds after which the xtb run is stopped.
+
+    Returns:
+        Dictionary with the keys of relax_with_uff. The energies are xTB
+        total energies in kcal/mol. A run that stops at max_iters counts as
+        relaxed but not converged, and returns its last geometry.
+    """
+    result = {
+        "atoms": atoms.copy(),
+        "relaxed": False,
+        "converged": False,
+        "energy_before": np.nan,
+        "energy_after": np.nan,
+    }
+    with tempfile.TemporaryDirectory() as workdir:
+        write(os.path.join(workdir, "input.xyz"), atoms, format="xyz")
+        command = [
+            xtb_command, "input.xyz", "--gfn", "2", "--chrg", str(charge), "--uhf", str(uhf),
+            "--opt", "normal", "--cycles", str(max_iters),
+        ]
+        try:
+            run = subprocess.run(command, cwd=workdir, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return result
+
+        # xtbopt.log holds every optimization step, the input geometry first;
+        # without it the first SCF failed
+        log_path = os.path.join(workdir, "xtbopt.log")
+        if not os.path.exists(log_path):
+            return result
+        with open(log_path) as f:
+            energies = [float(line.split()[1]) for line in f if line.lstrip().startswith("energy:")]
+        final_path = os.path.join(workdir, "xtbopt.xyz")
+        if not energies or not os.path.exists(final_path):
+            return result
+        positions = read(final_path).positions
+        # xtb also writes .xtboptok when it runs out of cycles, so read its verdict instead
+        converged = "GEOMETRY OPTIMIZATION CONVERGED" in run.stdout
+
+    hartree = units.Hartree / (units.kcal / units.mol)
+    result["atoms"].positions = positions
+    result.update(
+        relaxed=True,
+        converged=converged,
+        energy_before=energies[0] * hartree,
+        energy_after=energies[-1] * hartree,
     )
     return result
 

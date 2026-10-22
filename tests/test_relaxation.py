@@ -1,7 +1,18 @@
+import shutil
+
 import numpy as np
+import pytest
 from ase.build import molecule
 
-from gpff.analysis import analyze_with_rdkit, get_bond_lengths, mol_from_atoms, relax_with_uff
+from gpff.analysis import (
+    analyze_with_rdkit,
+    get_bond_lengths,
+    mol_from_atoms,
+    relax_with_uff,
+    relax_with_xtb,
+)
+
+needs_xtb = pytest.mark.skipif(shutil.which("xtb") is None, reason="xtb is not on PATH")
 
 
 def _stretched_ethanol():
@@ -46,3 +57,22 @@ def test_relax_with_uff_without_bond_orders_reads_an_over_coordinated_carbon():
 
     assert not relax_with_uff(atoms)["relaxed"]
     assert len(mol_from_atoms(atoms, bond_orders=False).GetAtomWithIdx(0).GetBonds()) == 5
+
+
+@needs_xtb
+def test_relax_with_xtb_restores_a_stretched_bond():
+    atoms, c, o = _stretched_ethanol()
+    result = relax_with_xtb(atoms)
+
+    assert result["relaxed"] and result["converged"]
+    assert result["energy_after"] < result["energy_before"]
+    assert abs(result["atoms"].get_distance(c, o) - 1.42) < 0.05
+    assert analyze_with_rdkit(result["atoms"])["canonical_smiles"] == "CCO"
+
+
+@needs_xtb
+def test_relax_with_xtb_reports_a_run_out_of_cycles():
+    atoms, _, _ = _stretched_ethanol()
+    result = relax_with_xtb(atoms, max_iters=1)
+
+    assert result["relaxed"] and not result["converged"]
