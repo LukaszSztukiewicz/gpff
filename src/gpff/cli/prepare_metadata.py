@@ -167,6 +167,7 @@ def _analyze_structures(
     run_rdkit: bool,
     run_posebusters: bool,
     timeout: int,
+    posebusters_timeout: float,
 ) -> list[dict]:
     """Run the requested passes on molecules start..stop-1 (0-based), one dict each.
 
@@ -183,7 +184,9 @@ def _analyze_structures(
                 result.update(analyze_with_rdkit(atoms, timeout=timeout))
                 result["nfe"] = atoms_row.data.get(keys_module.nfe, 0)
             if run_posebusters:
-                result["posebusters_valid"] = get_posebusters_validity(atoms)
+                result["posebusters_valid"] = get_posebusters_validity(
+                    atoms, timeout=posebusters_timeout
+                )
             results.append(result)
     return results
 
@@ -193,6 +196,7 @@ def compute_structure_arrays(
     run_rdkit: bool,
     run_posebusters: bool,
     timeout: int = 5,
+    posebusters_timeout: float = 0,
     data_workdir: str | None = None,
     verbose: bool = False,
     n_workers: int = 1,
@@ -215,7 +219,7 @@ def compute_structure_arrays(
     chunk_size = max(1, min(256, -(-n_molecules // (n_workers * 8))))
     chunks = [(start, min(start + chunk_size, n_molecules))
               for start in range(0, n_molecules, chunk_size)]
-    pass_args = (run_rdkit, run_posebusters, timeout)
+    pass_args = (run_rdkit, run_posebusters, timeout, posebusters_timeout)
     chunk_results: list = [None] * len(chunks)
 
     with tqdm(
@@ -393,6 +397,10 @@ def parse_args() -> argparse.Namespace:
                         help="Processes for the RDKit and PoseBusters passes. "
                              "Default: every CPU this process may use; 1 runs them "
                              "in this process.")
+    parser.add_argument("--posebusters_timeout", type=float, default=0,
+                        help="Seconds one PoseBusters check may take, 0 (default) for "
+                             "no limit. A check over the limit counts as invalid; a few "
+                             "large generated structures keep PoseBusters busy for hours.")
     parser.add_argument("--data_workdir", type=Path, default=None)
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
@@ -442,6 +450,7 @@ def main() -> int:
         arrays.update(
             compute_structure_arrays(
                 samples_db_path, run_rdkit, run_posebusters,
+                posebusters_timeout=args.posebusters_timeout,
                 data_workdir=data_workdir, verbose=verbose,
                 n_workers=args.structure_workers or os.process_cpu_count() or 1,
             )

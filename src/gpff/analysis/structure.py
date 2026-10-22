@@ -1,6 +1,7 @@
 """Analysis of single structures (one ase.Atoms in, one result out)."""
 from functools import lru_cache
 from io import StringIO
+import multiprocessing
 import signal
 from typing import Any, Dict
 
@@ -34,9 +35,35 @@ _HYBRIDIZATIONS = {
     Chem.HybridizationType.SP3: "sp3",
 }
 
+# fork, so that a timed PoseBusters check costs no interpreter start-up and no
+# import of posebusters; it works whatever start method the caller's pool uses.
+# Python warns that forking a process with threads (torch is imported) can
+# deadlock the child, but a deadlocked child runs out of time like a slow one
+# and its molecule counts as invalid, so no job hangs on it.
+_FORK = multiprocessing.get_context("fork")
+
 
 def _no_bonds() -> Dict[str, list]:
     return {"bond_type": [], "environment": [], "length": []}
+
+
+class _RDKitTimeout(Exception):
+    pass
+
+
+def _raise_timeout(signum, frame):
+    raise _RDKitTimeout()
+
+
+def _invalid_analysis() -> Dict[str, Any]:
+    return {
+        "rdkit_valid": False,
+        "ring_counts": np.array([np.nan, np.nan, np.nan, np.nan]),
+        "smiles": "",
+        "canonical_smiles": "",
+        "elongation": np.nan,
+        "bonds": _no_bonds(),
+    }
 
 
 def describe_bonds(mol: Chem.Mol) -> Dict[str, list]:
@@ -102,6 +129,26 @@ def analyze_with_rdkit(
     """
     Check if an ASE Atoms object is chemically valid and compute ring statistics.
 
+    A molecule whose analysis takes longer than ``timeout`` seconds is invalid.
+    See ``_analyze_with_rdkit`` for the returned dictionary.
+    """
+    try:
+        return _analyze_with_rdkit(atoms, timeout, remove_hs)
+    except _RDKitTimeout:
+        # the alarm can also go off just after the analysis, e.g. while an RDKit
+        # error is being handled, where _analyze_with_rdkit cannot catch it
+        signal.alarm(0)
+        return _invalid_analysis()
+
+
+def _analyze_with_rdkit(
+    atoms: Atoms,
+    timeout: int,
+    remove_hs: bool,
+) -> Dict[str, Any]:
+    """
+    Check if an ASE Atoms object is chemically valid and compute ring statistics.
+
     This function replicates the logic from the GetSmiles transform used in the
     check_validity.py script.
 
@@ -120,15 +167,9 @@ def analyze_with_rdkit(
           remove_hs (empty lists if invalid)
     """
 
-    class TimeoutException(Exception):
-        pass
-
-    def handler(signum, frame):
-        raise TimeoutException()
-
     # Set up timeout if specified
     if timeout > 0:
-        old_handler = signal.signal(signal.SIGALRM, handler)
+        old_handler = signal.signal(signal.SIGALRM, _raise_timeout)
         signal.alarm(timeout)
 
     # analyze molecule
@@ -203,15 +244,8 @@ def analyze_with_rdkit(
         }
 
     except Exception:
-        # Any other exception, return invalid
-        return {
-            "rdkit_valid": False,
-            "ring_counts": np.array([np.nan, np.nan, np.nan, np.nan]),
-            "smiles": "",
-            "canonical_smiles": "",
-            "elongation": np.nan,
-            "bonds": _no_bonds(),
-        }
+        # Any other exception (the timeout among them), return invalid
+        return _invalid_analysis()
 
     finally:
         # Clean up timeout
@@ -237,12 +271,50 @@ def _posebusters_config() -> Dict[str, Any]:
     return PoseBusters(config="mol").config
 
 
-def get_posebusters_validity(atoms: Atoms) -> bool:
+def get_posebusters_validity(atoms: Atoms, timeout: float = 0) -> bool:
     """Run the PoseBusters "mol" checks on a single ASE Atoms object.
 
     Returns True only if the geometry converts to an RDKit mol and all
     PoseBusters checks pass.
+
+    Args:
+        atoms: ASE Atoms object to check
+        timeout: seconds one check may take, 0 for no limit. A check over the
+            limit counts as invalid, as an RDKit timeout does. PoseBusters has
+            no limit of its own and a few generated structures keep it busy for
+            hours inside RDKit's C++ code, where the SIGALRM of
+            analyze_with_rdkit never arrives, so the check runs in a forked
+            child that is killed when its time is up.
     """
+    if timeout <= 0:
+        return _posebusters_validity(atoms)
+
+    receiver, sender = _FORK.Pipe(duplex=False)
+    child = _FORK.Process(target=_posebusters_child, args=(atoms, sender), daemon=True)
+    child.start()
+    sender.close()
+    try:
+        if not receiver.poll(timeout):
+            child.kill()
+            return False
+        return bool(receiver.recv())
+    except EOFError:  # the child died without an answer
+        return False
+    finally:
+        receiver.close()
+        child.join()
+
+
+def _posebusters_child(atoms: Atoms, sender) -> None:
+    try:
+        sender.send(_posebusters_validity(atoms))
+    except Exception:
+        sender.send(False)
+    finally:
+        sender.close()
+
+
+def _posebusters_validity(atoms: Atoms) -> bool:
     try:
         with BlockLogs():
             tmp = StringIO()
