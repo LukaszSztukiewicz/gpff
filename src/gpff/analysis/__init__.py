@@ -4,6 +4,11 @@ from .structure import (
     get_posebusters_validity,
     get_rdkit_validity,
 )
+from .relaxation import (
+    get_bond_lengths,
+    mol_from_atoms,
+    relax_with_uff,
+)
 from .collection import (
     calculate_js_divergence,
     calculate_mean_tanimoto_similarity,
@@ -18,6 +23,9 @@ __all__ = [
     "check_novelty",
     "check_uniqueness",
     "compute_elongation",
+    "get_bond_lengths",
     "get_posebusters_validity",
     "get_rdkit_validity",
+    "mol_from_atoms",
+    "relax_with_uff",
 ]
