@@ -8,13 +8,16 @@ import numpy as np
 from rdkit import Chem, DataStructs
 from rdkit.Chem import rdFingerprintGenerator
 from scipy.spatial.distance import jensenshannon
+from scipy.stats import wasserstein_distance
 from tqdm import tqdm
 
 __all__ = [
+    "calculate_bond_length_w1",
     "calculate_js_divergence",
     "calculate_mean_tanimoto_similarity",
     "check_novelty",
     "check_uniqueness",
+    "collect_bonds",
 ]
 
 
@@ -94,3 +97,119 @@ def calculate_js_divergence(
 
     js_distance = jensenshannon(p, q, base=2)
     return float(js_distance**2)
+
+
+def collect_bonds(per_molecule_bonds: list[dict]) -> dict[str, np.ndarray]:
+    """Stack the describe_bonds lists of many molecules into one bond table.
+
+    The table is a dict of equally long arrays, one entry per bond: molecule
+    (the molecule's position in the input list), bond_type, environment and
+    length. Invalid molecules contribute no bonds.
+    """
+    counts = [len(bonds["length"]) for bonds in per_molecule_bonds]
+    return {
+        "molecule": np.repeat(np.arange(len(per_molecule_bonds)), counts),
+        "bond_type": np.array(
+            [label for bonds in per_molecule_bonds for label in bonds["bond_type"]], dtype=str
+        ),
+        "environment": np.array(
+            [label for bonds in per_molecule_bonds for label in bonds["environment"]], dtype=str
+        ),
+        "length": np.array(
+            [length for bonds in per_molecule_bonds for length in bonds["length"]], dtype=float
+        ),
+    }
+
+
+def _group_lengths(table: dict, by: str) -> dict[str, np.ndarray]:
+    """The bond lengths of a bond table, grouped by one of its label columns."""
+    labels = np.asarray(table[by])
+    lengths = np.asarray(table["length"], dtype=float)
+    order = np.argsort(labels, kind="stable")
+    unique, starts = np.unique(labels[order], return_index=True)
+    return dict(zip(unique.tolist(), np.split(lengths[order], starts[1:])))
+
+
+def _iqr(values: np.ndarray) -> float:
+    upper, lower = np.percentile(values, [75, 25])
+    return float(upper - lower)
+
+
+def calculate_bond_length_w1(
+    reference: dict,
+    observed: dict,
+    by: str = "environment",
+    min_count: int = 20,
+) -> dict:
+    """1-D Wasserstein distance of the bond lengths to a reference, per bond label.
+
+    A bond is only compared with the reference bonds of its own label (by
+    "environment" by default, or "bond_type"), so the lengths of one label
+    cannot stand in for those of another. The labels with at least `min_count`
+    bonds on both sides are averaged, weighted by their share of the reference
+    bonds: how often the observed set uses each label does not enter, so a
+    different mix of molecules alone does not raise the distance.
+
+    Args:
+        reference: bond table of the reference set (see collect_bonds)
+        observed: bond table of the set to compare
+        by: the label column to group by, "environment" or "bond_type"
+        min_count: fewest bonds a label needs on each side to be compared
+
+    Returns:
+        Dictionary with
+        - w1: the weighted mean distance in Angstroms (np.nan if no label is compared)
+        - reference_weight_compared: share of the reference bonds whose label was compared
+        - observed_fraction_compared: share of the observed bonds whose label was compared
+        - labels: per label, by reference count: n_reference, n_observed,
+          weight (share of the reference bonds), and, if compared, w1,
+          median_shift (observed minus reference, in Angstroms) and
+          spread_ratio (observed over reference interquartile range);
+          np.nan where not compared
+    """
+    reference_groups = _group_lengths(reference, by)
+    observed_groups = _group_lengths(observed, by)
+    n_reference_total = sum(len(lengths) for lengths in reference_groups.values())
+    n_observed_total = sum(len(lengths) for lengths in observed_groups.values())
+
+    rows = {}
+    for label in sorted(
+        reference_groups.keys() | observed_groups.keys(),
+        key=lambda label: (-len(reference_groups.get(label, ())), label),
+    ):
+        reference_lengths = reference_groups.get(label, np.empty(0))
+        observed_lengths = observed_groups.get(label, np.empty(0))
+        row = {
+            "n_reference": len(reference_lengths),
+            "n_observed": len(observed_lengths),
+            "weight": len(reference_lengths) / n_reference_total if n_reference_total else np.nan,
+            "w1": np.nan,
+            "median_shift": np.nan,
+            "spread_ratio": np.nan,
+        }
+        if min(len(reference_lengths), len(observed_lengths)) >= min_count:
+            reference_iqr = _iqr(reference_lengths)
+            row.update(
+                w1=float(wasserstein_distance(reference_lengths, observed_lengths)),
+                median_shift=float(np.median(observed_lengths) - np.median(reference_lengths)),
+                spread_ratio=_iqr(observed_lengths) / reference_iqr if reference_iqr > 0 else np.nan,
+            )
+        rows[label] = row
+
+    compared = [row for row in rows.values() if not np.isnan(row["w1"])]
+    n_reference_compared = sum(row["n_reference"] for row in compared)
+    n_observed_compared = sum(row["n_observed"] for row in compared)
+    return {
+        "w1": (
+            sum(row["n_reference"] * row["w1"] for row in compared) / n_reference_compared
+            if compared
+            else float("nan")
+        ),
+        "reference_weight_compared": (
+            n_reference_compared / n_reference_total if n_reference_total else float("nan")
+        ),
+        "observed_fraction_compared": (
+            n_observed_compared / n_observed_total if n_observed_total else float("nan")
+        ),
+        "labels": rows,
+    }

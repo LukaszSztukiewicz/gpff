@@ -15,10 +15,83 @@ from rdkit.rdBase import BlockLogs
 
 __all__ = [
     "analyze_with_rdkit",
+    "describe_bonds",
     "get_rdkit_validity",
     "compute_elongation",
     "get_posebusters_validity",
 ]
+
+# SMILES bond symbols, so a bond type reads like C-C, C=O or C:C
+_BOND_SYMBOLS = {
+    Chem.BondType.SINGLE: "-",
+    Chem.BondType.DOUBLE: "=",
+    Chem.BondType.TRIPLE: "#",
+    Chem.BondType.AROMATIC: ":",
+}
+_HYBRIDIZATIONS = {
+    Chem.HybridizationType.SP: "sp",
+    Chem.HybridizationType.SP2: "sp2",
+    Chem.HybridizationType.SP3: "sp3",
+}
+
+
+def _no_bonds() -> Dict[str, list]:
+    return {"bond_type": [], "environment": [], "length": []}
+
+
+def describe_bonds(mol: Chem.Mol) -> Dict[str, list]:
+    """The type, chemical environment and length of every bond of a sanitized mol.
+
+    The type is the two elements and the bond order, written like SMILES (C-C,
+    C=O, C:C, C-H). The environment adds the hybridization of both heavy atoms
+    and whether the bond sits in a 3- or 4-membered ring, e.g. C(sp2)-C(sp3) or
+    C(sp3)-C(sp3) r3. One bond type mixes environments whose lengths differ by
+    several hundredths of an Angstrom (a C-C single bond is ~1.53 A between two
+    sp3 carbons, ~1.46 A between two conjugated sp2 ones), while the lengths of
+    one environment gather around a single value. Both labels come from the
+    bond graph, never from the length. H is listed last, the other atoms by
+    atomic number, then hybridization.
+
+    Args:
+        mol: RDKit molecule with bonds, a conformer and perceived hybridization
+            (e.g. after DetermineBonds)
+
+    Returns:
+        Dictionary of three equally long lists: bond_type, environment and
+        length (in Angstroms), one entry per bond
+    """
+    positions = mol.GetConformer().GetPositions()
+    bonds = _no_bonds()
+    for bond in mol.GetBonds():
+        atoms = sorted(
+            (bond.GetBeginAtom(), bond.GetEndAtom()),
+            key=lambda atom: (
+                atom.GetAtomicNum() == 1,
+                atom.GetAtomicNum(),
+                _HYBRIDIZATIONS.get(atom.GetHybridization(), ""),
+            ),
+        )
+        symbol = _BOND_SYMBOLS.get(bond.GetBondType(), "~")
+        labels = []
+        for atom in atoms:
+            if atom.GetAtomicNum() == 1:
+                labels.append("H")
+            else:
+                hybridization = atom.GetHybridization()
+                name = _HYBRIDIZATIONS.get(hybridization, str(hybridization).lower())
+                labels.append(f"{atom.GetSymbol()}({name})")
+        environment = symbol.join(labels)
+        # small rings strain their bonds; the smallest ring decides
+        for ring_size in (3, 4):
+            if bond.IsInRingSize(ring_size):
+                environment += f" r{ring_size}"
+                break
+
+        i, j = (atom.GetIdx() for atom in atoms)
+        bonds["bond_type"].append(symbol.join(atom.GetSymbol() for atom in atoms))
+        bonds["environment"].append(environment)
+        bonds["length"].append(float(np.linalg.norm(positions[i] - positions[j])))
+    return bonds
 
 
 def analyze_with_rdkit(
@@ -43,6 +116,8 @@ def analyze_with_rdkit(
         - smiles: isomeric SMILES of the molecule, i.e. with stereochemistry
           (empty if invalid)
         - elongation: Maximum pairwise distance in Angstroms (np.nan if invalid)
+        - bonds: describe_bonds of the molecule with its hydrogens, also with
+          remove_hs (empty lists if invalid)
     """
 
     class TimeoutException(Exception):
@@ -74,6 +149,8 @@ def analyze_with_rdkit(
                 allowChargedFragments=False,
                 embedChiral=True,
             )
+            # before the hydrogens go, so the X-H bonds are described too
+            bonds = describe_bonds(mol)
             if remove_hs:
                 mol = Chem.RemoveHs(mol)
 
@@ -114,13 +191,15 @@ def analyze_with_rdkit(
             else:
                 ring_counts = np.array([np.nan, np.nan, np.nan, np.nan])
                 elongation = np.nan
+                bonds = _no_bonds()
 
         return {
             "rdkit_valid": valid,
             "ring_counts": ring_counts,
             "smiles": smiles,
             "canonical_smiles": canonical_smiles,
-            "elongation": elongation
+            "elongation": elongation,
+            "bonds": bonds,
         }
 
     except Exception:
@@ -130,7 +209,8 @@ def analyze_with_rdkit(
             "ring_counts": np.array([np.nan, np.nan, np.nan, np.nan]),
             "smiles": "",
             "canonical_smiles": "",
-            "elongation": np.nan
+            "elongation": np.nan,
+            "bonds": _no_bonds(),
         }
 
     finally:

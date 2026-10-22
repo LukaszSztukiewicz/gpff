@@ -139,6 +139,7 @@ gpff_calculate_metrics \
   --reference_energy_U0_path assets/qm9_energy_U0_values.npy \
   --reference_gap_path assets/qm9_gap_values.npy \
   --reference_elongation_path assets/qm9_elongation_values.npy \
+  --reference_bond_lengths_path assets/qm9_bond_lengths.npz \
   --reference_smiles_path assets/qm9_smiles_values.txt \
   --split_path /path/to/split.npz
 
@@ -147,6 +148,14 @@ gpff_prepare_metadata --samples_db_path samples.db \
   --targets rdkit_valid posebusters_valid smiles
 gpff_calculate_metrics --samples_db_path samples.db \
   --metrics rdkit_validity posebusters_validity uniqueness mean_tanimoto_similarity
+
+# Bond lengths, each bond against the reference bonds of its own chemical
+# environment (e.g. C(sp2)-C(sp3)); the reference bond table is built once with
+# gpff_reference_assets --targets bond_lengths. Also writes the per-environment
+# breakdown to evaluation/bond_length_w1.json:
+gpff_prepare_metadata --samples_db_path samples.db --targets rdkit_valid bond_lengths
+gpff_calculate_metrics --samples_db_path samples.db --metrics bond_length_w1 \
+  --reference_bond_lengths_path assets/qm9_bond_lengths.npz
 ```
 
 ## Citation
