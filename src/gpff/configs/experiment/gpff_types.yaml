@@ -2,8 +2,9 @@
 # GPFF that also generates the atom types. The scaled one-hot types h get the
 # same Gaussian noise as the positions, the pseudo-energy becomes
 # E = |x_t - x_0|^2 + |h_t - h_0|^2, and the model reads h_t instead of the
-# atomic numbers and predicts a second force 2(h_0 - h_t) on the types, through
-# its prediction of the clean types h_0. Same as experiment=gpff otherwise.
+# atomic numbers. The force on the types, 2(h_0 - h_t), is known up to h_0, so
+# the model predicts the clean types h_0 and the samplers derive the force.
+# Same as experiment=gpff otherwise.
 defaults:
   - gpff
   - _self_
@@ -52,12 +53,14 @@ model:
       n_hidden: null
       n_layers: 3
       output_key: ${key:forces}
-    - _target_: gpff.model.heads.TypeForces
+    - _target_: schnetpack.atomistic.Atomwise
       n_in: ${globals.n_atom_basis}
       n_out: ${globals.n_types}
       n_hidden: null
       n_layers: 3
-      output_key: ${key:type_forces}
+      aggregation_mode: null
+      output_key: ${key:h_0}
+      per_atom_output_key: ${key:h_0}
 
 task:
   outputs:
@@ -73,15 +76,16 @@ task:
       scale_loss: ${globals.scale_loss}
       weights_key: ${globals.weights_key}
       warmup_steps: 0
+    # 4 |h_0' - h_0|^2 is the loss on the type force, |2(h_0' - h_t) - 2(h_0 - h_t)|^2
     - _target_: gpff.task.ModelOutput
-      name: ${key:type_forces}
+      name: ${key:h_0}
       metrics:
         mae:
           _target_: torchmetrics.regression.MeanAbsoluteError
         mse:
           _target_: torchmetrics.regression.MeanSquaredError
           squared: True
-      loss_weight: 1.
+      loss_weight: 4.
       scale_loss: ${globals.scale_loss}
       weights_key: ${globals.weights_key}
       warmup_steps: 0

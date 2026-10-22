@@ -187,7 +187,11 @@ class Calculator:
                 results[keys.score] = predicted_forces / (2*sigma_t**2)
             if x0:
                 results[keys.x_0] = batch[properties.R] + predicted_forces / 2
-                if keys.type_forces in predictions:
+                # clean types: predicted directly, or from the type force of
+                # models trained before (runs loving-leech, up-panda)
+                if keys.h_0 in predictions:
+                    results[keys.h_0] = predictions[keys.h_0].detach()
+                elif keys.type_forces in predictions:
                     results[keys.h_0] = batch[keys.h] + predictions[keys.type_forces].detach() / 2
 
         # update number of function evaluations

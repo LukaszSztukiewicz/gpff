@@ -463,6 +463,9 @@ class TypeForces(nn.Module):
     Invariant head for the force 2(h_0 - h_t) on noisy one-hot atom types.
     It predicts the clean types h_0 per atom and subtracts the input h_t
     exactly, so the network never has to reproduce h_t, which grows with sigma.
+
+    Superseded by predicting h_0 directly (experiment=gpff_types), which trains
+    the same model; kept so that models of run up-panda load.
     """
 
     def __init__(

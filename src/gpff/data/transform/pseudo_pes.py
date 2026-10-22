@@ -123,14 +123,15 @@ class PseudoPESTransform(trn.Transform):
             }
         )
 
-        # E = |x_t - x_0|² + |h_t - h_0|², with a second force on the types
+        # E = |x_t - x_0|² + |h_t - h_0|². The force on the types, 2(h_0 - h_t),
+        # is known up to h_0, so the clean types are the label
         if self.atom_types is not None:
             energy = energy + self.energy_function.get_energy(x_0=h_0, x_t=h_t)
             inputs.update(
                 {
                     keys.energy: energy,
                     keys.h: h_t,
-                    keys.type_forces: self.energy_function.get_forces_analytic(x_0=h_0, x_t=h_t),
+                    keys.h_0: h_0,
                 }
             )
 
