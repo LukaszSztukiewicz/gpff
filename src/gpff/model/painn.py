@@ -10,7 +10,26 @@ import schnetpack.nn as snn
 from schnetpack.representation.painn import PaiNNInteraction, PaiNNMixing
 
 
-__all__ = ["PaiNN"]
+__all__ = ["PaiNN", "VectorRMSNorm"]
+
+
+class VectorRMSNorm(nn.Module):
+    r"""Rotation-equivariant RMS normalization of vector features (n_atoms, 3, n_channels):
+    :math:`\mu / \sqrt{\mathrm{mean}_c \lVert\mu_c\rVert^2 + \epsilon}` with a per-channel gain.
+
+    With :math:`\epsilon = 1` (in squared feature units, like ``norm_epsilon`` of the
+    directions) it is a soft normalization: about the identity for small features, so
+    near-zero vectors (e.g. by symmetry) are not blown up, and bounded for large ones.
+    """
+
+    def __init__(self, n_channels: int, epsilon: float = 1.0):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(n_channels))
+        self.epsilon = epsilon
+
+    def forward(self, mu: torch.Tensor) -> torch.Tensor:
+        ms = mu.pow(2).sum(dim=-2, keepdim=True).mean(dim=-1, keepdim=True)
+        return mu * torch.rsqrt(ms + self.epsilon) * self.weight
 
 # weak references to the (idx_i, idx_j) of the last call, and its _upper_pairs
 _upper_pairs_cache = (lambda: None, lambda: None, None)
@@ -86,6 +105,9 @@ class PaiNN(nn.Module):
 
     """
 
+    # class-level default, so models pickled before the option existed still load
+    prenorm: bool = False
+
     def __init__(
         self,
         n_atom_basis: int,
@@ -100,6 +122,7 @@ class PaiNN(nn.Module):
         norm_epsilon: float = 1,
         nuclear_embedding: Optional[nn.Module] = None,
         electronic_embeddings: Optional[List] = None,
+        prenorm: bool = False,
     ):
         """
         Args:
@@ -117,6 +140,13 @@ class PaiNN(nn.Module):
             nuclear_embedding: custom nuclear embedding (e.g. spk.nn.embeddings.NuclearEmbedding)
             electronic_embeddings: list of electronic embeddings. E.g. for spin and
                 charge (see spk.nn.embeddings.ElectronicEmbedding)
+            prenorm: if True, every interaction and mixing block reads LayerNorm'ed
+                scalars and VectorRMSNorm'ed vectors and adds its update to the
+                unnormalized features, and the output features are normalized too.
+                PaiNN's blocks multiply features with each other, so without it a
+                feature excursion compounds over the blocks into an unbounded output;
+                with it every update is bounded and the features grow at most
+                linearly with depth.
         """
         super(PaiNN, self).__init__()
 
@@ -168,6 +198,22 @@ class PaiNN(nn.Module):
             self.n_interactions,
             shared_interactions,
         )
+
+        # one norm per block input (interaction, mixing) and one for the output
+        self.prenorm = prenorm
+        if prenorm:
+            n_norms = 2 * self.n_interactions + 1
+            self.scalar_norms = nn.ModuleList(nn.LayerNorm(n_atom_basis) for _ in range(n_norms))
+            self.vector_norms = nn.ModuleList(VectorRMSNorm(n_atom_basis) for _ in range(n_norms))
+
+    def _block(self, block: nn.Module, k: int, q: torch.Tensor, mu: torch.Tensor, *args):
+        if not self.prenorm:
+            return block(q, mu, *args)
+        # schnetpack's blocks return their input plus the update; add the update to
+        # the unnormalized features
+        q_in, mu_in = self.scalar_norms[k](q), self.vector_norms[k](mu)
+        q_out, mu_out = block(q_in, mu_in, *args)
+        return q + (q_out - q_in), mu + (mu_out - mu_in)
 
     def forward(self, inputs: Dict[str, torch.Tensor]):
         """
@@ -230,8 +276,10 @@ class PaiNN(nn.Module):
         qs = q.shape
         mu = torch.zeros((qs[0], 3, qs[2]), device=q.device)
         for i, (interaction, mixing) in enumerate(zip(self.interactions, self.mixing)):
-            q, mu = _interaction(interaction, q, mu, filter_list[i], dir_ij, idx_i, idx_j, n_atoms)
-            q, mu = mixing(q, mu)
+            q, mu = self._block(interaction, 2 * i, q, mu, filter_list[i], dir_ij, idx_i, idx_j, n_atoms)
+            q, mu = self._block(mixing, 2 * i + 1, q, mu)
+        if self.prenorm:
+            q, mu = self.scalar_norms[-1](q), self.vector_norms[-1](mu)
         q = q.squeeze(1)
 
         # collect results
