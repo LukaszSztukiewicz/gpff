@@ -67,7 +67,9 @@ sampler's calculator, so those overrides are addressed as
 ```bash
 gpff_train experiment=gpff data=qm9_valid trainer.max_epochs=300
 
-# Runs are seeded from `seed` (default 999); vary it to repeat an experiment:
+# Runs are seeded from `seed` (default 999); vary it to repeat an experiment.
+# The split stays the same: only data.splitting.seed (default 999, the split
+# of the paper's baseline) changes it.
 gpff_train -m experiment=gpff seed=0,1,2
 
 # Resume an interrupted run from its last checkpoint by passing its id and path:
