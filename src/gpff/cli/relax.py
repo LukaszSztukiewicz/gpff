@@ -23,6 +23,13 @@ the structure before against after) measures the geometry a model got wrong
 rather than the molecule it chose. Run gpff_prepare_metadata and
 gpff_calculate_metrics on both databases to compare them.
 
+Relax the reference molecules too, with the same method, and score the relaxed
+samples against that relaxed reference. Every method has a bias of its own: UFF
+moves real QM9 geometries about 40 mA, so relaxed samples scored against the
+raw reference all land near that distance from it, whatever they looked like
+before. Against a reference the same method relaxed, only what the relaxation
+could not fix is left.
+
 Methods:
     uff   RDKit's UFF on the bonds perceived from the geometry; never changes
           the bond graph, needs no extra software, and is the cheapest

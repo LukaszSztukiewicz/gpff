@@ -168,6 +168,9 @@ gpff_calculate_metrics --samples_db_path samples.db --metrics bond_angle_w1 \
 # to the molecule it chose: relax the samples (uff, xtb or a MACE model on the
 # GPU) and compare the two databases with the same metrics. mean_strain is the
 # energy the relaxation released:
+# (relax the reference molecules the same way and build the reference tables
+# from those: every method pulls structures toward its own minima, UFF by some
+# 40 mA even for real QM9 geometries)
 gpff_relax --samples_db_path samples.db --output_db_path relaxed.db --method uff
 # or, with mace-torch installed (pip install -e .[mace]), many molecules at a
 # time on the GPU, which is the fastest and the most accurate of the three:
