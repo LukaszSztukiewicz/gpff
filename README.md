@@ -163,6 +163,15 @@ gpff_calculate_metrics --samples_db_path samples.db --metrics bond_length_w1 \
 gpff_prepare_metadata --samples_db_path samples.db --targets rdkit_valid bond_angles
 gpff_calculate_metrics --samples_db_path samples.db --metrics bond_angle_w1 \
   --reference_bond_angles_path assets/qm9_bond_angles.npz
+
+# What a relaxation has to move is the geometry the model got wrong, as opposed
+# to the molecule it chose: relax the samples (uff, xtb or a MACE model on the
+# GPU) and compare the two databases with the same metrics. mean_strain is the
+# energy the relaxation released:
+gpff_relax --samples_db_path samples.db --output_db_path relaxed.db --method uff
+gpff_prepare_metadata --samples_db_path relaxed.db --targets rdkit_valid strain bond_lengths
+gpff_calculate_metrics --samples_db_path relaxed.db --metrics mean_strain bond_length_w1 \
+  --reference_bond_lengths_path assets/qm9_bond_lengths.npz
 ```
 
 ## Citation

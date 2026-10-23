@@ -12,6 +12,8 @@ come from an RDKit pass and a slower PoseBusters pass; the property arrays are
 predicted and need their models:
 
     rdkit_valid, ring_counts, elongation, nfe, smiles   (RDKit pass)
+    strain     the energy a relaxation released, read from the row data that
+               gpff_relax writes (nan for a database it did not relax)
     bond_lengths  one row per bond of the valid molecules (RDKit pass): its
                   molecule, bond_type, environment and length
     bond_angles   one row per bond angle of the valid molecules (RDKit pass):
@@ -66,7 +68,9 @@ from gpff.analysis import (
 # separate and much slower. The property arrays are predicted, one model each.
 # TABLE_KEYS hold one row per bond or angle rather than per sample.
 TABLE_KEYS = ("bond_lengths", "bond_angles")
-RDKIT_KEYS = ("rdkit_valid", "ring_counts", "elongation", "nfe", "smiles", *TABLE_KEYS)
+RDKIT_KEYS = (
+    "rdkit_valid", "ring_counts", "elongation", "nfe", "smiles", "strain", *TABLE_KEYS
+)
 POSEBUSTERS_KEYS = ("posebusters_valid",)
 PROPERTY_KEYS = ("gap", "energy_U0")
 # every array, in a stable order; smiles is the only text one
@@ -191,6 +195,7 @@ def _analyze_structures(
             if run_rdkit:
                 result.update(analyze_with_rdkit(atoms, timeout=timeout))
                 result["nfe"] = atoms_row.data.get(keys_module.nfe, 0)
+                result["strain"] = atoms_row.data.get("strain", np.nan)
             if run_posebusters:
                 result["posebusters_valid"] = get_posebusters_validity(
                     atoms, timeout=posebusters_timeout
@@ -211,7 +216,7 @@ def compute_structure_arrays(
 ) -> dict:
     """Walk the database and return the per-structure arrays of the passes that run.
 
-    run_rdkit yields rdkit_valid, ring_counts, elongation, nfe, smiles,
+    run_rdkit yields rdkit_valid, ring_counts, elongation, nfe, smiles, strain,
     bond_lengths and bond_angles in one walk; run_posebusters yields posebusters_valid from a
     separate, slower one.
     With n_workers > 1 the molecules are split into chunks analysed by a pool of
@@ -265,6 +270,7 @@ def compute_structure_arrays(
             ring_counts=np.array([r["ring_counts"] for r in results], dtype=float).reshape(-1, 4),
             elongation=np.array([r["elongation"] for r in results], dtype=float),
             nfe=np.array([r["nfe"] for r in results], dtype=float),
+            strain=np.array([r["strain"] for r in results], dtype=float),
             smiles=[r["smiles"] for r in results],
             bond_lengths=collect_bonds([r["bonds"] for r in results]),
             bond_angles=collect_angles([r["angles"] for r in results]),

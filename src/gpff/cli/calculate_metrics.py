@@ -18,6 +18,9 @@ this time are kept):
     mean_tanimoto_similarity   mean pairwise fingerprint similarity (stereo-blind)
     js_divergence_energy_U0 / _gap / _elongation
                             distance to the reference distribution
+    mean_strain             mean energy a relaxation released, over the valid
+                            molecules (kcal/mol; needs a database relaxed by
+                            gpff_relax, which writes the strain of every row)
     bond_angle_w1           the same for the bond angles, in degrees, each
                             angle against the reference angles of its own
                             environment (see --reference_bond_angles_path)
@@ -88,6 +91,7 @@ METRICS = (
     "js_divergence_elongation",
     "bond_length_w1",
     "bond_angle_w1",
+    "mean_strain",
 )
 
 # the metrics comparing a table of measurements (one row per bond or angle) with
@@ -297,6 +301,11 @@ def compute_metrics(
             continue
 
         valid = arrays["rdkit_valid"]
+        if name == "mean_strain":
+            strain = arrays["strain"][valid]
+            results[name] = float(np.nanmean(strain)) if strain.size else float("nan")
+            continue
+
         prop = js_divergence_property(name)
         if prop is not None:
             observed = arrays[prop][valid]
