@@ -6,6 +6,11 @@ from .structure import (
     get_posebusters_validity,
     get_rdkit_validity,
 )
+from .relaxation import (
+    mol_from_atoms,
+    relax_with_uff,
+    relax_with_xtb,
+)
 from .collection import (
     calculate_angle_w1,
     calculate_bond_length_w1,
@@ -32,4 +37,7 @@ __all__ = [
     "describe_bonds",
     "get_posebusters_validity",
     "get_rdkit_validity",
+    "mol_from_atoms",
+    "relax_with_uff",
+    "relax_with_xtb",
 ]
