@@ -120,3 +120,12 @@ def test_options_default_off_and_old_pickles_still_load():
     del model.representation.prenorm
     del model.output_modules[0].bounded
     torch.testing.assert_close(_forces(model, positions, numbers), forces)
+
+
+def test_bounded_models_pickled_before_the_radius_term_still_load():
+    model = _model(prenorm=True, bounded=True)
+    positions, numbers = _molecules()
+    forces = _forces(model, positions, numbers)
+    # the radius weight starts at 0, so a model without it predicts the same at init
+    del model.output_modules[0].skip_logit_radius_weight
+    torch.testing.assert_close(_forces(model, positions, numbers), forces)
