@@ -16,7 +16,9 @@ globals:
   # growth control: normalized PaiNN blocks and forces bounded like their target
   prenorm: false
   bounded_forces: false
-  x0_radius: 10.0  # >= the radius of a clean molecule (QM9: 7.4 A)
+  # bound on the network's share of the force: the radius of a clean molecule
+  # (QM9: 7.4 A) plus what the skip term leaves at intermediate sigma, ~2x
+  x0_radius: 15.0
 
   # Transform alignment
   align_permutation: true

@@ -34,7 +34,7 @@ class GatedEquivariant(nn.Module):
         time_key: Optional[str] = None,
         detach_time_head: bool = False,
         bounded: bool = False,
-        x0_radius: float = 10.0,
+        x0_radius: float = 15.0,
     ):
         """
         Args:
@@ -57,10 +57,13 @@ class GatedEquivariant(nn.Module):
                 2 (E[x_0 | x_t] - x_t), whose norm is at most 2 (r_i + R) for atoms at
                 distance r_i from the centroid and molecules of radius R:
                 F_i = -2 alpha (x_i - x_mean) + v_i / sqrt(1 + |v_i|^2 / (2 x0_radius)^2),
-                with alpha in (0, 1) per molecule from the pooled scalar output and v
-                the vector output. The skip term carries the forces that grow with the
-                noise level, the network's term is softly clamped to 2 x0_radius.
-            x0_radius: bound on the radius of a denoised molecule (QM9: 7.4 A).
+                with alpha in (0, 1) per molecule from the pooled scalar output and the
+                molecule's log mean square radius, and v the vector output. The skip
+                term carries the forces that grow with the noise level, the network's
+                term is softly clamped to 2 x0_radius.
+            x0_radius: bound on |E[x_0 | x_t]_i - (1 - alpha) (x_i - x_mean)|, the
+                network's share of the force: the radius of a denoised molecule (QM9:
+                7.4 A) plus what the skip term leaves at intermediate noise levels.
         """
 
         super().__init__()
@@ -84,6 +87,7 @@ class GatedEquivariant(nn.Module):
             self.x0_radius = x0_radius
             # starts as the plain head (alpha ~ 0.02)
             self.skip_logit_bias = nn.Parameter(torch.tensor(-4.0))
+            self.skip_logit_radius_weight = nn.Parameter(torch.tensor(0.0))
 
         # todo: add time as input scalar feature
         # self.include_time = include_time
@@ -144,10 +148,18 @@ class GatedEquivariant(nn.Module):
         pos = inputs[properties.R]
         count = n_atoms.unsqueeze(-1).to(pos.dtype)
         centroid = snn.scatter_add(pos, idx_m, dim_size=n_atoms.shape[0]) / count
+        x = pos - centroid[idx_m]
         logit = snn.scatter_add(s, idx_m, dim_size=n_atoms.shape[0]) / count
+        # the mean square radius is about 3 (sigma_data^2 + sigma^2), so it gives alpha the
+        # noise level at large sigma directly (James-Stein); models pickled before the
+        # radius term have no weight for it
+        radius_weight = getattr(self, "skip_logit_radius_weight", None)
+        if radius_weight is not None:
+            ms = snn.scatter_add(x.pow(2).sum(-1, keepdim=True), idx_m, dim_size=n_atoms.shape[0]) / count
+            logit = logit + radius_weight * torch.log1p(ms)
         alpha = torch.sigmoid(logit + self.skip_logit_bias)[idx_m]
         v = v * torch.rsqrt(1 + v.pow(2).sum(-1, keepdim=True) / (2 * self.x0_radius) ** 2)
-        return -2 * alpha * (pos - centroid[idx_m]) + v
+        return -2 * alpha * x + v
 
 
 class TimeConditionedGatedEquivariant(nn.Module):
