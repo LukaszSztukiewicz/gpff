@@ -1,3 +1,6 @@
+import importlib.util
+import os
+
 import numpy as np
 import pytest
 from ase import Atoms
@@ -92,3 +95,33 @@ def test_strain_is_nan_for_a_database_nobody_relaxed(tmp_path):
     arrays = compute_structure_arrays(str(samples), run_rdkit=True, run_posebusters=False)
 
     assert np.isnan(arrays["strain"]).all()
+
+
+needs_mace = pytest.mark.skipif(
+    importlib.util.find_spec("mace") is None, reason="mace-torch is not installed"
+)
+
+
+@needs_mace
+def test_relax_with_mace_relaxes_a_batch(tmp_path):
+    """The MACE path end to end; needs mace-torch and a model in GPFF_MACE_MODEL."""
+    model_path = os.environ.get("GPFF_MACE_MODEL")
+    if not model_path:
+        pytest.skip("set GPFF_MACE_MODEL to a MACE model to run this")
+    samples = tmp_path / "samples.db"
+    with connect(samples) as db:
+        db.write(stretched_ethanol())
+        db.write(molecule("CH3CH2OH"))
+    relaxed = tmp_path / "relaxed.db"
+
+    counts = relax_database(
+        samples, relaxed, method="mace", mace_model_path=model_path, verbose=False
+    )
+
+    assert counts["relaxed"] == 2
+    with connect(relaxed) as db:
+        rows = list(db.select())
+    # the stretched bond is pulled back and releases more energy than the relaxed one
+    assert rows[0].toatoms().get_distance(1, 2) < stretched_ethanol().get_distance(1, 2)
+    assert rows[0].data["strain"] > rows[1].data["strain"]
+    assert all(row.data["steps"] > 0 for row in rows)

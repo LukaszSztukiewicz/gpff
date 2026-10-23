@@ -7,6 +7,7 @@ row data and key-value pairs kept, plus
 
     energy_before, energy_after  the method's energies in kcal/mol (nan if the
                                  structure could not be relaxed)
+    steps                        minimizer steps taken (method mace only)
     strain                       energy_before - energy_after, the energy the
                                  relaxation released
     relaxed, converged           whether the method ran, and whether it
@@ -27,6 +28,8 @@ Methods:
           the bond graph, needs no extra software, and is the cheapest
     xtb   GFN2-xTB, by running the xtb program (--xtb_command, XTBPATH); takes
           no bonds, so they can form and break
+    mace  a MACE model, many molecules at once on the GPU (--mace_model_path);
+          by far the fastest per structure and the most accurate of the three
 """
 from __future__ import annotations
 
@@ -41,7 +44,7 @@ from tqdm import tqdm
 import gpff  # noqa: F401
 from gpff.analysis import relax_with_uff, relax_with_xtb
 
-METHODS = ("uff", "xtb")
+METHODS = ("uff", "xtb", "mace")
 
 
 def _relax_one(atoms, method: str, xtb_command: str) -> dict:
@@ -57,13 +60,17 @@ def relax_database(
     output_db_path: str | Path,
     method: str = "uff",
     xtb_command: str = "xtb",
+    mace_model_path: str | Path | None = None,
+    batch_size: int = 256,
     n_workers: int = 1,
     verbose: bool = True,
 ) -> dict:
     """Relax every row of a database into a new one; returns the run's counts.
 
-    One structure per task, in a pool of n_workers processes or in this process
-    when n_workers is 1. The output database is overwritten.
+    uff and xtb relax one structure per task in a pool of n_workers processes,
+    or in this process when n_workers is 1; mace relaxes batch_size molecules at
+    a time on the GPU, so n_workers does not apply to it. The output database is
+    overwritten.
     """
     output_db_path = Path(output_db_path)
     if output_db_path.exists():
@@ -76,23 +83,32 @@ def relax_database(
         metadata = source.metadata
     structures = [atoms for atoms, _, _ in rows]
 
-    results = [None] * len(structures)
-    with tqdm(
-        total=len(structures), desc=f"Relaxing with {method}", disable=not verbose
-    ) as progress:
-        if n_workers <= 1:
-            for i, atoms in enumerate(structures):
-                results[i] = _relax_one(atoms, method, xtb_command)
-                progress.update(1)
-        else:
-            with ProcessPoolExecutor(max_workers=n_workers) as pool:
-                futures = {
-                    pool.submit(_relax_one, atoms, method, xtb_command): i
-                    for i, atoms in enumerate(structures)
-                }
-                for future in as_completed(futures):
-                    results[futures[future]] = future.result()
+    if method == "mace":
+        if mace_model_path is None:
+            raise ValueError("method mace needs mace_model_path")
+        from gpff.analysis.mace_relaxation import relax_with_mace
+
+        results = relax_with_mace(
+            structures, mace_model_path, batch_size=batch_size, progress=verbose
+        )
+    else:
+        results = [None] * len(structures)
+        with tqdm(
+            total=len(structures), desc=f"Relaxing with {method}", disable=not verbose
+        ) as progress:
+            if n_workers <= 1:
+                for i, atoms in enumerate(structures):
+                    results[i] = _relax_one(atoms, method, xtb_command)
                     progress.update(1)
+            else:
+                with ProcessPoolExecutor(max_workers=n_workers) as pool:
+                    futures = {
+                        pool.submit(_relax_one, atoms, method, xtb_command): i
+                        for i, atoms in enumerate(structures)
+                    }
+                    for future in as_completed(futures):
+                        results[futures[future]] = future.result()
+                        progress.update(1)
 
     counts = {"n_structures": len(rows), "relaxed": 0, "converged": 0}
     with connect(output_db_path) as target:
@@ -108,6 +124,8 @@ def relax_database(
                     "strain": result["energy_before"] - result["energy_after"],
                     "relaxed": bool(result["relaxed"]),
                     "converged": bool(result["converged"]),
+                    # only the batched minimizer counts its steps
+                    **({"steps": result["steps"]} if "steps" in result else {}),
                 },
                 **key_value_pairs,
             )
@@ -123,8 +141,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output_db_path", type=Path, required=True)
     parser.add_argument("--method", choices=METHODS, default="uff")
     parser.add_argument("--xtb_command", default="xtb", help="xtb: the executable to run.")
+    parser.add_argument("--mace_model_path", type=Path, default=None,
+                        help="mace: the model to relax with.")
+    parser.add_argument("--batch_size", type=int, default=256,
+                        help="mace: molecules relaxed at once on the GPU.")
     parser.add_argument("--n_workers", type=int, default=4,
-                        help="Processes relaxing structures in parallel.")
+                        help="uff and xtb: processes relaxing structures in parallel.")
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
 
@@ -134,6 +156,10 @@ def main() -> int:
     if not args.samples_db_path.exists():
         print(f"ERROR: --samples_db_path not found: {args.samples_db_path}", file=sys.stderr)
         return 1
+    if args.method == "mace" and args.mace_model_path is None:
+        print("ERROR: --method mace needs --mace_model_path", file=sys.stderr)
+        return 1
+
     print(f"Relaxing     : {args.samples_db_path}")
     print(f"Method       : {args.method}")
     print(f"Output       : {args.output_db_path}")
@@ -142,6 +168,8 @@ def main() -> int:
         args.output_db_path,
         method=args.method,
         xtb_command=args.xtb_command,
+        mace_model_path=args.mace_model_path,
+        batch_size=args.batch_size,
         n_workers=args.n_workers,
         verbose=not args.quiet,
     )

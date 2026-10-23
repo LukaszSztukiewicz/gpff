@@ -45,6 +45,10 @@ dependencies = [
 notebook = [
     "jupyterlab",
 ]
+# gpff_relax --method mace; the models themselves are downloaded separately
+mace = [
+    "mace-torch",
+]
 
 [project.scripts]
 gpff_train = "gpff.cli.train:train"

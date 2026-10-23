@@ -169,6 +169,9 @@ gpff_calculate_metrics --samples_db_path samples.db --metrics bond_angle_w1 \
 # GPU) and compare the two databases with the same metrics. mean_strain is the
 # energy the relaxation released:
 gpff_relax --samples_db_path samples.db --output_db_path relaxed.db --method uff
+# or, with mace-torch installed (pip install -e .[mace]), many molecules at a
+# time on the GPU, which is the fastest and the most accurate of the three:
+# gpff_relax ... --method mace --mace_model_path MACE-OFF24_medium.model
 gpff_prepare_metadata --samples_db_path relaxed.db --targets rdkit_valid strain bond_lengths
 gpff_calculate_metrics --samples_db_path relaxed.db --metrics mean_strain bond_length_w1 \
   --reference_bond_lengths_path assets/qm9_bond_lengths.npz
