@@ -1,4 +1,4 @@
-# Re-seeds RNGs with (base_seed + epoch) each training epoch so that
+# Re-seeds RNGs with a hash of (base_seed, epoch) each training epoch so that
 # checkpoint-resumed training sees the same data as an uninterrupted run (the
 # same weights bit-for-bit too with trainer.deterministic=true).
 # Val/test noise is pinned per molecule with val_noise_seed (null: fresh noise).

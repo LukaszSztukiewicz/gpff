@@ -40,8 +40,6 @@ class DeterministicDataSeed(Callback):
     would otherwise carry over from the epochs before a resume.
     """
 
-    _MOD = 2 ** 32
-
     def __init__(
         self,
         base_seed: int,
@@ -89,7 +87,10 @@ class DeterministicDataSeed(Callback):
                 dataset.transforms = [_PinnedNoise(self._val_noise_seed, transforms)]
 
     def on_train_epoch_start(self, trainer, pl_module) -> None:
-        seed = (self._base_seed + int(trainer.current_epoch)) % self._MOD
+        # hashed, not base_seed + epoch, so that runs with nearby seeds do not
+        # see each other's shuffles one epoch apart
+        entropy = (self._base_seed, int(trainer.current_epoch))
+        seed = int(np.random.SeedSequence(entropy).generate_state(1)[0])
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
