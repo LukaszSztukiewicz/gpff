@@ -13,7 +13,11 @@ globals:
   n_atom_basis: 256
   n_interactions: 4
   n_rbf: ${mul:${globals.cutoff}, 4}
-  
+  # growth control: normalized PaiNN blocks and forces bounded like their target
+  prenorm: false
+  bounded_forces: false
+  x0_radius: 10.0  # >= the radius of a clean molecule (QM9: 7.4 A)
+
   # Transform alignment
   align_permutation: true
   align_rotation: false
@@ -42,12 +46,15 @@ model:
     n_interactions: ${globals.n_interactions}
     radial_basis:
       n_rbf: ${globals.n_rbf}
+    prenorm: ${globals.prenorm}
   output_modules:
     - _target_: gpff.model.heads.GatedEquivariant
       n_in: ${globals.n_atom_basis}
       n_hidden: null
       n_layers: 3
       output_key: ${key:forces}
+      bounded: ${globals.bounded_forces}
+      x0_radius: ${globals.x0_radius}
 
 data:
   transforms:

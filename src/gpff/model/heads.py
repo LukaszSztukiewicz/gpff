@@ -18,6 +18,9 @@ class GatedEquivariant(nn.Module):
     Equivariant head for pseudo force predictions without energy.
     """
 
+    # class-level default, so models pickled before the option existed still load
+    bounded: bool = False
+
     def __init__(
         self,
         n_in: int,
@@ -30,6 +33,8 @@ class GatedEquivariant(nn.Module):
         time_head: Optional[nn.Module] = None,
         time_key: Optional[str] = None,
         detach_time_head: bool = False,
+        bounded: bool = False,
+        x0_radius: float = 10.0,
     ):
         """
         Args:
@@ -48,6 +53,14 @@ class GatedEquivariant(nn.Module):
             time_head: time head to predict time.
             time_key: time key for input to the equivariant module.
             detach_time_head: detach time head from computational graph.
+            bounded: predict the forces in the growth class of their target
+                2 (E[x_0 | x_t] - x_t), whose norm is at most 2 (r_i + R) for atoms at
+                distance r_i from the centroid and molecules of radius R:
+                F_i = -2 alpha (x_i - x_mean) + v_i / sqrt(1 + |v_i|^2 / (2 x0_radius)^2),
+                with alpha in (0, 1) per molecule from the pooled scalar output and v
+                the vector output. The skip term carries the forces that grow with the
+                noise level, the network's term is softly clamped to 2 x0_radius.
+            x0_radius: bound on the radius of a denoised molecule (QM9: 7.4 A).
         """
 
         super().__init__()
@@ -63,6 +76,14 @@ class GatedEquivariant(nn.Module):
 
         self.output_key = output_key
         self.model_outputs = [self.output_key]
+
+        self.bounded = bounded
+        if bounded:
+            if n_out != 1:
+                raise ValueError("bounded forces need n_out=1")
+            self.x0_radius = x0_radius
+            # starts as the plain head (alpha ~ 0.02)
+            self.skip_logit_bias = nn.Parameter(torch.tensor(-4.0))
 
         # todo: add time as input scalar feature
         # self.include_time = include_time
@@ -109,11 +130,24 @@ class GatedEquivariant(nn.Module):
         #    l0 = torch.cat((l0, t), dim=-1)
 
         # predict equivariant output
-        _, x = self.outnet((l0, l1))
+        s, x = self.outnet((l0, l1))
         x = torch.squeeze(x, -1)
+        if self.bounded:
+            x = self._bounded_forces(inputs, s, x)
         inputs[self.output_key] = x
 
         return inputs
+
+    def _bounded_forces(self, inputs: Dict[str, torch.Tensor], s: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+        idx_m = inputs[properties.idx_m]
+        n_atoms = inputs[properties.n_atoms]
+        pos = inputs[properties.R]
+        count = n_atoms.unsqueeze(-1).to(pos.dtype)
+        centroid = snn.scatter_add(pos, idx_m, dim_size=n_atoms.shape[0]) / count
+        logit = snn.scatter_add(s, idx_m, dim_size=n_atoms.shape[0]) / count
+        alpha = torch.sigmoid(logit + self.skip_logit_bias)[idx_m]
+        v = v * torch.rsqrt(1 + v.pow(2).sum(-1, keepdim=True) / (2 * self.x0_radius) ** 2)
+        return -2 * alpha * (pos - centroid[idx_m]) + v
 
 
 class TimeConditionedGatedEquivariant(nn.Module):
