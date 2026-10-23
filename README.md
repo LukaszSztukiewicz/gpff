@@ -140,6 +140,7 @@ gpff_calculate_metrics \
   --reference_gap_path assets/qm9_gap_values.npy \
   --reference_elongation_path assets/qm9_elongation_values.npy \
   --reference_bond_lengths_path assets/qm9_bond_lengths.npz \
+  --reference_bond_angles_path assets/qm9_bond_angles.npz \
   --reference_smiles_path assets/qm9_smiles_values.txt \
   --split_path /path/to/split.npz
 
@@ -156,6 +157,12 @@ gpff_calculate_metrics --samples_db_path samples.db \
 gpff_prepare_metadata --samples_db_path samples.db --targets rdkit_valid bond_lengths
 gpff_calculate_metrics --samples_db_path samples.db --metrics bond_length_w1 \
   --reference_bond_lengths_path assets/qm9_bond_lengths.npz
+
+# Bond angles work the same way, in degrees, with the central atom's
+# hybridization as the environment (e.g. C-C(sp3)-C):
+gpff_prepare_metadata --samples_db_path samples.db --targets rdkit_valid bond_angles
+gpff_calculate_metrics --samples_db_path samples.db --metrics bond_angle_w1 \
+  --reference_bond_angles_path assets/qm9_bond_angles.npz
 ```
 
 ## Citation

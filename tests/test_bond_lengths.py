@@ -6,7 +6,13 @@ from ase import Atoms
 from rdkit import Chem
 from rdkit.Chem import AllChem
 
-from gpff.analysis import analyze_with_rdkit, calculate_bond_length_w1, collect_bonds
+from gpff.analysis import (
+    analyze_with_rdkit,
+    calculate_angle_w1,
+    calculate_bond_length_w1,
+    collect_angles,
+    collect_bonds,
+)
 from gpff.cli.calculate_metrics import compute_metrics
 
 
@@ -160,8 +166,101 @@ def test_compute_metrics_reads_the_bond_table_next_to_per_sample_arrays():
         ["rdkit_validity", "bond_length_w1"],
         reference_distributions={},
         reference_smiles=None,
-        reference_bond_lengths=reference,
+        reference_tables={"bond_length_w1": reference},
     )
 
     assert results["n_molecules"] == 3
     assert results["bond_length_w1"] == pytest.approx(0.02)
+
+
+def angle_table(groups: dict[tuple[str, str], np.ndarray]) -> dict[str, np.ndarray]:
+    """An angle table with the given angles per (angle type, environment)."""
+    table = bond_table(groups)
+    table["angle_type"] = table.pop("bond_type")
+    table["angle"] = table.pop("length")
+    return table
+
+
+def test_angle_labels_of_acetaldehyde():
+    angles = analyze_with_rdkit(embedded_atoms("CC=O"))["angles"]
+
+    # the methyl carbon carries 3 H-C-H and 3 C-C-H, the carbonyl one C-C=O,
+    # C-C-H and O=C-H; every angle reads outwards from its central atom
+    assert Counter(angles["angle_type"]) == {"H-C-H": 3, "C-C-H": 4, "C-C=O": 1, "O=C-H": 1}
+    sizes = {}
+    for environment, angle in zip(angles["environment"], angles["angle"]):
+        sizes.setdefault(environment, []).append(angle)
+    assert np.mean(sizes["H-C(sp3)-H"]) == pytest.approx(109.5, abs=2.0)
+    # the carbonyl is planar, its angles near 120 (MMFF widens this one to 123)
+    assert sizes["C-C(sp2)=O"][0] == pytest.approx(120, abs=5.0)
+
+
+def test_angle_labels_mark_small_rings():
+    angles = analyze_with_rdkit(embedded_atoms("C1CC1C#N"))["angles"]
+
+    environments = Counter(angles["environment"])
+    # the three ring angles are near 60 degrees, the nitrile is straight
+    assert environments["C-C(sp3)-C r3"] == 3
+    assert environments["C-C(sp)#N"] == 1
+    ring = [a for e, a in zip(angles["environment"], angles["angle"]) if e == "C-C(sp3)-C r3"]
+    straight = [a for e, a in zip(angles["environment"], angles["angle"]) if e == "C-C(sp)#N"]
+    assert np.mean(ring) == pytest.approx(60, abs=2.0)
+    assert straight[0] == pytest.approx(180, abs=2.0)
+
+
+def test_an_invalid_molecule_has_no_angles():
+    atoms = Atoms(numbers=[6, 6], positions=[[0, 0, 0], [5, 0, 0]])
+
+    assert analyze_with_rdkit(atoms)["angles"] == {
+        "angle_type": [], "environment": [], "angle": []
+    }
+
+
+def test_collect_angles_keeps_molecule_index():
+    no_angles = {"angle_type": [], "environment": [], "angle": []}
+    one_angle = {"angle_type": ["H-C-H"], "environment": ["H-C(sp3)-H"], "angle": [109.5]}
+    table = collect_angles([one_angle, no_angles, one_angle])
+
+    np.testing.assert_array_equal(table["molecule"], [0, 2])
+    np.testing.assert_array_equal(table["environment"], ["H-C(sp3)-H", "H-C(sp3)-H"])
+
+
+def test_angle_w1_of_a_shift_is_the_shift_in_degrees():
+    rng = np.random.default_rng(0)
+    reference = angle_table({("H-C-H", "H-C(sp3)-H"): rng.normal(109.5, 1.5, 1000)})
+    observed = dict(reference, angle=reference["angle"] + 3.0)
+
+    assert calculate_angle_w1(reference, observed)["w1"] == pytest.approx(3.0, abs=0.01)
+
+
+def test_angle_w1_compares_each_environment_on_its_own():
+    # a planar and a tetrahedral centre, swapped: pooled by angle type they cancel
+    planar = np.linspace(119, 121, 200)
+    tetrahedral = np.linspace(108.5, 110.5, 200)
+    reference = angle_table({
+        ("C-C-C", "C-C(sp2)-C"): planar,
+        ("C-C-C", "C-C(sp3)-C"): tetrahedral,
+    })
+    observed = angle_table({
+        ("C-C-C", "C-C(sp2)-C"): tetrahedral,
+        ("C-C-C", "C-C(sp3)-C"): planar,
+    })
+
+    assert calculate_angle_w1(reference, observed, by="angle_type")["w1"] == pytest.approx(0.0)
+    assert calculate_angle_w1(reference, observed)["w1"] == pytest.approx(10.5)
+
+
+def test_compute_metrics_reads_the_angle_table():
+    reference = angle_table({("H-C-H", "H-C(sp3)-H"): np.full(100, 109.5)})
+    observed = angle_table({("H-C-H", "H-C(sp3)-H"): np.full(100, 112.5)})
+    arrays = {"rdkit_valid": np.array([True, True]), "bond_angles": observed}
+
+    results = compute_metrics(
+        arrays,
+        ["bond_angle_w1"],
+        reference_distributions={},
+        reference_smiles=None,
+        reference_tables={"bond_angle_w1": reference},
+    )
+
+    assert results["bond_angle_w1"] == pytest.approx(3.0)

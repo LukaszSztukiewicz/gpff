@@ -1,6 +1,7 @@
 """Analysis of single structures (one ase.Atoms in, one result out)."""
 from functools import lru_cache
 from io import StringIO
+import itertools
 import multiprocessing
 import signal
 from typing import Any, Dict
@@ -16,6 +17,7 @@ from rdkit.rdBase import BlockLogs
 
 __all__ = [
     "analyze_with_rdkit",
+    "describe_angles",
     "describe_bonds",
     "get_rdkit_validity",
     "compute_elongation",
@@ -47,6 +49,19 @@ def _no_bonds() -> Dict[str, list]:
     return {"bond_type": [], "environment": [], "length": []}
 
 
+def _no_angles() -> Dict[str, list]:
+    return {"angle_type": [], "environment": [], "angle": []}
+
+
+def _bond_order(atom: Chem.Atom) -> tuple:
+    """Sort key putting H last, then by element and hybridization."""
+    return (
+        atom.GetAtomicNum() == 1,
+        atom.GetAtomicNum(),
+        _HYBRIDIZATIONS.get(atom.GetHybridization(), ""),
+    )
+
+
 class _RDKitTimeout(Exception):
     pass
 
@@ -63,6 +78,7 @@ def _invalid_analysis() -> Dict[str, Any]:
         "canonical_smiles": "",
         "elongation": np.nan,
         "bonds": _no_bonds(),
+        "angles": _no_angles(),
     }
 
 
@@ -90,14 +106,7 @@ def describe_bonds(mol: Chem.Mol) -> Dict[str, list]:
     positions = mol.GetConformer().GetPositions()
     bonds = _no_bonds()
     for bond in mol.GetBonds():
-        atoms = sorted(
-            (bond.GetBeginAtom(), bond.GetEndAtom()),
-            key=lambda atom: (
-                atom.GetAtomicNum() == 1,
-                atom.GetAtomicNum(),
-                _HYBRIDIZATIONS.get(atom.GetHybridization(), ""),
-            ),
-        )
+        atoms = sorted((bond.GetBeginAtom(), bond.GetEndAtom()), key=_bond_order)
         symbol = _BOND_SYMBOLS.get(bond.GetBondType(), "~")
         labels = []
         for atom in atoms:
@@ -119,6 +128,61 @@ def describe_bonds(mol: Chem.Mol) -> Dict[str, list]:
         bonds["environment"].append(environment)
         bonds["length"].append(float(np.linalg.norm(positions[i] - positions[j])))
     return bonds
+
+
+def describe_angles(mol: Chem.Mol) -> Dict[str, list]:
+    """The type, chemical environment and size of every bond angle of a sanitized mol.
+
+    One angle per pair of bonds meeting at an atom. The type is the three
+    elements with the bond symbols and the central atom in the middle (C-C=O,
+    H-C-H). The environment adds the central atom's hybridization, which is what
+    sets the angle it prefers (109.5, 120 or 180 degrees), and whether both
+    bonds lie in the same 3- or 4-membered ring, which forces it far below that.
+    The two arms are ordered as describe_bonds orders a bond's atoms.
+
+    Args:
+        mol: RDKit molecule with bonds, a conformer and perceived hybridization
+            (e.g. after DetermineBonds)
+
+    Returns:
+        Dictionary of three equally long lists: angle_type, environment and
+        angle (in degrees), one entry per angle
+    """
+    positions = mol.GetConformer().GetPositions()
+    angles = _no_angles()
+    for center in mol.GetAtoms():
+        arms = sorted(
+            ((bond, bond.GetOtherAtom(center)) for bond in center.GetBonds()),
+            key=lambda arm: _bond_order(arm[1]),
+        )
+        hybridization = center.GetHybridization()
+        name = _HYBRIDIZATIONS.get(hybridization, str(hybridization).lower())
+        for (first, left), (second, right) in itertools.combinations(arms, 2):
+            symbols = [_BOND_SYMBOLS.get(bond.GetBondType(), "~") for bond in (first, second)]
+            # the arms read outwards from the central atom, left one first
+            angle_type = (
+                f"{left.GetSymbol()}{symbols[0]}{center.GetSymbol()}"
+                f"{symbols[1]}{right.GetSymbol()}"
+            )
+            environment = (
+                f"{left.GetSymbol()}{symbols[0]}{center.GetSymbol()}({name})"
+                f"{symbols[1]}{right.GetSymbol()}"
+            )
+            # an angle inside a small ring is the ring's, not the hybridization's
+            for ring_size in (3, 4):
+                if first.IsInRingSize(ring_size) and second.IsInRingSize(ring_size):
+                    environment += f" r{ring_size}"
+                    break
+
+            left_arm = positions[left.GetIdx()] - positions[center.GetIdx()]
+            right_arm = positions[right.GetIdx()] - positions[center.GetIdx()]
+            cosine = np.dot(left_arm, right_arm) / (
+                np.linalg.norm(left_arm) * np.linalg.norm(right_arm)
+            )
+            angles["angle_type"].append(angle_type)
+            angles["environment"].append(environment)
+            angles["angle"].append(float(np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0)))))
+    return angles
 
 
 def analyze_with_rdkit(
@@ -165,6 +229,7 @@ def _analyze_with_rdkit(
         - elongation: Maximum pairwise distance in Angstroms (np.nan if invalid)
         - bonds: describe_bonds of the molecule with its hydrogens, also with
           remove_hs (empty lists if invalid)
+        - angles: describe_angles of the same molecule (empty lists if invalid)
     """
 
     # Set up timeout if specified
@@ -190,8 +255,9 @@ def _analyze_with_rdkit(
                 allowChargedFragments=False,
                 embedChiral=True,
             )
-            # before the hydrogens go, so the X-H bonds are described too
+            # before the hydrogens go, so the X-H bonds and angles are described too
             bonds = describe_bonds(mol)
+            angles = describe_angles(mol)
             if remove_hs:
                 mol = Chem.RemoveHs(mol)
 
@@ -233,6 +299,7 @@ def _analyze_with_rdkit(
                 ring_counts = np.array([np.nan, np.nan, np.nan, np.nan])
                 elongation = np.nan
                 bonds = _no_bonds()
+                angles = _no_angles()
 
         return {
             "rdkit_valid": valid,
@@ -241,6 +308,7 @@ def _analyze_with_rdkit(
             "canonical_smiles": canonical_smiles,
             "elongation": elongation,
             "bonds": bonds,
+            "angles": angles,
         }
 
     except Exception:

@@ -12,11 +12,13 @@ from scipy.stats import wasserstein_distance
 from tqdm import tqdm
 
 __all__ = [
+    "calculate_angle_w1",
     "calculate_bond_length_w1",
     "calculate_js_divergence",
     "calculate_mean_tanimoto_similarity",
     "check_novelty",
     "check_uniqueness",
+    "collect_angles",
     "collect_bonds",
 ]
 
@@ -99,32 +101,45 @@ def calculate_js_divergence(
     return float(js_distance**2)
 
 
+def _collect(per_molecule: list[dict], labels: tuple[str, ...], value: str) -> dict[str, np.ndarray]:
+    """Stack per-molecule label and value lists into one table, one entry per row.
+
+    The table is a dict of equally long arrays: molecule (the molecule's
+    position in the input list), one array per label column, and the measured
+    value. Invalid molecules contribute nothing.
+    """
+    counts = [len(record[value]) for record in per_molecule]
+    table = {"molecule": np.repeat(np.arange(len(per_molecule)), counts)}
+    for label in labels:
+        table[label] = np.array(
+            [entry for record in per_molecule for entry in record[label]], dtype=str
+        )
+    table[value] = np.array(
+        [entry for record in per_molecule for entry in record[value]], dtype=float
+    )
+    return table
+
+
 def collect_bonds(per_molecule_bonds: list[dict]) -> dict[str, np.ndarray]:
     """Stack the describe_bonds lists of many molecules into one bond table.
 
-    The table is a dict of equally long arrays, one entry per bond: molecule
-    (the molecule's position in the input list), bond_type, environment and
-    length. Invalid molecules contribute no bonds.
+    Its columns are molecule, bond_type, environment and length.
     """
-    counts = [len(bonds["length"]) for bonds in per_molecule_bonds]
-    return {
-        "molecule": np.repeat(np.arange(len(per_molecule_bonds)), counts),
-        "bond_type": np.array(
-            [label for bonds in per_molecule_bonds for label in bonds["bond_type"]], dtype=str
-        ),
-        "environment": np.array(
-            [label for bonds in per_molecule_bonds for label in bonds["environment"]], dtype=str
-        ),
-        "length": np.array(
-            [length for bonds in per_molecule_bonds for length in bonds["length"]], dtype=float
-        ),
-    }
+    return _collect(per_molecule_bonds, ("bond_type", "environment"), "length")
 
 
-def _group_lengths(table: dict, by: str) -> dict[str, np.ndarray]:
-    """The bond lengths of a bond table, grouped by one of its label columns."""
+def collect_angles(per_molecule_angles: list[dict]) -> dict[str, np.ndarray]:
+    """Stack the describe_angles lists of many molecules into one angle table.
+
+    Its columns are molecule, angle_type, environment and angle.
+    """
+    return _collect(per_molecule_angles, ("angle_type", "environment"), "angle")
+
+
+def _group_lengths(table: dict, by: str, value: str = "length") -> dict[str, np.ndarray]:
+    """The measured values of a table, grouped by one of its label columns."""
     labels = np.asarray(table[by])
-    lengths = np.asarray(table["length"], dtype=float)
+    lengths = np.asarray(table[value], dtype=float)
     order = np.argsort(labels, kind="stable")
     unique, starts = np.unique(labels[order], return_index=True)
     return dict(zip(unique.tolist(), np.split(lengths[order], starts[1:])))
@@ -140,6 +155,7 @@ def calculate_bond_length_w1(
     observed: dict,
     by: str = "environment",
     min_count: int = 20,
+    value: str = "length",
 ) -> dict:
     """1-D Wasserstein distance of the bond lengths to a reference, per bond label.
 
@@ -155,6 +171,7 @@ def calculate_bond_length_w1(
         observed: bond table of the set to compare
         by: the label column to group by, "environment" or "bond_type"
         min_count: fewest bonds a label needs on each side to be compared
+        value: the measured column, "length" for a bond table
 
     Returns:
         Dictionary with
@@ -167,8 +184,8 @@ def calculate_bond_length_w1(
           spread_ratio (observed over reference interquartile range);
           np.nan where not compared
     """
-    reference_groups = _group_lengths(reference, by)
-    observed_groups = _group_lengths(observed, by)
+    reference_groups = _group_lengths(reference, by, value)
+    observed_groups = _group_lengths(observed, by, value)
     n_reference_total = sum(len(lengths) for lengths in reference_groups.values())
     n_observed_total = sum(len(lengths) for lengths in observed_groups.values())
 
@@ -213,3 +230,17 @@ def calculate_bond_length_w1(
         ),
         "labels": rows,
     }
+
+
+def calculate_angle_w1(
+    reference: dict,
+    observed: dict,
+    by: str = "environment",
+    min_count: int = 20,
+) -> dict:
+    """1-D Wasserstein distance of the bond angles to a reference, per angle label.
+
+    calculate_bond_length_w1 on an angle table (see collect_angles): the labels
+    are angle_type or environment and every distance is in degrees.
+    """
+    return calculate_bond_length_w1(reference, observed, by, min_count, value="angle")

@@ -5,8 +5,9 @@ them to one value per metric, merged into results.json (metrics not computed
 this time are kept):
 
     <run>/evaluation/results.json
-    <run>/evaluation/bond_length_w1.json   per-environment breakdown of
-                                           bond_length_w1, when computed
+    <run>/evaluation/<metric>.json         per-environment breakdown of
+                                           bond_length_w1 / bond_angle_w1,
+                                           when computed
 
 --metrics selects the metrics (default: all of them):
 
@@ -17,6 +18,9 @@ this time are kept):
     mean_tanimoto_similarity   mean pairwise fingerprint similarity (stereo-blind)
     js_divergence_energy_U0 / _gap / _elongation
                             distance to the reference distribution
+    bond_angle_w1           the same for the bond angles, in degrees, each
+                            angle against the reference angles of its own
+                            environment (see --reference_bond_angles_path)
     bond_length_w1          Wasserstein distance (in Angstroms) of the bond
                             lengths to the reference, each bond compared with
                             the reference bonds of its own chemical environment,
@@ -30,6 +34,9 @@ The reference data all comes from files (no reference database):
     --reference_energy_U0_path / _gap_path / _elongation_path
                             the js_divergence_* reference distributions
                             (assets/qm9_<property>_values.npy)
+    --reference_bond_angles_path
+                            bond_angle_w1: the reference angle table
+                            (assets/qm9_bond_angles.npz)
     --reference_bond_lengths_path
                             bond_length_w1: the reference bond table
                             (assets/qm9_bond_lengths.npz)
@@ -80,7 +87,16 @@ METRICS = (
     "js_divergence_gap",
     "js_divergence_elongation",
     "bond_length_w1",
+    "bond_angle_w1",
 )
+
+# the metrics comparing a table of measurements (one row per bond or angle) with
+# a reference table: the metadata array it reads, the argument naming the
+# reference, and the table's measured column
+TABLE_METRICS = {
+    "bond_length_w1": ("bond_lengths", "reference_bond_lengths_path", "length"),
+    "bond_angle_w1": ("bond_angles", "reference_bond_angles_path", "angle"),
+}
 _JS_DIVERGENCE_PREFIX = "js_divergence_"
 
 
@@ -141,7 +157,7 @@ def load_metadata(metadata_dir: str | Path) -> dict:
 
 
 def load_bond_table(path: str | Path) -> dict[str, np.ndarray]:
-    """Load a bond table (see gpff.analysis.collect_bonds) from a .npz file."""
+    """Load a measurement table (see gpff.analysis.collect_bonds) from a .npz file."""
     with np.load(path) as table:
         return dict(table)
 
@@ -176,12 +192,12 @@ def missing_reference_inputs(
     reference_smiles_path,
     split_path,
     novelty_reference,
-    reference_bond_lengths_path=None,
+    reference_table_paths=None,
 ) -> list[str]:
     """The reference inputs the requested metrics need but were not given.
 
-    js_divergence_* needs its reference distribution file, bond_length_w1 the
-    reference bond table, novelty the reference SMILES and — against train+val —
+    js_divergence_* needs its reference distribution file, a TABLE_METRICS one
+    its reference table, novelty the reference SMILES and — against train+val —
     a split file. The per-sample arrays are not checked here; a missing one is
     reported by compute_metrics.
     """
@@ -190,8 +206,9 @@ def missing_reference_inputs(
         prop = js_divergence_property(name)
         if prop is not None and reference_value_paths.get(prop) is None:
             missing.append(f"{name} needs --reference_{prop}_path for the reference {prop} distribution")
-        if name == "bond_length_w1" and reference_bond_lengths_path is None:
-            missing.append(f"{name} needs --reference_bond_lengths_path for the reference bond table")
+        if name in TABLE_METRICS and (reference_table_paths or {}).get(name) is None:
+            array, argument, _ = TABLE_METRICS[name]
+            missing.append(f"{name} needs --{argument} for the reference {array} table")
         if name == "novelty":
             if reference_smiles_path is None:
                 missing.append(f"{name} needs --reference_smiles_path")
@@ -236,23 +253,29 @@ def build_reference_smiles(
     return known
 
 
+def _table_w1(metric: str, reference_tables: dict, arrays: dict) -> dict:
+    """calculate_bond_length_w1 of one TABLE_METRICS metric, per label."""
+    array, _, value = TABLE_METRICS[metric]
+    return calculate_bond_length_w1(reference_tables[metric], arrays[array], value=value)
+
+
 def compute_metrics(
     arrays,
     metrics,
     reference_distributions,
     reference_smiles,
     progress=False,
-    reference_bond_lengths=None,
+    reference_tables=None,
 ) -> dict:
     """Reduce the per-sample arrays to one value per metric, in order.
 
     `arrays` is the dict from load_metadata; each metric reads the ones it needs
     (a missing one raises KeyError). Validity is over all molecules; uniqueness,
-    novelty, the Tanimoto similarity, the JS divergences and bond_length_w1 over
-    the valid ones only. A metric with no valid molecules to reduce is np.nan;
+    novelty, the Tanimoto similarity, the JS divergences and the TABLE_METRICS
+    over the valid ones only. A metric with no valid molecules to reduce is np.nan;
     n_molecules is always reported.
     """
-    # the bond table (a dict) has one row per bond, not per sample
+    # a measurement table (a dict) has one row per bond or angle, not per sample
     lengths = {len(values) for values in arrays.values() if not isinstance(values, dict)}
     if len(lengths) != 1:
         raise ValueError("The per-sample arrays differ in length.")
@@ -268,11 +291,9 @@ def compute_metrics(
         if name == "posebusters_validity":
             results[name] = float(arrays["posebusters_valid"].mean())
             continue
-        if name == "bond_length_w1":
-            # the bond table only holds the valid molecules' bonds
-            results[name] = calculate_bond_length_w1(
-                reference_bond_lengths, arrays["bond_lengths"]
-            )["w1"]
+        if name in TABLE_METRICS:
+            # the tables only hold the valid molecules' rows
+            results[name] = _table_w1(name, reference_tables, arrays)["w1"]
             continue
 
         valid = arrays["rdkit_valid"]
@@ -328,6 +349,9 @@ def parse_args() -> argparse.Namespace:
         parser.add_argument(f"--{_reference_value_arg(property_name)}", type=Path, default=None,
                             help=f"Reference {property_name} distribution (.npy) for "
                                  f"js_divergence_{property_name}.")
+    parser.add_argument("--reference_bond_angles_path", type=Path, default=None,
+                        help="Reference angle table (.npz, assets/qm9_bond_angles.npz) "
+                             "for bond_angle_w1.")
     parser.add_argument("--reference_bond_lengths_path", type=Path, default=None,
                         help="Reference bond table (.npz, assets/qm9_bond_lengths.npz) "
                              "for bond_length_w1.")
@@ -359,7 +383,7 @@ def main() -> int:
 
     path_args = (
         "samples_db_path",
-        "reference_bond_lengths_path",
+        *(argument for _, argument, _ in TABLE_METRICS.values()),
         "reference_smiles_path",
         "split_path",
         *(_reference_value_arg(name) for name in REFERENCE_DISTRIBUTION_PROPERTIES),
@@ -389,7 +413,7 @@ def main() -> int:
         args.reference_smiles_path,
         args.split_path,
         args.novelty_reference,
-        args.reference_bond_lengths_path,
+        {name: getattr(args, argument) for name, (_, argument, _) in TABLE_METRICS.items()},
     )
     if missing:
         print("ERROR: missing reference inputs for the requested metrics:", file=sys.stderr)
@@ -406,9 +430,11 @@ def main() -> int:
     reference_smiles = build_reference_smiles(
         metrics, args.reference_smiles_path, args.split_path, args.novelty_reference, verbose=verbose
     )
-    reference_bond_lengths = (
-        load_bond_table(args.reference_bond_lengths_path) if "bond_length_w1" in metrics else None
-    )
+    reference_tables = {
+        name: load_bond_table(getattr(args, argument))
+        for name, (_, argument, _) in TABLE_METRICS.items()
+        if name in metrics
+    }
     try:
         values = compute_metrics(
             arrays,
@@ -416,7 +442,7 @@ def main() -> int:
             reference_distributions,
             reference_smiles,
             progress=verbose,
-            reference_bond_lengths=reference_bond_lengths,
+            reference_tables=reference_tables,
         )
     except KeyError as missing_array:
         print(
@@ -426,9 +452,9 @@ def main() -> int:
         )
         return 1
     merge_results(results_path, values)
-    if reference_bond_lengths is not None:
-        breakdown_path = evaluation_dir / "bond_length_w1.json"
-        breakdown = calculate_bond_length_w1(reference_bond_lengths, arrays["bond_lengths"])
+    for name in reference_tables:
+        breakdown_path = evaluation_dir / f"{name}.json"
+        breakdown = _table_w1(name, reference_tables, arrays)
         breakdown_path.write_text(json.dumps(breakdown, indent=2) + "\n")
         print(f"Breakdown    : {breakdown_path}")
 

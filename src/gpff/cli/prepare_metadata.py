@@ -5,7 +5,7 @@ evaluation metadata folder, one file per quantity. The database is only read.
 Reduce the arrays to metrics with ``gpff_calculate_metrics``.
 
     <run>/evaluation/metadata/   one <key>.npy per numeric array, smiles.txt,
-                                 bond_lengths.npz
+                                 bond_lengths.npz, bond_angles.npz
 
 --targets selects which arrays to compute (default: all). The structure arrays
 come from an RDKit pass and a slower PoseBusters pass; the property arrays are
@@ -14,6 +14,8 @@ predicted and need their models:
     rdkit_valid, ring_counts, elongation, nfe, smiles   (RDKit pass)
     bond_lengths  one row per bond of the valid molecules (RDKit pass): its
                   molecule, bond_type, environment and length
+    bond_angles   one row per bond angle of the valid molecules (RDKit pass):
+                  its molecule, angle_type, environment and angle
     posebusters_valid                                                (PoseBusters)
     gap        needs --gap_model_path
     energy_U0  needs --energy_u0_model_path and --atomrefs_path (the single-atom
@@ -53,12 +55,18 @@ from tqdm import tqdm
 # bundled checkpoints saved under the old package name.
 import gpff  # noqa: F401
 from gpff import keys as keys_module
-from gpff.analysis import analyze_with_rdkit, collect_bonds, get_posebusters_validity
+from gpff.analysis import (
+    analyze_with_rdkit,
+    collect_angles,
+    collect_bonds,
+    get_posebusters_validity,
+)
 
-# the RDKit pass yields these six arrays in one walk; the PoseBusters pass is
+# the RDKit pass yields these seven arrays in one walk; the PoseBusters pass is
 # separate and much slower. The property arrays are predicted, one model each.
-# bond_lengths is the one per-bond rather than per-sample array.
-RDKIT_KEYS = ("rdkit_valid", "ring_counts", "elongation", "nfe", "smiles", "bond_lengths")
+# TABLE_KEYS hold one row per bond or angle rather than per sample.
+TABLE_KEYS = ("bond_lengths", "bond_angles")
+RDKIT_KEYS = ("rdkit_valid", "ring_counts", "elongation", "nfe", "smiles", *TABLE_KEYS)
 POSEBUSTERS_KEYS = ("posebusters_valid",)
 PROPERTY_KEYS = ("gap", "energy_U0")
 # every array, in a stable order; smiles is the only text one
@@ -115,13 +123,13 @@ def load_atomrefs(path: str | Path) -> np.ndarray:
 
 
 def write_array(metadata_dir: Path, key: str, values) -> None:
-    """Write one array to the metadata folder (smiles as text, the bond table as .npz, else .npy)."""
+    """Write one array to the metadata folder (smiles as text, a table as .npz, else .npy)."""
     metadata_dir.mkdir(parents=True, exist_ok=True)
     if key == "smiles":
         # one SMILES per line; a molecule RDKit rejected contributes an empty one
         (metadata_dir / "smiles.txt").write_text("\n".join(values) + "\n")
-    elif key == "bond_lengths":
-        np.savez(metadata_dir / "bond_lengths.npz", **values)
+    elif key in TABLE_KEYS:
+        np.savez(metadata_dir / f"{key}.npz", **values)
     else:
         np.save(metadata_dir / f"{key}.npy", np.asarray(values))
 
@@ -203,8 +211,8 @@ def compute_structure_arrays(
 ) -> dict:
     """Walk the database and return the per-structure arrays of the passes that run.
 
-    run_rdkit yields rdkit_valid, ring_counts, elongation, nfe, smiles and
-    bond_lengths in one walk; run_posebusters yields posebusters_valid from a
+    run_rdkit yields rdkit_valid, ring_counts, elongation, nfe, smiles,
+    bond_lengths and bond_angles in one walk; run_posebusters yields posebusters_valid from a
     separate, slower one.
     With n_workers > 1 the molecules are split into chunks analysed by a pool of
     worker processes; the arrays keep the database order either way. The workers
@@ -259,6 +267,7 @@ def compute_structure_arrays(
             nfe=np.array([r["nfe"] for r in results], dtype=float),
             smiles=[r["smiles"] for r in results],
             bond_lengths=collect_bonds([r["bonds"] for r in results]),
+            bond_angles=collect_angles([r["angles"] for r in results]),
         )
     if run_posebusters:
         arrays["posebusters_valid"] = np.array(
