@@ -45,6 +45,10 @@ hydra:
     # output paths for hydra logs
     run:
         dir: ${run.path}/${run.id}
+    # multirun (-m) jobs get the same folders, so they resume the same way
+    sweep:
+        dir: ${run.path}
+        subdir: ${run.id}
 
     searchpath:
       - file://${oc.env:PWD}
