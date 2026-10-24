@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import hydra
@@ -47,3 +48,9 @@ def test_generate_reads_the_noise_the_diffusion_baselines_predict(experiment):
         generate = compose("generate")
 
     assert generate.sampler.calculator.noise_key == train.model.output_modules[0].output_key
+
+
+def test_generate_help_lists_every_sampler_config():
+    help_text = (CONFIG_DIR / "generate.yaml").read_text()
+    listed = set(re.findall(r"- sampler=(\w+)", help_text))
+    assert listed == {path.stem for path in (CONFIG_DIR / "sampler").glob("*.yaml")}

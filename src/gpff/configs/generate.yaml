@@ -71,13 +71,13 @@ hydra:
         - sampler=scaffold_direct_denoising - direct denoising with frozen scaffold atoms
         - sampler=shape_scaffold_direct_denoising - frozen scaffold atoms plus shape
           enforcement on the free atoms
-        - sampler=ddim - DDIM-style sampler
-        - sampler=adaptive_ddim - adaptive DDIM sampler with per-molecule sigma estimation
-        - sampler=euler_maruyama - Euler-Maruyama sampler
         - sampler=ve_ddpm - variance exploding DDPM sampler
+        - sampler=ve_adaptive_ddpm - variance exploding DDPM sampler with per-molecule sigma estimation
         - sampler=heun - Heun's method sampler
         - sampler=stochastic_heun - stochastic Heun's method sampler
         - sampler=adaptive_heun - adaptive Heun's method sampler with per-molecule sigma estimation
+        - sampler=adaptive_stochastic_heun - stochastic Heun's method sampler with per-molecule
+          sigma estimation
         
         Available prior options:
         - prior=gaussian (default)
