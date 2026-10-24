@@ -15,27 +15,23 @@ __all__ = ["GatedEquivariant", "Atomwise", "TimeAwareEquivariant", "DiffusionTim
 
 class GatedEquivariant(nn.Module):
     """
-    Equivariant head for pseudo force predictions without energy.
+    Equivariant head for pseudo force predictions without energy. It does not
+    see the time; see :class:`TimeAwareEquivariant` for a time-aware head.
     """
 
     def __init__(
         self,
         n_in: int,
         n_out: int = 1,
-        include_time: bool = False,
         n_hidden: Optional[int | Sequence[int]] = None,
         n_layers: int = 2,
         activation: Callable = F.silu,
         output_key: str = keys.forces,
-        time_head: Optional[nn.Module] = None,
-        time_key: Optional[str] = None,
-        detach_time_head: bool = False,
     ):
         """
         Args:
-            n_in: input dimension without time.
+            n_in: input dimension.
             n_out: output dimension for the target property.
-            include_time: whether to append time as input feature.
             n_hidden: size of hidden layers.
                     If an integer, same number of node is used for all hidden
                         layers resulting in a rectangular network.
@@ -45,9 +41,6 @@ class GatedEquivariant(nn.Module):
             n_layers: number of hidden layers.
             activation: activation function.
             output_key: the key under which the result will be stored.
-            time_head: time head to predict time.
-            time_key: time key for input to the equivariant module.
-            detach_time_head: detach time head from computational graph.
         """
 
         super().__init__()
@@ -64,49 +57,9 @@ class GatedEquivariant(nn.Module):
         self.output_key = output_key
         self.model_outputs = [self.output_key]
 
-        # todo: add time as input scalar feature
-        # self.include_time = include_time
-        # if self.include_time:
-        #    self.outnet[0] = spk.nn.GatedEquivariantBlock(
-        #        n_sin=self.outnet[0].n_sin + 1,
-        #        n_vin=self.outnet[0].n_vin,
-        #        n_sout=self.outnet[0].n_sout,
-        #        n_vout=self.outnet[0].n_vout,
-        #        n_hidden=self.outnet[0].n_hidden,
-        #        activation=activation,
-        #        sactivation=activation,
-        #    )
-        # time prediction
-        # self.time_outnet = time_head
-        # self.detach_time_head = detach_time_head
-        # self.time_key = time_key
-        # set default time key
-        # if self.include_time and self.time_key is None:
-        #    raise ValueError(
-        #        "Argument 'time_key' must be set when 'include_time' is True."
-        #    )
-
     def forward(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         l0 = inputs["scalar_representation"]
         l1 = inputs["vector_representation"]
-
-        # todo: implement time later
-        # append time to representation
-        # if self.include_time:
-        #    # predict time
-        #    if self.time_outnet is not None:
-        #        t = self.time_outnet(inputs)[self.time_key]
-        #        if self.time_outnet.aggregation_mode is not None:
-        #            t = t[inputs[properties.idx_m]]
-        #        if self.detach_time_head:
-        #            t = t.detach()
-        #    # use true time from input
-        #    else:
-        #        t = inputs[self.time_key]  # type: ignore
-        #    t = t.unsqueeze(-1)
-        #
-        #    # append time to scalar representation features
-        #    l0 = torch.cat((l0, t), dim=-1)
 
         # predict equivariant output
         _, x = self.outnet((l0, l1))
