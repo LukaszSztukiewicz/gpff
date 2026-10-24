@@ -1,4 +1,5 @@
 from typing import Callable, Dict, Optional, Union, List
+import weakref
 
 import torch
 import torch.nn as nn
@@ -11,21 +12,32 @@ from schnetpack.representation.painn import PaiNNInteraction, PaiNNMixing
 
 __all__ = ["PaiNN"]
 
+# weak references to the (idx_i, idx_j) of the last call, and its _upper_pairs
+_upper_pairs_cache = (lambda: None, lambda: None, None)
+
 
 def _upper_pairs(idx_i: torch.Tensor, idx_j: torch.Tensor, n_atoms: int) -> Optional[torch.Tensor]:
     """
     Indices of the pairs with i < j if every pair of the neighbor list is also
     listed reversed and no atom is paired with itself, else None.
+
+    Remembered for the last neighbor list: a sampler passes the same idx_i and
+    idx_j tensors at every step (and never modifies them).
     """
+    global _upper_pairs_cache
     if torch.compiler.is_compiling():
         # the check has data-dependent shapes and control flow
         return None
+    cached_i, cached_j, cached = _upper_pairs_cache
+    if cached_i() is idx_i and cached_j() is idx_j:
+        return cached
     upper = idx_i < idx_j
     key = torch.minimum(idx_i, idx_j) * n_atoms + torch.maximum(idx_i, idx_j)
     upper_idx = upper.nonzero().squeeze(-1)
     lower_idx = (~upper).nonzero().squeeze(-1)
     if not torch.equal(key[upper_idx].sort().values, key[lower_idx].sort().values):
-        return None
+        upper_idx = None
+    _upper_pairs_cache = (weakref.ref(idx_i), weakref.ref(idx_j), upper_idx)
     return upper_idx
 
 
