@@ -517,8 +517,10 @@ def align_permutation(
     numbers = numbers.clone()
     target_positions = target_positions.clone()
 
-    # Align atomic numbers first (permute positions to match target_numbers)
-    positions, numbers = align_numbers(positions, numbers, target_numbers)
+    # Align atomic numbers first (permute positions to match target_numbers);
+    # the permutation is the identity when they already match, as in training
+    if not torch.equal(numbers, target_numbers):
+        positions, numbers = align_numbers(positions, numbers, target_numbers)
 
     # Center both sets of positions (remove global translation)
     centroid = positions.mean(dim=0, keepdim=True)

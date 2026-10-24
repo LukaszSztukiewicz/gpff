@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from gpff.utils.alignment import apply_covariance, batch_apply_covariances
+from gpff.utils.alignment import align_permutation, apply_covariance, batch_apply_covariances
 
 
 def per_molecule(positions, idx_m, covariances, centers, molecule_ids, epsilon=1e-6):
@@ -68,3 +68,20 @@ def test_keeps_the_molecules_it_cannot_transform():
 
     assert torch.equal(out[idx_m == 3], positions[idx_m == 3])
     torch.testing.assert_close(out, per_molecule(positions, idx_m, covariances, centers, idx_m.unique()))
+
+
+@pytest.mark.parametrize("permuted_numbers", [False, True])
+def test_align_permutation_recovers_a_shuffled_copy(permuted_numbers):
+    g = torch.Generator().manual_seed(0)
+    target = torch.randn(12, 3, generator=g, dtype=torch.float64) * 3
+    numbers = torch.tensor([6, 1, 1, 8, 6, 1, 7, 1, 6, 1, 1, 8])
+    order = torch.randperm(12, generator=g)
+    positions = target[order] + 0.01 * torch.randn(12, 3, generator=g, dtype=torch.float64)
+    # the training transform passes the target numbers for both
+    given_numbers = numbers[order] if permuted_numbers else numbers
+
+    aligned, aligned_numbers = align_permutation(positions, target, given_numbers, numbers)
+
+    assert torch.equal(aligned_numbers, numbers)
+    if permuted_numbers:
+        torch.testing.assert_close(aligned, target, atol=0.05, rtol=0)
