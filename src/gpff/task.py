@@ -61,7 +61,6 @@ class ModelOutput(SPKModelOutput):
         target_property: Optional[str] = None,
         weights_key: Optional[str] = None,
         scale_loss: Optional[str] = None,
-        warmup_steps: int = 0,
     ):
         r"""
         Args:
@@ -82,18 +81,12 @@ class ModelOutput(SPKModelOutput):
         )
         self.weights_key = weights_key
         self.scale_loss = scale_loss
-        self.warmup_steps = warmup_steps
-        self.global_step = 0
 
     def calculate_loss(self, pred, target):
         # calculate weighted loss
         weights = None
         if self.weights_key is not None:
             weights = target[self.weights_key]
-
-            if self.global_step < self.warmup_steps:
-                dampening = self.global_step / self.warmup_steps
-                weights = (1-dampening) * torch.ones_like(weights) + dampening * weights
 
         loss = self.loss_weight * loss_fn(
             pred[self.name], target[self.target_property], weights, self.scale_loss
