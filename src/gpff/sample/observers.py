@@ -1,13 +1,14 @@
 # python
 """Observers for the sampler denoising loop (logging, trajectory recording)."""
 import torch
-from typing import Any, Dict, List, Optional
+from collections import deque
+from typing import Any, Callable, Dict, List, Optional
 from tqdm import tqdm
 from gpff import keys
 from gpff.sample.results import _MODEL_FEATURE_KEYS, clone_batch
 
 
-__all__ = ["SamplerObserver", "ProgressReporter", "TrajectoryRecorder"]
+__all__ = ["SamplerObserver", "ProgressReporter", "TrajectoryRecorder", "DeferredWork"]
 
 
 class SamplerObserver:
@@ -52,6 +53,34 @@ class TrajectoryRecorder(SamplerObserver):
         self.snapshots.append(
             clone_batch({k: v for k, v in batch.items() if k not in _MODEL_FEATURE_KEYS})
         )
+
+
+class DeferredWork(SamplerObserver):
+    """
+    Run queued host work, e.g. checking and writing the previous batch's
+    samples, a little at a time during denoising.
+
+    ``on_step_end`` runs while the GPU still executes the step's model call
+    (the loop waits for it only after the hook), so work done there is free
+    as long as the GPU is the slower of the two. The queue is spread evenly
+    over the remaining steps; ``finish`` runs whatever is left, e.g. when all
+    molecules converge early.
+    """
+
+    def __init__(self):
+        self._work = deque()
+
+    def add(self, *work: Callable[[], Any]) -> None:
+        self._work.extend(work)
+
+    def on_step_end(self, batch: Dict[str, torch.Tensor], step: int) -> None:
+        # step counts down to 1, the number of steps left including this one
+        for _ in range(-(-len(self._work) // max(step, 1))):
+            self._work.popleft()()
+
+    def finish(self) -> None:
+        while self._work:
+            self._work.popleft()()
 
 
 class ProgressReporter(SamplerObserver):

@@ -2,7 +2,7 @@
 import logging
 import os
 import socket
-from typing import Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import hydra
 import numpy as np
@@ -19,7 +19,7 @@ from gpff.analysis import get_rdkit_validity
 from gpff.cli import header
 from gpff.data.datasets.qm9 import QM9Valid
 from gpff.sample import Calculator, ConditionGenerator, Prior, Sampler
-from gpff.sample.observers import TrajectoryRecorder
+from gpff.sample.observers import DeferredWork, TrajectoryRecorder
 from gpff.sample.results import batches_to_relaxed, batches_to_trajectories
 
 log = logging.getLogger(__name__)
@@ -39,6 +39,41 @@ def _get_trajectory_db_path(output_db: str) -> str:
     if extension == "":
         return f"{output_db}_trajectories.db"
     return f"{base}_trajectories{extension}"
+
+
+def _store_samples(
+    output_db: str,
+    samples: List[Tuple[Any, Dict[str, Any]]],
+    n_samples_written: int,
+) -> List[Callable[[], None]]:
+    """
+    Appending a batch's samples to the database and logging its progress, as
+    small steps for DeferredWork: the writes first, then one RDKit validity
+    check per molecule, then the log line.
+    """
+    validity = []
+
+    def write():
+        with connect(output_db) as db:
+            for atoms, data in samples:
+                db.write(atoms, data=data)
+
+    def check(atoms):
+        return lambda: validity.append(get_rdkit_validity(atoms))
+
+    def log_progress():
+        # validity is a progress signal only, gpff_prepare_metadata
+        # recomputes it for the metrics
+        nfe = float(np.mean([data[keys.nfe] for _, data in samples]))
+        log_str = (
+            f"| n_samples: {n_samples_written} --- avg nfe: {nfe} --- "
+            f"batch validity: {float(np.mean(validity))} |"
+        )
+        print("-"*len(log_str))
+        print(log_str)
+        print("-"*len(log_str))
+
+    return [write] + [check(atoms) for atoms, _ in samples] + [log_progress]
 
 
 @hydra.main(config_path="../configs", config_name="generate")
@@ -151,73 +186,67 @@ def sample_molecules(config: DictConfig):
         with connect(trajectory_db_path) as db:
             db.metadata = run_metadata
 
-    # run sampling loop
+    # run sampling loop. Each batch's samples are written and its progress
+    # logged while the next batch denoises, in the time the GPU takes for its
+    # steps; the queue is flushed when the loop ends, also on an error.
     n_samples_written = 0
     trajectory_idx = 0
     test_loader = qm9_valid.test_dataloader()
-    for batch in test_loader:
-        if n_samples_written >= config.n_samples:
-            break
+    deferred = DeferredWork()
+    try:
+        for batch in test_loader:
+            if n_samples_written >= config.n_samples:
+                break
 
-        # prior and sampler share the same conditions, e.g. one target variance
-        # vector per molecule for shape-prescribing runs; conditions are built
-        # from the original data positions, before the prior overwrites them
-        conditions = (
-            condition_generator.from_batch(batch) if condition_generator is not None else {}
-        )
-        batch = prior.sample_from_batch(batch, conditions=conditions)
+            # prior and sampler share the same conditions, e.g. one target variance
+            # vector per molecule for shape-prescribing runs; conditions are built
+            # from the original data positions, before the prior overwrites them
+            conditions = (
+                condition_generator.from_batch(batch) if condition_generator is not None else {}
+            )
+            batch = prior.sample_from_batch(batch, conditions=conditions)
 
-        # denoise and process
-        recorder = TrajectoryRecorder() if config.store_trajectories else None
-        final_batch = sampler.denoise(
-            batch,
-            conditions=conditions,
-            observers=[recorder] if recorder is not None else None,
-        )
-        relaxed_atoms = batches_to_relaxed([final_batch])
-        if config.store_trajectories:
-            atoms_trajectory = batches_to_trajectories(recorder.snapshots)
+            # denoise and process; the deferred work goes first, so that it runs
+            # before the recorder copies the batch (and waits for the GPU)
+            recorder = TrajectoryRecorder() if config.store_trajectories else None
+            final_batch = sampler.denoise(
+                batch,
+                conditions=conditions,
+                observers=[deferred] + ([recorder] if recorder is not None else []),
+            )
+            deferred.finish()
+            relaxed_atoms = batches_to_relaxed([final_batch])
+            if config.store_trajectories:
+                atoms_trajectory = batches_to_trajectories(recorder.snapshots)
 
-        n_to_store = min(len(relaxed_atoms), config.n_samples - n_samples_written)
-        relaxed_atoms_to_store = [
-            (atoms, {keys.nfe: int(data[keys.nfe])})
-            for atoms, data in relaxed_atoms[:n_to_store]
-        ]
+            n_to_store = min(len(relaxed_atoms), config.n_samples - n_samples_written)
+            relaxed_atoms_to_store = [
+                (atoms, {keys.nfe: int(data[keys.nfe])})
+                for atoms, data in relaxed_atoms[:n_to_store]
+            ]
 
-        # log intermediate sampling progress; validity is a progress signal only,
-        # gpff_prepare_metadata recomputes it for the metrics
-        nfe = float(np.mean([data[keys.nfe] for _, data in relaxed_atoms_to_store]))
-        validity = float(
-            np.mean([get_rdkit_validity(atoms) for atoms, _ in relaxed_atoms_to_store])
-        )
-        log_str = (
-            f"| n_samples: {n_samples_written + n_to_store} --- avg nfe: {nfe} --- "
-            f"batch validity: {validity} |"
-        )
-        print("-"*len(log_str))
-        print(log_str)
-        print("-"*len(log_str))
+            # save relaxed atoms to database and log progress
+            deferred.add(
+                *_store_samples(config.output_db, relaxed_atoms_to_store, n_samples_written + n_to_store)
+            )
 
-        # save relaxed atoms to database
-        with connect(config.output_db) as db:
-            for atoms, data in relaxed_atoms_to_store:
-                db.write(atoms, data=data)
+            # save trajectories to database
+            if config.store_trajectories:
+                trajectories_to_store = atoms_trajectory[:n_to_store]
+                with connect(trajectory_db_path) as db:
+                    # Write full trajectory i before full trajectory i+1.
+                    for trajectory in trajectories_to_store:
+                        # Unique id for this trajectory across the entire db.
+                        for atoms, data in trajectory:
+                            db.write(
+                                atoms,
+                                data={**data, "trajectory_idx": trajectory_idx},
+                            )
+                        trajectory_idx += 1
 
-        # save trajectories to database
-        if config.store_trajectories:
-            trajectories_to_store = atoms_trajectory[:n_to_store]
-            with connect(trajectory_db_path) as db:
-                # Write full trajectory i before full trajectory i+1.
-                for trajectory in trajectories_to_store:
-                    # Unique id for this trajectory across the entire db.
-                    for atoms, data in trajectory:
-                        db.write(
-                            atoms,
-                            data={**data, "trajectory_idx": trajectory_idx},
-                        )
-                    trajectory_idx += 1
-
-        n_samples_written += n_to_store
+            n_samples_written += n_to_store
+    finally:
+        deferred.finish()
 
     # log final sample count
     print(f"+ final samples written: {n_samples_written} +")

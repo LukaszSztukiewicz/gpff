@@ -12,6 +12,7 @@ from gpff.model.heads import GatedEquivariant
 from gpff.model.painn import PaiNN
 from gpff.sample.ancestral_sampling import AdaptiveAncestralSampler
 from gpff.sample.base import Calculator
+from gpff.sample.observers import DeferredWork
 from gpff.utils.neighbors import compute_neighbors
 
 
@@ -116,3 +117,18 @@ def test_skipping_converged_molecules_keeps_the_samples(skip_converged):
     assert torch.equal(out[properties.R], reference[properties.R])
     assert torch.equal(out[keys.nfe], reference[keys.nfe])
     assert (seen < seen_all) == skip_converged
+
+
+def test_deferred_work_runs_in_order_spread_over_the_steps():
+    done = []
+    deferred = DeferredWork()
+    deferred.add(*[lambda k=k: done.append(k) for k in range(10)])
+
+    per_step = []
+    for step in range(4, 0, -1):
+        deferred.on_step_end({}, step)
+        per_step.append(len(done))
+    deferred.finish()
+
+    assert done == list(range(10))
+    assert per_step == [3, 6, 8, 10]
