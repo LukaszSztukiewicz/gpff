@@ -241,9 +241,36 @@ def batch_apply_covariances(
     return transformed
 
 
+def _molecule_layout(
+    idx_m: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Where each atom goes in a zero-padded (n_molecules, max_atoms, ...) tensor,
+    see _pad_by_molecule. It depends on idx_m alone and costs an idx_m.unique()
+    and a host sync, so callers padding several tensors of one batch can
+    compute it once. Molecules are ordered like idx_m.unique().
+
+    Returns:
+        inverse: (n_atoms,) row of each atom's molecule.
+        slot: (n_atoms,) position of each atom within its molecule.
+        counts: (n_molecules,) number of atoms per molecule.
+        mask: (n_molecules, max_atoms) True where the padded tensor holds an atom.
+    """
+    _, inverse, counts = idx_m.unique(return_inverse=True, return_counts=True)
+    order = torch.argsort(inverse, stable=True)
+    offsets = torch.cumsum(counts, 0) - counts
+    slot = torch.empty_like(inverse)
+    slot[order] = torch.arange(len(inverse), device=inverse.device) - offsets[inverse[order]]
+
+    mask = torch.zeros(len(counts), int(counts.max()), dtype=torch.bool, device=idx_m.device)
+    mask[inverse, slot] = True
+    return inverse, slot, counts, mask
+
+
 def _pad_by_molecule(
     values: torch.Tensor,
     idx_m: torch.Tensor,
+    layout: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Scatter per-atom values into a zero-padded (n_molecules, max_atoms, ...) tensor.
@@ -252,6 +279,11 @@ def _pad_by_molecule(
     (unlike index_add_) stay deterministic on CUDA. Molecules are ordered like
     idx_m.unique().
 
+    Args:
+        values: (n_atoms, ...) per-atom values.
+        idx_m: (n_atoms,) molecule index of each atom.
+        layout: _molecule_layout(idx_m), if already computed.
+
     Returns:
         inverse: (n_atoms,) row of each atom's molecule.
         slot: (n_atoms,) position of each atom within its molecule.
@@ -259,16 +291,9 @@ def _pad_by_molecule(
         padded: (n_molecules, max_atoms, ...) values, zero-padded.
         mask: (n_molecules, max_atoms) True where padded holds an atom.
     """
-    _, inverse, counts = idx_m.unique(return_inverse=True, return_counts=True)
-    order = torch.argsort(inverse, stable=True)
-    offsets = torch.cumsum(counts, 0) - counts
-    slot = torch.empty_like(inverse)
-    slot[order] = torch.arange(len(inverse), device=inverse.device) - offsets[inverse[order]]
-
-    padded = values.new_zeros(len(counts), int(counts.max()), *values.shape[1:])
+    inverse, slot, counts, mask = _molecule_layout(idx_m) if layout is None else layout
+    padded = values.new_zeros(*mask.shape, *values.shape[1:])
     padded[inverse, slot] = values
-    mask = torch.zeros(padded.shape[:2], dtype=torch.bool, device=padded.device)
-    mask[inverse, slot] = True
     return inverse, slot, counts, padded, mask
 
 

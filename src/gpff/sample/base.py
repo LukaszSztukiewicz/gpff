@@ -4,7 +4,7 @@ import torch.nn as nn
 from typing import Any, Dict, Optional, List
 from abc import ABC, abstractmethod
 from gpff.utils import compute_neighbors
-from gpff.utils.alignment import _pad_by_molecule
+from gpff.utils.alignment import _molecule_layout, _pad_by_molecule
 from gpff.sample.schedules import NoiseSchedule, EDMNoiseSchedule
 from gpff.sample.observers import SamplerObserver
 from gpff.sample.results import clone_batch
@@ -54,6 +54,8 @@ class Calculator:
             self.dtype = dtype
         self.device = device
         self.update_model(model)
+        # (idx_m, _molecule_layout(idx_m)) of the last batch
+        self._layout_cache = None
 
     def update_model(self, model: Optional[nn.Module] = None):
         """
@@ -100,6 +102,16 @@ class Calculator:
             for k, v in batch.items()
         }
 
+    def _cached_layout(self, idx_m: torch.Tensor):
+        """
+        _molecule_layout(idx_m), computed once per denoising run instead of at
+        every step: a run keeps the same idx_m tensor and never modifies it,
+        and the layout costs an idx_m.unique() and a host sync.
+        """
+        if self._layout_cache is None or self._layout_cache[0] is not idx_m:
+            self._layout_cache = (idx_m, _molecule_layout(idx_m))
+        return self._layout_cache[1]
+
     def _compute_std_per_molecule(
         self,
         idx_m: torch.Tensor,
@@ -116,7 +128,9 @@ class Calculator:
             sigma_t: Standard deviation tensor of shape (n_atoms, 1) with
                      corresponding std values for each atom.
         """
-        inverse, _, counts, padded, mask = _pad_by_molecule(target_property, idx_m)
+        inverse, _, counts, padded, mask = _pad_by_molecule(
+            target_property, idx_m, self._cached_layout(idx_m)
+        )
         n = (counts * target_property.shape[-1]).to(target_property.dtype)
         mean = padded.sum(dim=(1, 2)) / n
         centered = (padded - mean[:, None, None]) * mask[..., None]
