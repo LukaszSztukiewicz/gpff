@@ -180,7 +180,9 @@ class Atomwise(SPKAtomwise):
 
 class TimeAwareEquivariant(nn.Module):
     """
-    Time-aware Equivariant head for diffusion noise.
+    Time-aware Equivariant head for diffusion noise. With ``include_time``, the
+    diffusion time stored in the inputs under ``time_key`` is appended to the
+    scalar features.
     """
 
     def __init__(
@@ -192,9 +194,7 @@ class TimeAwareEquivariant(nn.Module):
         n_layers: int = 2,
         activation: Callable = F.silu,
         output_key: str = keys.eps_pred,
-        time_head: Optional[nn.Module] = None,
         time_key: Optional[str] = None,
-        detach_time_head: bool = False,
     ):
         """
         Args:
@@ -210,9 +210,7 @@ class TimeAwareEquivariant(nn.Module):
             n_layers: number of hidden layers.
             activation: activation function.
             output_key: the key under which the result will be stored.
-            time_head: time head to predict time.
             time_key: time key for input to the equivariant module.
-            detach_time_head: detach time head from computational graph.
         """
 
         super().__init__()
@@ -242,10 +240,6 @@ class TimeAwareEquivariant(nn.Module):
                 sactivation=activation,
             )
 
-        # time prediction
-        self.time_outnet = time_head
-        self.detach_time_head = detach_time_head
-
         self.time_key = time_key
         # set default time key
         if self.include_time and self.time_key is None:
@@ -259,18 +253,7 @@ class TimeAwareEquivariant(nn.Module):
 
         # append time to representation
         if self.include_time:
-            # predict time
-            if self.time_outnet is not None:
-                t = self.time_outnet(inputs)[self.time_key]
-                if self.time_outnet.aggregation_mode is not None:
-                    t = t[inputs[properties.idx_m]]
-                if self.detach_time_head:
-                    t = t.detach()
-            # use true time from input
-            else:
-                t = inputs[self.time_key]  # type: ignore
-
-            # append time to scalar representation features
+            t = inputs[self.time_key]  # type: ignore
             l0 = torch.cat((l0, t), dim=-1)
 
         # predict equivariant output
