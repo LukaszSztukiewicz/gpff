@@ -12,8 +12,9 @@ from gpff.model.heads import GatedEquivariant
 from gpff.model.painn import PaiNN
 from gpff.sample.ancestral_sampling import AdaptiveAncestralSampler
 from gpff.sample.base import Calculator
+from gpff.sample.direct_denoising import DirectDenoisingSampler, ScaffoldDirectDenoisingSampler
 from gpff.sample.heun import AdaptiveStochasticHeunSampler
-from gpff.sample.observers import DeferredWork
+from gpff.sample.observers import DeferredWork, SamplerObserver
 from gpff.utils.neighbors import compute_neighbors
 
 
@@ -173,3 +174,36 @@ def test_adaptive_stochastic_heun_passes_sigma_next_to_the_second_stage():
     assert second_stages
     for t, sigma_next in second_stages:
         torch.testing.assert_close(t, sigma_next / sigma_max)
+
+
+class PositionRecorder(SamplerObserver):
+    def on_start(self, sampler, batch):
+        self.steps = []
+
+    def on_step_end(self, batch, step):
+        self.steps.append((batch[keys.converged].clone(), batch[properties.R].clone()))
+
+
+@pytest.mark.parametrize("sampler_cls", [DirectDenoisingSampler, ScaffoldDirectDenoisingSampler])
+def test_direct_denoising_keeps_converged_molecules_in_place(sampler_cls):
+    torch.manual_seed(0)
+    n_mols, n_atoms = 8, 6
+    inputs = sampler_inputs(n_mols, n_atoms, scale=5)
+    idx_m = inputs[properties.idx_m]
+    x_0 = torch.randn(n_mols * n_atoms, 3)
+    scaffold_mask = torch.arange(n_mols * n_atoms) % n_atoms < 2
+    # a prior that already keeps the scaffold atoms at their clean positions
+    inputs[properties.R] = torch.where(scaffold_mask[:, None], x_0, inputs[properties.R])
+    # Relax with unit stiffness is an exact denoiser of the target structure
+    inputs["target"] = x_0
+    inputs["stiffness"] = torch.ones(n_mols * n_atoms, 1)
+    recorder = PositionRecorder()
+    sampler = sampler_cls(calculator=Calculator(model=Relax(), device="cpu"), n_steps=20, f_max=2.5)
+    sampler.denoise(inputs, conditions={keys.scaffold_mask: scaffold_mask}, observers=[recorder])
+
+    converged_early = False
+    for (converged, before), (_, after) in zip(recorder.steps, recorder.steps[1:]):
+        frozen = converged[idx_m]
+        converged_early |= bool(converged.any())
+        torch.testing.assert_close(after[frozen], before[frozen])
+    assert converged_early
