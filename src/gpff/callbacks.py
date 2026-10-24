@@ -12,6 +12,10 @@ from gpff.analysis import get_rdkit_validity
 from ase.db import connect
 from ase import Atoms
 from schnetpack.train.callbacks import ModelCheckpoint as SPKModelCheckpoint
+from schnetpack.train.callbacks import (
+    ExponentialMovingAverage as SPKExponentialMovingAverage,
+)
+from torch_ema import ExponentialMovingAverage as EMA
 import pytorch_lightning as pl
 import schnetpack.transform as trn
 from schnetpack import properties
@@ -23,7 +27,42 @@ __all__ = [
     "ModelCheckpoint",
     "MilestoneCheckpoint",
     "DeterministicDataSeed",
+    "ExponentialMovingAverage",
 ]
+
+
+class _ForeachEMA(EMA):
+    """torch_ema's moving average with a multi-tensor update.
+
+    torch_ema runs three kernels per parameter tensor; the torch._foreach_*
+    calls run the same three elementwise ops (so give the same bits) over all
+    tensors in three kernels in total.
+    """
+
+    @torch.no_grad()
+    def update(self, parameters=None) -> None:
+        parameters = self._get_parameters(parameters)
+        decay = self.decay
+        if self.num_updates is not None:
+            self.num_updates += 1
+            decay = min(decay, (1 + self.num_updates) / (10 + self.num_updates))
+        tmp = torch._foreach_sub(self.shadow_params, list(parameters))
+        torch._foreach_mul_(tmp, 1.0 - decay)
+        torch._foreach_sub_(self.shadow_params, tmp)
+
+
+class ExponentialMovingAverage(SPKExponentialMovingAverage):
+    """schnetpack's EMA callback, with the multi-tensor update of _ForeachEMA.
+
+    Keeps schnetpack's class name, which Lightning stores the callback state
+    under, so checkpoints written with schnetpack's callback resume with this
+    one and vice versa.
+    """
+
+    def on_fit_start(self, trainer, pl_module) -> None:
+        if self.ema is None:
+            self.ema = _ForeachEMA(pl_module.model.parameters(), decay=self.decay)
+        super().on_fit_start(trainer, pl_module)
 
 
 class DeterministicDataSeed(Callback):

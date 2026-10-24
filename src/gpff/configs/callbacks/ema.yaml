@@ -1,4 +1,5 @@
 ema:
-    # schnetpack's callback restores the raw (non-EMA) weights on resume
-    _target_: schnetpack.train.callbacks.ExponentialMovingAverage
+    # schnetpack's callback (restores the raw, non-EMA weights on resume) with a
+    # multi-tensor update
+    _target_: gpff.callbacks.ExponentialMovingAverage
     decay: 0.995
