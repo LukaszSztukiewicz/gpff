@@ -78,4 +78,3 @@ task:
       loss_weight: 1.
       scale_loss: ${globals.scale_loss}
       weights_key: ${globals.weights_key}
-      warmup_steps: 0
