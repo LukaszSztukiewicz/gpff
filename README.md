@@ -98,6 +98,7 @@ gpff_generate \
   model_path=/path/to/best_model split_path=/path/to/split.npz \
   datapath=/path/to/qm9_filtered.db \
   n_samples=10000
+# (add 'compile={dynamic:true}' to compile the model, as for training)
 
 # The shape prior draws positions with a prescribed covariance per molecule, so
 # it needs a condition generator to supply one variance vector per molecule:

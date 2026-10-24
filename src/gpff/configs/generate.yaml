@@ -20,7 +20,8 @@ split_path: ???
 # Data configuration
 datapath: ???
 # Molecules denoised together; at 32 the GPU mostly waits on per-call overhead.
-# Memory grows with it (fully connected graph: ~1 GB of pair filters at 256).
+# Memory grows with it (fully connected graph: ~0.5 GB of pair filters at 256,
+# which PaiNN computes for half of the pairs).
 batch_size: 128
 num_workers: 12
 data_workdir: null
@@ -31,6 +32,10 @@ seed: 42069
 # float32 matmul precision; "high" uses TF32 on Ampere or newer GPUs. Set to
 # "highest" for full float32 matmuls.
 matmul_precision: high
+# torch.compile arguments for the model, e.g. {} or {dynamic: true} (batches
+# differ in size); null runs it eagerly. Fuses the many small kernels of each
+# model call. Needs a C and a C++ compiler (gcc, g++) at run time.
+compile: null
 results_dir: generated_samples
 output_db: ${results_dir}/samples_${now:%Y-%m-%d_%H-%M-%S}.db
 

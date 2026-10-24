@@ -81,6 +81,9 @@ def sample_molecules(config: DictConfig):
         raise FileNotFoundError(f"No model checkpoint at {model_path}.")
     log.info(f"Loading model from: {model_path}")
     model = load_model(model_path, device="cpu")
+    if config.get("compile") is not None:
+        log.info(f"Compiling the model with <{config.compile}>")
+        model.compile(**OmegaConf.to_container(config.compile))
 
     # load split; it has to match the model, so it is required as well
     split_path = OmegaConf.select(config, "split_path")
