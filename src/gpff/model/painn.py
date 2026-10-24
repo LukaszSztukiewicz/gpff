@@ -16,6 +16,9 @@ __all__ = ["PaiNN"]
 _upper_pairs_cache = (lambda: None, lambda: None, None)
 
 
+# Data-dependent shapes and control flow: under torch.compile this runs
+# eagerly between two compiled graphs, which keeps the half-sized filters.
+@torch.compiler.disable
 def _upper_pairs(idx_i: torch.Tensor, idx_j: torch.Tensor, n_atoms: int) -> Optional[torch.Tensor]:
     """
     Indices of the pairs with i < j if every pair of the neighbor list is also
@@ -25,9 +28,6 @@ def _upper_pairs(idx_i: torch.Tensor, idx_j: torch.Tensor, n_atoms: int) -> Opti
     idx_j tensors at every step (and never modifies them).
     """
     global _upper_pairs_cache
-    if torch.compiler.is_compiling():
-        # the check has data-dependent shapes and control flow
-        return None
     cached_i, cached_j, cached = _upper_pairs_cache
     if cached_i() is idx_i and cached_j() is idx_j:
         return cached

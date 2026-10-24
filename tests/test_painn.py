@@ -6,6 +6,7 @@ from schnetpack.data.loader import _atoms_collate_fn
 from schnetpack.nn.cutoff import CosineCutoff
 from schnetpack.nn.radial import GaussianRBF
 
+import gpff.model.painn as painn_module
 from gpff.model.painn import PaiNN, _upper_pairs
 from gpff.utils.neighbors import compute_neighbors
 
@@ -83,3 +84,17 @@ def test_matches_the_all_pairs_forward(drop_every, half_pairs):
 def test_pairs_of_an_atom_with_itself_use_every_pair():
     idx_i, idx_j = torch.tensor([0, 1, 2]), torch.tensor([1, 0, 2])
     assert _upper_pairs(idx_i, idx_j, 3) is None
+
+
+def test_compiled_forward_keeps_the_half_pairs():
+    model, inputs = painn(), batch()
+    painn_module._upper_pairs_cache = (lambda: None, lambda: None, None)
+
+    out = torch.compile(model, backend="eager", dynamic=True)(dict(inputs))
+
+    # the symmetry check ran, eagerly, on this neighbor list
+    assert painn_module._upper_pairs_cache[0]() is inputs[properties.idx_i]
+    assert painn_module._upper_pairs_cache[2] is not None
+    q, mu = reference(model, inputs)
+    torch.testing.assert_close(out["scalar_representation"], q)
+    torch.testing.assert_close(out["vector_representation"], mu)
