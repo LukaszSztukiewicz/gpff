@@ -59,7 +59,8 @@ def test_generate_help_lists_every_sampler_config():
     assert listed == {path.stem for path in (CONFIG_DIR / "sampler").glob("*.yaml")}
 
 
-def test_vp_geometry_sampler_config_builds_a_transform():
+@pytest.mark.parametrize("geometry_sampler", ["vp_geometries", "shape_geometries"])
+def test_geometry_sampler_config_builds_a_transform(geometry_sampler):
     with initialize_config_dir(config_dir=str(CONFIG_DIR)):
         config = compose(
             "train",
@@ -67,7 +68,7 @@ def test_vp_geometry_sampler_config_builds_a_transform():
                 "experiment=gpff",
                 "run.path=/runs",
                 "run.data_dir=/data",
-                "generative_transform/pseudo_pes/geometry_sampler=vp_geometries",
+                f"generative_transform/pseudo_pes/geometry_sampler={geometry_sampler}",
             ],
         )
 

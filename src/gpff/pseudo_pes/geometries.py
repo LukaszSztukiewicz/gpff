@@ -5,10 +5,14 @@ from random import randint, random
 import numpy as np
 import torch
 
-from gpff.utils.alignment import sample_covariance_noise
+from gpff.utils.alignment import (
+    batch_compute_principal_variances,
+    batch_match_principal_variances,
+    sample_covariance_noise,
+)
 
 
-__all__ = ["VarianceExplodingGeometries", "VariancePreservingGeometries", "Geometries"]
+__all__ = ["VarianceExplodingGeometries", "VariancePreservingGeometries", "ShapeGeometries", "Geometries"]
 
 
 def linear_decay(timesteps: int, beta_start: float = 1e-4, beta_end: float = 0.02) -> np.ndarray:
@@ -236,5 +240,62 @@ class VariancePreservingGeometries(Geometries):
         # convert t to a float between 0 and 1, one per atom like the VE sampler
         t = torch.full((x_0.shape[0], 1), t/self.timesteps, device=x_0.device, dtype=x_0.dtype)
         sigma_t = -1 * torch.ones_like(t)
+
+        return x_t, sigma_t, t, noise
+
+
+class ShapeGeometries(Geometries):
+    """
+    Straight path x_t = (1 - t) x_0 + t * noise from each molecule to noise of
+    its own size and shape: the noise is drawn per atom, centered and rescaled
+    along its own principal axes to the principal variances of x_0, so it keeps
+    none of the orientation of x_0. At t = 1 the geometries are distributed like
+    the shape prior (prior=shape with condition_generator=shape), whose mixture
+    is fitted on the same principal variances, so sample from that prior.
+
+    The returned noise level sigma_t = t * sqrt(2 * sum(variances) / 3) is the
+    expected per-coordinate scale of x_t - x_0, so the sigma weights normalize
+    the force labels as they do for the VE geometries.
+    """
+
+    def __init__(self, t_sigma: Optional[float] = None, variance_floor: float = 1e-6):
+        """
+        Args:
+            t_sigma: if set, half of the molecules give each atom its own time,
+                drawn around the molecule's time with this standard deviation,
+                so that the model also learns partly denoised molecules.
+            variance_floor: lower bound of the principal variances, which vanish
+                for planar and linear molecules; the shape prior's mixture is
+                floored the same way (ShapeGMM's variance_floor).
+        """
+        super().__init__(mean_free_noise=True)
+        self.t_sigma = t_sigma
+        self.variance_floor = variance_floor
+
+    def get_noisy_geometry(
+        self,
+        x_0: torch.Tensor,
+        t: Optional[float] = None,
+        noise: Optional[torch.Tensor] = None,
+        **kwargs,
+    ):
+        # noise with the principal variances of x_0, in a random orientation
+        idx_m = torch.zeros(x_0.shape[0], dtype=torch.long, device=x_0.device)
+        variances = batch_compute_principal_variances(x_0, idx_m).clamp(min=self.variance_floor)
+        if noise is None:
+            noise = torch.randn_like(x_0)
+        noise = batch_match_principal_variances(noise - noise.mean(0), variances, idx_m)
+
+        # one time per atom
+        if t is None:
+            t = torch.rand(())
+        t = torch.full((x_0.shape[0], 1), float(t), device=x_0.device, dtype=x_0.dtype)
+        if self.t_sigma is not None and torch.rand(()) < 0.5:
+            t = (t + self.t_sigma * torch.randn_like(t)).clamp(0.0, 1.0)
+
+        # per-atom times move the centroid; keep the one of x_0
+        x_t = (1 - t) * x_0 + t * noise
+        x_t = x_t - x_t.mean(0) + x_0.mean(0)
+        sigma_t = t * (2 * variances.sum() / 3).sqrt()
 
         return x_t, sigma_t, t, noise
