@@ -84,13 +84,20 @@ def calculate_js_divergence(
     observed: np.ndarray,
     bins: int = 100,
 ) -> float:
-    """Compute the Jensen-Shannon divergence between two one-dimensional distributions."""
-    min_val = min(np.min(target), np.min(observed))
-    max_val = max(np.max(target), np.max(observed))
-    common_bins = np.linspace(min_val, max_val, bins)
+    """Compute the Jensen-Shannon divergence between two one-dimensional distributions.
 
-    p, _ = np.histogram(target, bins=common_bins, density=True)
-    q, _ = np.histogram(observed, bins=common_bins, density=True)
+    The `bins` equal-width bins span the range of `target` alone, so every set
+    of observed values is binned alike; observed values outside that range fall
+    into an underflow or an overflow bin, where `target` has no mass.
+    """
+    if not (np.isfinite(target).all() and np.isfinite(observed).all()):
+        raise ValueError("calculate_js_divergence needs finite values.")
+    edges = np.linspace(np.min(target), np.max(target), bins + 1)
+
+    p, _ = np.histogram(target, bins=edges)
+    q, _ = np.histogram(observed, bins=edges)
+    p = np.concatenate([[0], p, [0]])
+    q = np.concatenate([[np.sum(observed < edges[0])], q, [np.sum(observed > edges[-1])]])
 
     js_distance = jensenshannon(p, q, base=2)
     return float(js_distance**2)
