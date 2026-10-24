@@ -46,7 +46,8 @@ def clone_batch(batch: Dict[str, Any]) -> Dict[str, Any]:
     cloned_batch: Dict[str, Any] = {}
     for key, value in batch.items():
         if isinstance(value, torch.Tensor):
-            cloned_batch[key] = value.detach().cpu().clone()
+            # one copy, from the device or of a CPU tensor
+            cloned_batch[key] = value.detach().to("cpu", copy=True)
         else:
             cloned_batch[key] = value
     return cloned_batch
