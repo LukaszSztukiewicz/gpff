@@ -83,11 +83,14 @@ class PseudoPESTransform(trn.Transform):
                 properties.position: x_t,
                 properties.Z: atom_types,
                 keys.x_0: x_0,
-                keys.noise: noise,
                 keys.sigma_curr: sigma_t,
                 keys.t: t,
             }
         )
+        # alignment moves x_t away from x_0 + sigma_t * noise, so the drawn noise
+        # is a target only without it; the force labels below are exact either way
+        if not (self.align_permutation or self.align_rotation):
+            inputs[keys.noise] = noise
 
         # generate labels
         energy = self.energy_function.get_energy(x_0=x_0, x_t=x_t)
