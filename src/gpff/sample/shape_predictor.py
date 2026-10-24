@@ -7,7 +7,7 @@ this many atoms be?". Priors consume its output; see
 import warnings
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
 import torch
 from schnetpack import properties
@@ -121,21 +121,22 @@ class ShapeGMM:
     def fit(self, training_set: ASEAtomsData) -> None:
         from sklearn.mixture import GaussianMixture
 
-        dataset: List[Tuple[int, torch.Tensor]] = []
+        structures: List[torch.Tensor] = []
         sample_iterator = tqdm(
             range(len(training_set)),
             desc="Computing variance training set",
             disable=not self.verbose,
         )
         for sample_idx in sample_iterator:
-            positions = training_set[sample_idx][properties.R]
-            # One structure at a time, so idx_m is all zeros and one row comes back.
-            idx_m = torch.zeros(positions.shape[0], dtype=torch.long)
-            variances = batch_compute_principal_variances(positions, idx_m)[0]
-            dataset.append((positions.shape[0], variances))
+            structures.append(training_set[sample_idx][properties.R])
+
+        # the variances of all structures at once instead of one at a time
+        sizes = [len(positions) for positions in structures]
+        idx_m = torch.repeat_interleave(torch.arange(len(sizes)), torch.tensor(sizes))
+        all_variances = batch_compute_principal_variances(torch.cat(structures), idx_m)
 
         grouped_variances: Dict[int, List[torch.Tensor]] = defaultdict(list)
-        for n_atoms, variances in dataset:
+        for n_atoms, variances in zip(sizes, all_variances):
             grouped_variances[n_atoms].append(variances)
 
         fit_iterator = tqdm(
@@ -192,7 +193,14 @@ class ShapeGMM:
         if n_atoms not in self.models:
             raise ValueError(f"No shape model trained for n_atoms={n_atoms}. Available: {sorted(self.models)}")
 
-        log_variances, _ = self.models[n_atoms].sample(num_samples)
+        from sklearn.utils import check_random_state
+
+        model = self.models[n_atoms]
+        log_variances, _ = model.sample(num_samples)
+        # GaussianMixture.sample returns the draws grouped by component; shuffle
+        # them so that every row is an independent draw. One row needs no shuffle
+        # and draws nothing from the RNG.
+        log_variances = log_variances[check_random_state(model.random_state).permutation(num_samples)]
         variances = torch.exp(torch.tensor(log_variances, dtype=torch.float32))
         # The mixture cannot guarantee ordering; keep the descending convention.
         variances = variances.sort(dim=-1, descending=True).values
@@ -219,13 +227,14 @@ class ShapeGMM:
             batch positions.
         """
         positions = batch[properties.R]
-        idx_m = batch[properties.idx_m]
-        variances = [
-            self.sample(
-                n_atoms=int((idx_m == idx).sum().item()),
-                num_samples=1,
+        n_atoms = batch[properties.idx_m].unique(return_counts=True)[1].cpu()
+        # one draw per molecule size rather than per molecule
+        variances = torch.empty(len(n_atoms), 3)
+        for size in n_atoms.unique().tolist():
+            molecules = n_atoms == size
+            variances[molecules] = self.sample(
+                n_atoms=size,
+                num_samples=int(molecules.sum()),
                 target_ratio=target_ratio,
-            )[0]
-            for idx in idx_m.unique()
-        ]
-        return torch.stack(variances).to(dtype=positions.dtype, device=positions.device)
+            )
+        return variances.to(dtype=positions.dtype, device=positions.device)
