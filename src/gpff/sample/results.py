@@ -15,6 +15,11 @@ __all__ = [
     "batches_to_relaxed",
 ]
 
+# Atom features the model writes into the batch (n_atoms x n_atom_basis values,
+# and three times that for the vectors). No result reads them, and serialising
+# them dominated the conversion.
+_MODEL_FEATURE_KEYS = ("scalar_representation", "vector_representation")
+
 
 def to_serializable(value: Any) -> Any:
     """
@@ -55,7 +60,8 @@ def batches_to_trajectories(
 
     Each returned trajectory is a list of ``(Atoms, metadata)`` tuples. If a
     trajectory converges, repeated converged tail states are removed and only
-    the first converged structure is kept.
+    the first converged structure is kept. The metadata holds every batch entry
+    except private (``_``-prefixed) keys and the model's atom features.
     """
     if len(batch_results) == 0:
         return []
@@ -64,22 +70,28 @@ def batches_to_trajectories(
     for batch in batch_results:
         step_atoms = batch_to_atoms_list(batch)
         idx_m = batch[properties.idx_m]
-        molecule_ids = idx_m.unique()
+        _, inverse, counts = idx_m.unique(return_inverse=True, return_counts=True)
         n_atoms = idx_m.shape[0]
-        n_molecules = molecule_ids.shape[0]
-        molecule_masks = [idx_m == molecule_id for molecule_id in molecule_ids]
+        n_molecules = counts.shape[0]
+        # atoms grouped by molecule, so each tensor is serialised once and split
+        atom_order = torch.argsort(inverse, stable=True).cpu()
+        atom_bounds = [0] + torch.cumsum(counts, 0).tolist()
         step_metadata: List[Dict[str, Any]] = [{} for _ in range(n_molecules)]
 
         for key, value in batch.items():
-            if isinstance(key, str) and key.startswith("_"):
+            if isinstance(key, str) and (key.startswith("_") or key in _MODEL_FEATURE_KEYS):
                 continue
             if isinstance(value, torch.Tensor):
                 if value.ndim > 0 and value.shape[0] == n_atoms:
-                    for molecule_idx, mask in enumerate(molecule_masks):
-                        step_metadata[molecule_idx][key] = to_serializable(value[mask])
-                elif value.ndim > 0 and value.shape[0] == n_molecules:
+                    rows = to_serializable(value.detach().cpu()[atom_order])
                     for molecule_idx in range(n_molecules):
-                        step_metadata[molecule_idx][key] = to_serializable(value[molecule_idx])
+                        step_metadata[molecule_idx][key] = rows[
+                            atom_bounds[molecule_idx]:atom_bounds[molecule_idx + 1]
+                        ]
+                elif value.ndim > 0 and value.shape[0] == n_molecules:
+                    rows = to_serializable(value)
+                    for molecule_idx in range(n_molecules):
+                        step_metadata[molecule_idx][key] = rows[molecule_idx]
                 elif value.ndim == 0:
                     serialized_value = to_serializable(value)
                     for molecule_idx in range(n_molecules):

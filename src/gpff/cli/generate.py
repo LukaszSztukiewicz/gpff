@@ -208,14 +208,9 @@ def sample_molecules(config: DictConfig):
                 for trajectory in trajectories_to_store:
                     # Unique id for this trajectory across the entire db.
                     for atoms, data in trajectory:
-                        filtered_data = {
-                            k: v
-                            for k, v in data.items()
-                            if k not in ("scalar_representation", "vector_representation")
-                        }
                         db.write(
                             atoms,
-                            data={**filtered_data, "trajectory_idx": trajectory_idx},
+                            data={**data, "trajectory_idx": trajectory_idx},
                         )
                     trajectory_idx += 1
 
