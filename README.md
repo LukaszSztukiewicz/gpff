@@ -115,6 +115,13 @@ gpff_generate \
   model_path=/path/to/best_model split_path=/path/to/split.npz \
   datapath=/path/to/qm9_filtered.db n_samples=10000
 
+# Train on straight paths from each molecule to noise of its own size and shape
+# instead of variance-exploding noise. Their noise is distributed like the shape
+# prior, so sample such a model with prior=shape condition_generator=shape and a
+# direct denoising sampler as above; the Heun and DDPM samplers assume
+# variance-exploding noise.
+gpff_train experiment=gpff generative_transform/pseudo_pes/geometry_sampler=shape_geometries
+
 # Evaluate a sampled DB in two phases, both writing into an evaluation folder
 # next to the database (unless --evaluation_dir says otherwise); the database
 # itself is only read. No reference database is used — the reference
