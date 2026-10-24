@@ -134,7 +134,6 @@ if __name__ == "__main__":
         VariancePreservingGeometries,
         VarianceExplodingGeometries,
         VEPseudoCalculator,
-        MixedGeometries,
     )
 
     # set seed
@@ -174,7 +173,6 @@ if __name__ == "__main__":
         #    beta_max=0.01,
         #    timesteps=1000,
         #)
-        #geometry_sampler = MixedGeometries(sigma_max=10, t_sigma=0.1)
         t_i = t_i / 1000
         geometry_sampler = VarianceExplodingGeometries(
             sigma_max=30,
