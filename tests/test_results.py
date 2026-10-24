@@ -3,6 +3,7 @@ from schnetpack import properties
 
 from gpff import keys
 from gpff.sample.results import batches_to_relaxed
+from gpff.utils.batching import batch_to_atoms_list, dict_to_atoms, unbatch_to_dicts
 
 
 def test_relaxed_metadata_is_split_per_molecule():
@@ -32,3 +33,20 @@ def test_relaxed_metadata_is_split_per_molecule():
         assert data[keys.forces] == batch[keys.forces][mask].tolist()
         assert (atoms.numbers == batch[properties.Z][mask].numpy()).all()
         assert (atoms.positions == batch[properties.R][mask].numpy()).all()
+
+
+def test_atoms_list_matches_the_per_molecule_conversion():
+    torch.manual_seed(0)
+    batch = {
+        properties.idx_m: torch.tensor([2, 5, 2, 5, 5, 9]),
+        properties.Z: torch.tensor([6, 1, 8, 1, 7, 1]),
+        properties.R: torch.randn(6, 3),
+        properties.cell: torch.randn(3, 3, 3),
+    }
+
+    atoms_list = batch_to_atoms_list(batch)
+
+    expected = [dict_to_atoms(inputs) for inputs in unbatch_to_dicts(batch)]
+    assert len(atoms_list) == len(expected) == 3
+    for atoms, reference in zip(atoms_list, expected):
+        assert atoms == reference

@@ -4,7 +4,7 @@ import torch
 from typing import Any, Dict, List, Optional
 from tqdm import tqdm
 from gpff import keys
-from gpff.sample.results import clone_batch
+from gpff.sample.results import _MODEL_FEATURE_KEYS, clone_batch
 
 
 __all__ = ["SamplerObserver", "ProgressReporter", "TrajectoryRecorder"]
@@ -33,7 +33,8 @@ class SamplerObserver:
 
 class TrajectoryRecorder(SamplerObserver):
     """
-    Record a CPU snapshot of the batch after every denoising step.
+    Record a CPU snapshot of the batch after every denoising step, without
+    the model's atom features (scalar and vector representations).
 
     Snapshots are available as ``recorder.snapshots`` after ``denoise``
     returns. The recorder resets on ``on_start`` so it can be reused across
@@ -47,7 +48,10 @@ class TrajectoryRecorder(SamplerObserver):
         self.snapshots = []
 
     def on_step_end(self, batch: Dict[str, torch.Tensor], step: int) -> None:
-        self.snapshots.append(clone_batch(batch))
+        # the model's atom features are the bulk of the batch and no result reads them
+        self.snapshots.append(
+            clone_batch({k: v for k, v in batch.items() if k not in _MODEL_FEATURE_KEYS})
+        )
 
 
 class ProgressReporter(SamplerObserver):

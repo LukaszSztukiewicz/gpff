@@ -51,7 +51,18 @@ def atoms_to_dict(atoms):
 
 
 def batch_to_atoms_list(batch):
-    batch_list = unbatch_to_dicts(batch)
-    atoms_list = [dict_to_atoms(inputs) for inputs in batch_list]
-
-    return atoms_list
+    """
+    One ase.Atoms per molecule, ordered like idx_m.unique(); what
+    dict_to_atoms makes of each of unbatch_to_dicts(batch), with every tensor
+    converted once and sliced rather than masked once per molecule.
+    """
+    _, inverse, counts = batch[properties.idx_m].unique(return_inverse=True, return_counts=True)
+    order = torch.argsort(inverse, stable=True)
+    bounds = [0] + torch.cumsum(counts, 0).tolist()
+    numbers = batch[properties.Z][order].detach().cpu().numpy()
+    positions = batch[properties.R][order].detach().cpu().numpy()
+    cells = batch[properties.cell].detach().cpu().numpy()
+    return [
+        Atoms(numbers=numbers[start:end], positions=positions[start:end], cell=cells[m])
+        for m, (start, end) in enumerate(zip(bounds[:-1], bounds[1:]))
+    ]
