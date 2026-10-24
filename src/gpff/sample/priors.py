@@ -8,6 +8,7 @@ from gpff.utils import (
     batch_apply_covariances,
     batch_match_principal_variances,
 )
+from gpff.utils.alignment import _pad_by_molecule
 
 # ShapeGMM used to live here under the name CovarianceGMM, and cached models are
 # pickled against that name. Keep it importable so torch.load can resolve them.
@@ -156,10 +157,12 @@ class ScaffoldGaussianPrior(Prior):
         idx_m = batch[properties.idx_m]
         scaffold_mask = conditions[keys.scaffold_mask]
 
-        for molecule_id in idx_m.unique():
-            molecule_mask = idx_m == molecule_id
-            center = positions[molecule_mask & scaffold_mask].mean(dim=0)
-            positions[molecule_mask] = positions[molecule_mask] - center
+        # mean scaffold position of each molecule, from the padded batch
+        inverse, _, counts, scaffold_positions, _ = _pad_by_molecule(
+            torch.where(scaffold_mask[:, None], positions, 0.0), idx_m
+        )
+        n_scaffold = torch.bincount(inverse[scaffold_mask], minlength=len(counts))
+        positions -= (scaffold_positions.sum(dim=1) / n_scaffold[:, None])[inverse]
 
         free_mask = ~scaffold_mask
         positions[free_mask] = torch.randn_like(positions[free_mask]) * self.sigma
