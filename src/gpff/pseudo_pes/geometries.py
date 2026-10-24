@@ -1,14 +1,14 @@
 from typing import Optional, Union
 import abc
-from random import randint, random, choice
+from random import randint, random
 
 import numpy as np
 import torch
 
-from gpff.utils.alignment import sample_covariance_noise, align_permutation
+from gpff.utils.alignment import sample_covariance_noise
 
 
-__all__ = ["VarianceExplodingGeometries", "VariancePreservingGeometries", "Geometries", "MixedGeometries"]
+__all__ = ["VarianceExplodingGeometries", "VariancePreservingGeometries", "Geometries"]
 
 
 def linear_decay(timesteps: int, beta_start: float = 1e-4, beta_end: float = 0.02) -> np.ndarray:
@@ -231,58 +231,3 @@ class VariancePreservingGeometries(Geometries):
         sigma_t = -1 * torch.ones_like(t)
 
         return x_t, sigma_t, t
-
-
-class MixedGeometries(Geometries):
-    def __init__(self, sigma_max: float=1.0, t_sigma: Optional[float] = None):
-        super().__init__()
-        self.supported_schedules = ["vp", "ve", "ve_ds", "multivariate"]
-        self.sigma_max = sigma_max
-        self.t_sigma = t_sigma
-
-    def get_noisy_geometry(self, x_0: torch.Tensor, t: Optional[float] = None, **kwargs):
-        atom_types = kwargs.pop("atom_types", None)
-        # sample random schedule
-        #schedule = choice(self.supported_schedules)
-        schedule = "multivariate"
-
-        # get per atom timestep
-        if t is None:
-            t = random()
-
-        if self.t_sigma is not None and choice([True, False]):
-            t_i = torch.normal(mean=t, std=self.t_sigma, size=(x_0.shape[0], 1))
-            t_i.clamp_(min=0.0, max=1.0)
-        else:
-            t_i = torch.ones((x_0.shape[0], 1), device=x_0.device, dtype=x_0.dtype) * t
-
-
-        # perturb geometry
-        if schedule == "vp":
-            noise = torch.randn_like(x_0)
-            x_t = (1 - t_i)**0.5 * x_0 + t_i**0.5 * noise
-        elif schedule == "ve":
-            sigma_max = torch.rand(()) * (self.sigma_max - 1) + 1
-            noise = torch.randn_like(x_0) * sigma_max
-            x_t = x_0 + t_i * noise
-        elif schedule == "ve_ds":
-            sigma_max = torch.rand(()) * (self.sigma_max - 1) + 1
-            noise = torch.randn_like(x_0) * sigma_max
-            x_t = (1 - t_i) * x_0 + t_i * noise
-        elif schedule == "multivariate":
-            if atom_types is None:
-                raise ValueError("atom_types must be provided for multivariate schedule")
-            # TODO: how do we handle destroy signal?!
-            noise = sample_covariance_noise(x_0)
-            # align permutation of noise and x_0
-            # noise, atom_types = align_permutation(
-            #     positions=noise,
-            #     target_positions=x_0,
-            #     numbers=atom_types,
-            #     target_numbers=atom_types,
-            # )
-            x_t = (1 - t_i) * x_0 + t_i * noise
-        else:
-            raise ValueError(f"Invalid schedule: {schedule}")
-
-        return x_t, t_i, t_i
