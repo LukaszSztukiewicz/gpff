@@ -12,6 +12,57 @@ from schnetpack.representation.painn import PaiNNInteraction, PaiNNMixing
 __all__ = ["PaiNN"]
 
 
+def _upper_pairs(idx_i: torch.Tensor, idx_j: torch.Tensor, n_atoms: int) -> Optional[torch.Tensor]:
+    """
+    Indices of the pairs with i < j if every pair of the neighbor list is also
+    listed reversed and no atom is paired with itself, else None.
+    """
+    if torch.compiler.is_compiling():
+        # the check has data-dependent shapes and control flow
+        return None
+    upper = idx_i < idx_j
+    key = torch.minimum(idx_i, idx_j) * n_atoms + torch.maximum(idx_i, idx_j)
+    upper_idx = upper.nonzero().squeeze(-1)
+    lower_idx = (~upper).nonzero().squeeze(-1)
+    if not torch.equal(key[upper_idx].sort().values, key[lower_idx].sort().values):
+        return None
+    return upper_idx
+
+
+def _interaction(
+    interaction: PaiNNInteraction,
+    q: torch.Tensor,
+    mu: torch.Tensor,
+    Wij: torch.Tensor,
+    dir_ij: torch.Tensor,
+    idx_i: torch.Tensor,
+    idx_j: torch.Tensor,
+    n_atoms: int,
+):
+    """
+    PaiNNInteraction.forward, except that Wij may hold the filters of only the
+    first half of the pairs when the second half is the same pairs reversed.
+    """
+    x = interaction.interatomic_context_net(q)
+    xj = x[idx_j]
+    muj = mu[idx_j]
+    if Wij.shape[0] == xj.shape[0]:
+        x = Wij * xj
+    else:
+        # one filter for both directions of a pair
+        x = (Wij * xj.unflatten(0, (2, -1))).flatten(0, 1)
+
+    dq, dmuR, dmumu = torch.split(x, interaction.n_atom_basis, dim=-1)
+    dq = snn.scatter_add(dq, idx_i, dim_size=n_atoms)
+    dmu = dmuR * dir_ij[..., None] + dmumu * muj
+    dmu = snn.scatter_add(dmu, idx_i, dim_size=n_atoms)
+
+    q = q + dq
+    mu = mu + dmu
+
+    return q, mu
+
+
 class PaiNN(nn.Module):
     """PaiNN - polarizable interaction neural network
 
@@ -125,13 +176,33 @@ class PaiNN(nn.Module):
         idx_j = inputs[properties.idx_j]
         n_atoms = atomic_numbers.shape[0]
 
+        # A filter depends on |r_ij| alone, so the pair (j, i) shares the filter
+        # of (i, j). If every pair is listed in both directions (like in the
+        # fully connected lists gpff trains and samples with), compute the
+        # filters of the pairs i < j only: the pair list becomes those pairs
+        # followed by their reverses, whose r_ji = -r_ij exactly.
+        upper = _upper_pairs(idx_i, idx_j, n_atoms)
+        if upper is not None:
+            r_ij, idx_i, idx_j = r_ij[upper], idx_i[upper], idx_j[upper]
+            idx_i, idx_j = torch.cat([idx_i, idx_j]), torch.cat([idx_j, idx_i])
+
         # compute atom and pair features
         d_ij = torch.sqrt(torch.sum(r_ij**2, dim=-1, keepdim=True) + self.epsilon)
         dir_ij = r_ij / (d_ij + self.norm_epsilon)
         phi_ij = self.radial_basis(d_ij)
-        fcut = self.cutoff_fn(d_ij)
+        fcut = self.cutoff_fn(d_ij)[..., None]
+        if upper is not None:
+            dir_ij = torch.cat([dir_ij, -dir_ij])
 
-        filters = self.filter_net(phi_ij) * fcut[..., None]
+        # filter_net(phi_ij) * fcut as one matmul: the inputs are scaled by fcut
+        # and fcut is the input of the bias, so the cutoff takes no pass over the
+        # (pairs, 3 * n_interactions * n_atom_basis) filters. Zero-padding the
+        # inputs to a multiple of 8 features keeps the GPU on aligned kernels.
+        n_pad = -(phi_ij.shape[-1] + 1) % 8
+        filters = F.linear(
+            torch.cat([phi_ij * fcut, fcut, fcut.new_zeros(*fcut.shape[:-1], n_pad)], dim=-1),
+            F.pad(torch.cat([self.filter_net.weight, self.filter_net.bias[:, None]], dim=1), (0, n_pad)),
+        )
         if self.share_filters:
             filter_list = [filters] * self.n_interactions
         else:
@@ -147,7 +218,7 @@ class PaiNN(nn.Module):
         qs = q.shape
         mu = torch.zeros((qs[0], 3, qs[2]), device=q.device)
         for i, (interaction, mixing) in enumerate(zip(self.interactions, self.mixing)):
-            q, mu = interaction(q, mu, filter_list[i], dir_ij, idx_i, idx_j, n_atoms)
+            q, mu = _interaction(interaction, q, mu, filter_list[i], dir_ij, idx_i, idx_j, n_atoms)
             q, mu = mixing(q, mu)
         q = q.squeeze(1)
 
