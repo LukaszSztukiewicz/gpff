@@ -305,22 +305,8 @@ class ModelCheckpoint(SPKModelCheckpoint):
         with open(split_marker, "w") as f:
             f.write(str(trainer.datamodule.split_file))
 
-    def _update_best_and_save(
-        self, current: torch.Tensor, trainer, monitor_candidates: Dict[str, Any]
-    ):
-        # save model checkpoint
-        super()._update_best_and_save(current, trainer, monitor_candidates)
-
-        # save best inference model locally; the W&B upload is deferred to
-        # on_fit_end so only one artifact version is pushed per run
-        if isinstance(current, torch.Tensor) and torch.isnan(current):
-            current = torch.tensor(float("inf" if self.mode == "min" else "-inf"))
-
-        if current == self.best_model_score:
-            if self.trainer.strategy.local_rank == 0:
-                # remove references to trainer and data loaders to avoid pickle error in ddp
-                self.task.save_model(self.model_path, do_postprocessing=True)
-
+    # schnetpack's _update_best_and_save saves the best inference model; its
+    # W&B upload is deferred to on_fit_end so only one version is pushed per run
     def on_fit_end(
         self,
         trainer: "pl.Trainer",
