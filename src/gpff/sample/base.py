@@ -413,12 +413,10 @@ class Sampler(ABC):
                 batch[key] = value.clone()
                 continue
 
-            old_value = batch[key].clone()
-
             mask = converged_atoms
             while mask.ndim < value.ndim:
                 mask = mask.unsqueeze(-1)
-            batch[key] = torch.where(mask, old_value, value)
+            batch[key] = torch.where(mask, batch[key], value)
 
         return batch
 
@@ -447,12 +445,10 @@ class Sampler(ABC):
         if step == 1:
             batch[keys.converged] = torch.ones_like(batch[keys.converged])
 
+        # no early exit on nan_atoms.any(): that would cost a host sync per step
         positions = batch[properties.R]
         idx_m = batch[properties.idx_m]
         nan_atoms = torch.isnan(positions).any(dim=-1)
-        if not nan_atoms.any():
-            return batch
-
         nan_molecules = torch.zeros(
             batch[properties.n_atoms].shape[0],
             device=positions.device,
