@@ -36,3 +36,14 @@ def test_experiment_builds(experiment):
         scheduler_cls=str2class(config.task.scheduler_cls),
     )
     hydra.utils.instantiate(config.data, train_sampler_cls=None)
+
+
+@pytest.mark.parametrize("experiment", ["dm_no_t", "dm_t_aware"])
+def test_generate_reads_the_noise_the_diffusion_baselines_predict(experiment):
+    with initialize_config_dir(config_dir=str(CONFIG_DIR)):
+        train = compose(
+            "train", overrides=[f"experiment={experiment}", "run.path=/runs", "run.data_dir=/data"]
+        )
+        generate = compose("generate")
+
+    assert generate.sampler.calculator.noise_key == train.model.output_modules[0].output_key

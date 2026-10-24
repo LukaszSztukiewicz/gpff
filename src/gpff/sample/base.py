@@ -35,7 +35,7 @@ class Calculator:
         self,
         model: Optional[nn.Module] = None,
         noise_model: bool = False,
-        noise_key: str = keys.noise,
+        noise_key: str = keys.eps_pred,
         dtype: torch.dtype | str = torch.float32,
         device: torch.device | str = "cuda",
     ):
@@ -171,7 +171,7 @@ class Calculator:
             if forces:
                 results[keys.forces] = -2*sigma_t*epsilon
             if noise:
-                results[self.noise_key] = epsilon
+                results[keys.noise] = epsilon
             if score:
                 results[keys.score] = -epsilon / sigma_t
             if x0:

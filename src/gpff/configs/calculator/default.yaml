@@ -5,6 +5,6 @@
 _target_: gpff.sample.base.Calculator
 model: null
 noise_model: false
-noise_key: ${key:noise}
+noise_key: ${key:eps_pred}
 dtype: float32
 device: cuda
