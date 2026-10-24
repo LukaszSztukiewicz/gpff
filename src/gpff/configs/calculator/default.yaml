@@ -8,3 +8,7 @@ noise_model: false
 noise_key: ${key:noise}
 dtype: float32
 device: cuda
+# Run the model on the unconverged molecules only. The samplers freeze converged
+# molecules, so samples are unchanged; set false to also evaluate those (e.g.
+# for progress logs over the whole batch).
+skip_converged: true

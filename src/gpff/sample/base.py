@@ -14,6 +14,70 @@ from gpff import keys
 
 __all__ = ["Calculator", "Sampler", "DiffusionSampler"]
 
+# pair-wise batch entries, from the neighbor list and the model's input modules
+_PAIR_KEYS = (
+    properties.idx_i,
+    properties.idx_j,
+    properties.idx_i + "_local",
+    properties.idx_j + "_local",
+    properties.offsets,
+    properties.Rij,
+)
+
+
+def _molecule_selection(batch: Dict[str, Any], molecules: torch.Tensor) -> Dict[str, torch.Tensor]:
+    """
+    Indices that select some molecules of a batch with a neighbor list, and
+    the renumbered index entries of that sub-batch.
+
+    Args:
+        batch: A batch with a neighbor list.
+        molecules: (n_molecules,) True for the molecules to keep.
+    """
+    atoms = molecules[batch[properties.idx_m]]
+    atom_idx = atoms.nonzero().squeeze(-1)
+    pair_idx = atoms[batch[properties.idx_i]].nonzero().squeeze(-1)
+    atom_index = torch.cumsum(atoms, 0) - 1
+    return {
+        "atoms": atom_idx,
+        "pairs": pair_idx,
+        "molecules": molecules.nonzero().squeeze(-1),
+        "indices": {
+            properties.idx_i: atom_index[batch[properties.idx_i][pair_idx]],
+            properties.idx_j: atom_index[batch[properties.idx_j][pair_idx]],
+            properties.idx_m: (torch.cumsum(molecules, 0) - 1)[batch[properties.idx_m][atom_idx]],
+        },
+    }
+
+
+def _select_molecules(
+    batch: Dict[str, Any],
+    selection: Dict[str, torch.Tensor],
+) -> Dict[str, Any]:
+    """
+    The sub-batch of a _molecule_selection: atom, pair and molecule entries
+    subset, atom and molecule indices renumbered.
+    """
+    n_atoms, n_molecules = len(batch[properties.idx_m]), len(batch[properties.n_atoms])
+    sub = {}
+    for key, value in batch.items():
+        if key in selection["indices"]:
+            sub[key] = selection["indices"][key]
+        elif not isinstance(value, torch.Tensor) or value.ndim == 0:
+            sub[key] = value
+        elif key in _PAIR_KEYS:
+            sub[key] = value[selection["pairs"]]
+        elif key == properties.pbc:
+            # (n_molecules * 3,) once collated, or (n_molecules, 3)
+            sub[key] = value.view(-1, 3)[selection["molecules"]].reshape(-1, *value.shape[1:])
+        elif value.shape[0] == n_atoms:
+            sub[key] = value[selection["atoms"]]
+        elif value.shape[0] == n_molecules:
+            sub[key] = value[selection["molecules"]]
+        else:
+            sub[key] = value
+    return sub
+
 
 class Calculator:
     """
@@ -29,6 +93,9 @@ class Calculator:
         noise_key: the prediction key holding the noise.
         dtype: the data type to use for model and batch.
         device: the device to use for model and batch.
+        skip_converged: if True, run the model on the unconverged molecules
+            only. The samplers freeze converged molecules and discard what is
+            predicted for them, so their prediction is set to zero instead.
     """
 
     def __init__(
@@ -38,9 +105,11 @@ class Calculator:
         noise_key: str = keys.noise,
         dtype: torch.dtype | str = torch.float32,
         device: torch.device | str = "cuda",
+        skip_converged: bool = True,
     ):
         self.noise_model = noise_model
         self.noise_key = noise_key
+        self.skip_converged = skip_converged
         if isinstance(dtype, str):
             if dtype.lower() == "float32":
                 self.dtype = torch.float32
@@ -56,6 +125,8 @@ class Calculator:
         self.update_model(model)
         # (idx_m, _molecule_layout(idx_m)) of the last batch
         self._layout_cache = None
+        # (idx_m, active molecules, _molecule_selection) of the last sub-batch
+        self._selection_cache = None
 
     def update_model(self, model: Optional[nn.Module] = None):
         """
@@ -138,6 +209,42 @@ class Calculator:
         std = (centered.square().sum(dim=(1, 2)) / (n - 1)).sqrt()
         return std[inverse].unsqueeze(-1)
 
+    def _predict(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """
+        The model's atom-wise prediction (noise or forces) for the batch.
+
+        With skip_converged, a batch whose molecules converge at different
+        steps (the adaptive samplers) gets cheaper with every converged
+        molecule: only the others go through the model, and the atoms of the
+        converged ones get a zero prediction (so x_0 is their position).
+        """
+        key = self.noise_key if self.noise_model else keys.forces
+        active = ~batch[keys.converged]
+        n_active = int(active.sum()) if self.skip_converged else len(active)
+        if n_active == len(active):
+            return self.model(batch)[key].detach()
+
+        # the selection changes only when another molecule converges; reusing
+        # it also hands the model the same neighbor list tensors every step
+        idx_m = batch[properties.idx_m]
+        cached = self._selection_cache
+        if cached is None or cached[0] is not idx_m or not torch.equal(cached[1], active):
+            self._selection_cache = cached = (idx_m, active, _molecule_selection(batch, active))
+        selection = cached[2]
+
+        prediction = torch.zeros_like(batch[properties.R])
+        if n_active > 0:
+            prediction[selection["atoms"]] = self.model(_select_molecules(batch, selection))[key].detach()
+        # the batch keeps the last prediction of each converged molecule
+        previous = batch.get(key)
+        if previous is not None and previous.shape == prediction.shape:
+            previous = previous.clone()
+            previous[selection["atoms"]] = prediction[selection["atoms"]]
+            batch[key] = previous
+        else:
+            batch[key] = prediction
+        return prediction
+
     def calculate(
         self,
         batch: Dict[str, torch.Tensor],
@@ -172,12 +279,12 @@ class Calculator:
 
         self.check_model()
         batch = self.update_neighbors(batch)
-        predictions = self.model(batch)
+        prediction = self._predict(batch)
         results = {}
 
         # noise model
         if self.noise_model:
-            epsilon = predictions[self.noise_key].detach()
+            epsilon = prediction
             if forces:
                 results[keys.forces] = -2*sigma_t*epsilon
             if noise:
@@ -188,7 +295,7 @@ class Calculator:
                 results[keys.x_0] = batch[properties.R] - sigma_t * epsilon
         # force model
         else:
-            predicted_forces = predictions[keys.forces].detach()
+            predicted_forces = prediction
             # Compute std of forces for each molecule
             if estimate_sigma:
                 sigma_t = self._compute_std_per_molecule(batch[properties.idx_m], predicted_forces/2)
