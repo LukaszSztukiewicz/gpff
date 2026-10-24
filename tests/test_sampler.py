@@ -12,6 +12,7 @@ from gpff.model.heads import GatedEquivariant
 from gpff.model.painn import PaiNN
 from gpff.sample.ancestral_sampling import AdaptiveAncestralSampler
 from gpff.sample.base import Calculator
+from gpff.sample.heun import AdaptiveStochasticHeunSampler
 from gpff.sample.observers import DeferredWork
 from gpff.utils.neighbors import compute_neighbors
 
@@ -132,3 +133,43 @@ def test_deferred_work_runs_in_order_spread_over_the_steps():
 
     assert done == list(range(10))
     assert per_step == [3, 6, 8, 10]
+
+
+def sampler_inputs(n_mols, n_atoms, scale):
+    """A batch of equal molecules for a model that ignores the neighbor list."""
+    return {
+        properties.R: torch.randn(n_mols * n_atoms, 3) * scale,
+        properties.idx_m: torch.arange(n_mols).repeat_interleave(n_atoms),
+        properties.idx_i: torch.zeros(1, dtype=torch.long),
+        properties.idx_j: torch.zeros(1, dtype=torch.long),
+        properties.n_atoms: torch.full((n_mols,), n_atoms),
+    }
+
+
+class TimeRecorder(torch.nn.Module):
+    """Force model that records the time and sigma_next it is called with."""
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+
+    def forward(self, inputs):
+        self.calls.append((inputs[keys.t].clone(), inputs.get(keys.sigma_next)))
+        return {keys.forces: -inputs[properties.R]}
+
+
+def test_adaptive_stochastic_heun_passes_sigma_next_to_the_second_stage():
+    torch.manual_seed(0)
+    inputs = sampler_inputs(n_mols=2, n_atoms=5, scale=5)
+    model = TimeRecorder()
+    sampler = AdaptiveStochasticHeunSampler(
+        calculator=Calculator(model=model, device="cpu"), n_steps=4, time_aware_model=True
+    )
+    sampler.denoise(inputs)
+
+    # calls: the initial sigma estimate, then (stage 1, stage 2) per step
+    sigma_max = sampler.noise_schedule.sigma_max
+    second_stages = model.calls[2::2]
+    assert second_stages
+    for t, sigma_next in second_stages:
+        torch.testing.assert_close(t, sigma_next / sigma_max)

@@ -295,6 +295,13 @@ class AdaptiveStochasticHeunSampler(DiffusionSampler):
         batch = self.update_convergence(batch, sigma_next, 0.01)
 
         # === Step 2 ===
+        if self.time_aware_model:
+            batch[keys.t] = self.noise_schedule.get_time_tensor(
+                batch[properties.idx_m],
+                sigma_next,
+                device=self.device,
+                dtype=self.dtype,
+            )
         predictions = self.calculator.calculate(batch, x0=True, sigma_t=sigma_next)
         x_pred0 = predictions[keys.x_0]
         slope_2 = (x_next - x_pred0) / sigma_next
