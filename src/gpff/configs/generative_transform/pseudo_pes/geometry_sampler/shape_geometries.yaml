@@ -1,0 +1,6 @@
+# @package pseudo_pes.geometry_sampler
+# Straight path from each molecule to noise of its own size and shape. Sample
+# from the matching prior: prior=shape condition_generator=shape.
+_target_: gpff.pseudo_pes.geometries.ShapeGeometries
+# per-atom times around the molecule's time for half of the molecules, e.g. 0.1
+t_sigma: null
