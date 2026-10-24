@@ -198,6 +198,9 @@ def batch_apply_covariances(
     """
     Transform each molecule to match a target covariance and optionally a target center.
 
+    Does what apply_covariance does for each molecule, for all molecules at
+    once: one batched matmul for the covariances and one batched Cholesky.
+
     Args:
         positions: Position tensor of shape (n_atoms, 3).
         idx_m: Molecule index tensor of shape (n_atoms,) mapping each atom to its molecule.
@@ -215,30 +218,49 @@ def batch_apply_covariances(
     """
     if molecule_ids is None:
         molecule_ids = idx_m.unique()
+    if positions.shape[0] == 0:
+        return positions.clone()
 
-    transformed = positions.clone()
-    for row, mol_idx in enumerate(molecule_ids):
-        mol_mask = idx_m == mol_idx
-        pos = positions[mol_mask]
-        if pos.shape[0] <= 1:
-            continue
+    inverse, slot, counts, centered, centroid, covariance = _batch_covariances(positions, idx_m)
+    n = counts.to(positions.dtype)
+    eye = torch.eye(3, device=positions.device, dtype=positions.dtype)
 
-        covariance = covariances[row] + torch.eye(3, device=positions.device, dtype=positions.dtype) * epsilon
-        try:
-            mol_positions = apply_covariance(pos, covariance)
-        except RuntimeError as e:
-            warnings.warn(
-                f"Failed to apply covariance transformation for molecule {int(mol_idx)}: {e}. "
-                f"Keeping original positions.",
-                RuntimeWarning,
-                stacklevel=2
-            )
-            continue
-        if centers is not None:
-            mol_positions = mol_positions - mol_positions.mean(dim=0) + centers[row]
-        transformed[mol_mask] = mol_positions
+    # row of covariances / centers for each molecule; molecules missing from
+    # molecule_ids and single-atom molecules keep their positions
+    ids = idx_m.new_empty(len(counts))
+    ids[inverse] = idx_m
+    match = ids[:, None] == molecule_ids[None, :]
+    rows = match.int().argmax(dim=1)
+    apply = match.any(dim=1) & (counts > 1)
 
-    return transformed
+    # the current covariance as compute_covariance_matrix gives it (Bessel's
+    # correction, 1e-6 jitter); identity where unused, so the Cholesky stays well-posed
+    current = covariance * (n / (n - 1))[:, None, None] + eye * 1e-6
+    current = torch.where(apply[:, None, None], current, eye)
+    target = torch.where(apply[:, None, None], covariances[rows] + eye * epsilon, eye)
+
+    L_target, info_target = torch.linalg.cholesky_ex(target)
+    L_current, info_current = torch.linalg.cholesky_ex(current)
+    failed = apply & ((info_target != 0) | (info_current != 0))
+    if failed.any():
+        warnings.warn(
+            f"Failed to apply covariance transformation for molecules {ids[failed].tolist()}: "
+            f"the covariance is not positive-definite. Keeping original positions.",
+            RuntimeWarning,
+            stacklevel=2
+        )
+        apply = apply & ~failed
+
+    L_current_inv = torch.linalg.solve_triangular(L_current, eye.expand_as(L_current), upper=False)
+    transform = L_target @ L_current_inv
+    transformed = centered @ transform.mT
+    if centers is None:
+        transformed = transformed + centroid[:, None]
+    else:
+        # the padding rows of transformed are zero, so the sum runs over the atoms
+        transformed = transformed - (transformed.sum(dim=1) / n[:, None])[:, None] + centers[rows][:, None]
+
+    return torch.where(apply[inverse, None], transformed[inverse, slot], positions)
 
 
 def _molecule_layout(
