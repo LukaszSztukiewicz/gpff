@@ -158,7 +158,11 @@ class Calculator:
 
         self.check_model()
         batch = self.update_neighbors(batch)
-        predictions = self.model(batch)
+        # schnetpack models write their intermediate tensors (representations,
+        # pair vectors) into the inputs; keep only the outputs in the batch,
+        # where trajectories record them
+        predictions = self.model(dict(batch))
+        batch.update(predictions)
         results = {}
 
         # noise model
