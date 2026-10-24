@@ -279,22 +279,13 @@ def _patch_legacy_painn_attrs(model: torch.nn.Module) -> None:
                 setattr(module, attr, default)
 
 
-def _ensure_spk_dataset_db_metadata(db_path: str) -> None:
-    """Backfill the schnetpack dataset metadata an ASEAtomsData load expects."""
-    with connect(db_path) as db:
-        metadata = db.metadata.copy()
-        metadata_updated = False
+class _SamplesData(ASEAtomsData):
+    """ASEAtomsData for a samples DB, which lacks the unit metadata schnetpack
+    expects; the defaults are supplied on read, so the DB is never written."""
 
-        if "_property_unit_dict" not in metadata:
-            metadata["_property_unit_dict"] = {}
-            metadata_updated = True
-
-        if "_distance_unit" not in metadata:
-            metadata["_distance_unit"] = "Ang"
-            metadata_updated = True
-
-        if metadata_updated:
-            db.metadata = metadata
+    @property
+    def metadata(self):
+        return {"_property_unit_dict": {}, "_distance_unit": "Ang", **super().metadata}
 
 
 def predict_property(
@@ -326,8 +317,7 @@ def predict_property(
         atomrefs = torch.as_tensor(atomrefs, dtype=torch.float32)
 
     local_samples_db_path = _copy_db_to_workdir(samples_db_path, data_workdir)
-    _ensure_spk_dataset_db_metadata(local_samples_db_path)
-    dataset = ASEAtomsData(
+    dataset = _SamplesData(
         datapath=local_samples_db_path,
         load_properties=[],
         load_structure=True,
