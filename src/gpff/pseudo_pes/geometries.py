@@ -210,24 +210,31 @@ class VariancePreservingGeometries(Geometries):
         self,
         x_0: torch.Tensor,
         t: Optional[float] = None,
+        noise: Optional[torch.Tensor] = None,
         **kwargs,
     ):
         
-        # process t to an integer between 0 and self.timesteps
+        # process t to an integer between 0 and self.timesteps - 1
         if t is None:
             t = randint(0, self.timesteps-1)
         else:
             if t<0 or t>1:
                 raise ValueError("t must be between 0 and 1")
-            t = int(t*self.timesteps)
-        
+            t = min(int(t*self.timesteps), self.timesteps - 1)
+
+        # sample noise, centered like the VE noise when center_xt is set
+        if noise is None:
+            noise = torch.randn_like(x_0)
+        if self.mean_free_noise:
+            noise = noise - noise.mean(0, keepdim=True)
+
         # sample x_t
-        x_t = torch.sqrt(self.alphas[t]) * x_0 + torch.randn_like(x_0) * torch.sqrt(
+        x_t = torch.sqrt(self.alphas[t]) * x_0 + noise * torch.sqrt(
             1 - self.alphas[t]
         )
 
-        # convert t to a float between 0 and 1
-        t = torch.tensor([t/self.timesteps], device=x_0.device, dtype=x_0.dtype)
+        # convert t to a float between 0 and 1, one per atom like the VE sampler
+        t = torch.full((x_0.shape[0], 1), t/self.timesteps, device=x_0.device, dtype=x_0.dtype)
         sigma_t = -1 * torch.ones_like(t)
 
-        return x_t, sigma_t, t
+        return x_t, sigma_t, t, noise
