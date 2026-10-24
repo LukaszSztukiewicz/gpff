@@ -17,5 +17,3 @@ cache_in_memory: false
 # QM9 properties to load; null loads all 19, which gpff training does not use;
 # [] loads none and more than halves the cost of reading a sample
 load_properties: null
-n_atoms_allowed: null
-indices_path: ${run.data_dir}/n_atoms_indices.pkl

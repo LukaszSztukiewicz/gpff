@@ -1,13 +1,11 @@
 import os
 from typing import List, Optional
-import pickle
 
 from ase.db import connect
 import numpy as np
 from tqdm import tqdm
 
 from schnetpack.datasets import QM9
-from schnetpack import properties
 from schnetpack.data import AtomsDataModuleError, AtomsLoader, load_dataset
 
 from gpff.analysis import analyze_with_rdkit, get_rdkit_validity
@@ -115,7 +113,6 @@ def build_filtered_qm9(
 class QM9Valid(QM9):
     """
     Filtered version of QM9 dataset without invalid molecules.
-    Also allows to only load molecules with a specified number of atoms.
     todo: also allow with uncharacterized molecules
     """
 
@@ -123,8 +120,6 @@ class QM9Valid(QM9):
         self,
         datapath: str,
         batch_size: int,
-        n_atoms_allowed: Optional[bool] = None,
-        indices_path: str = "n_atoms_indices.pkl",
         load_properties: Optional[List[str]] = None,
         raw_datapath: Optional[str] = None,
         filter_timeout: int = 5,
@@ -136,9 +131,6 @@ class QM9Valid(QM9):
         Args:
             datapath: path to directory containing QM9 database.
             batch_size: batch size.
-            n_atoms_allowed: the exact number of atoms in each molecule.
-            indices_path: path to pickle file containing indices of molecules
-                          with specific number of atoms.
             raw_datapath: path of the unfiltered QM9 database that the filtered
                           database is built from. Defaults to "qm9.db" next to
                           ``datapath``. It is downloaded if it does not exist.
@@ -153,8 +145,6 @@ class QM9Valid(QM9):
             load_properties=load_properties,
             **kwargs,
         )
-        self.n_atoms_allowed = n_atoms_allowed
-        self.indices_path = indices_path
         self.raw_datapath = raw_datapath or os.path.join(
             os.path.dirname(os.path.abspath(datapath)), RAW_QM9_FILENAME
         )
@@ -188,8 +178,8 @@ class QM9Valid(QM9):
 
     def setup(self, stage: Optional[str] = None):
         """
-        Overwrites the ``setup`` method to load molecules with given number of atoms.
-        Copied from MoreRed.
+        Overwrites the ``setup`` method to optionally serve the database from
+        memory and to reset the dataset transforms on every call.
         """
         if self.data_workdir is None:
             datapath = self.datapath
@@ -214,37 +204,6 @@ class QM9Valid(QM9):
                     distance_unit=self.distance_unit,
                     load_properties=self.load_properties,
                 )
-
-            # use only molecules with specific number of atoms
-            if self.n_atoms_allowed is not None and self.n_atoms_allowed > 0:
-                # load indices
-                if os.path.exists(self.indices_path):
-                    with open(self.indices_path, "rb") as file:
-                        indices = pickle.load(file)
-                else:
-                    indices = {}
-
-                # get indices of molecules with specific number of atoms
-                if self.n_atoms_allowed in indices.keys():
-                    indices = indices[self.n_atoms_allowed]
-                else:
-                    tmp = []
-                    for i in tqdm(range(len(self.dataset)), f"getting molecules with {self.n_atoms_allowed} atoms"):
-                        if self.dataset[i][properties.n_atoms] == self.n_atoms_allowed:  # type: ignore
-                            tmp.append(i)
-                    indices[self.n_atoms_allowed] = tmp
-
-                    # persist indices
-                    with open(self.indices_path, "wb") as file:
-                        pickle.dump(indices, file)
-                    indices = indices[self.n_atoms_allowed]
-
-            # get all indices (with any number of atoms)
-            else:
-                indices = list(range(len(self.dataset)))
-
-            # subset dataset
-            self.dataset = self.dataset.subset(indices)
 
             # load and generate partitions if needed
             if self.train_idx is None:
