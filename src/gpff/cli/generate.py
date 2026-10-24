@@ -137,7 +137,7 @@ def sample_molecules(config: DictConfig):
     run_metadata = {"config": OmegaConf.to_container(config, resolve=True)}
     if os.path.exists(config.output_db):
         os.remove(config.output_db)
-    os.makedirs(os.path.dirname(config.output_db), exist_ok=True)
+    os.makedirs(os.path.dirname(config.output_db) or ".", exist_ok=True)
     with connect(config.output_db) as db:
         db.metadata = run_metadata
 
