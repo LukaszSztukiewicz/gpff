@@ -9,6 +9,8 @@ from gpff.sample.base import Sampler
 from gpff.sample.priors import Prior
 from gpff.sample.results import batches_to_relaxed
 from gpff.analysis import get_rdkit_validity
+from gpff.analysis.landscape import denoising_errors, mean_free_noise
+from gpff import keys
 from ase.db import connect
 from ase import Atoms
 from schnetpack.train.callbacks import ModelCheckpoint as SPKModelCheckpoint
@@ -23,6 +25,7 @@ __all__ = [
     "ModelCheckpoint",
     "MilestoneCheckpoint",
     "DeterministicDataSeed",
+    "DenoisingErrorCurve",
 ]
 
 
@@ -372,3 +375,55 @@ class MilestoneCheckpoint(Callback):
         # save_checkpoint must run on every rank; save_model writes on rank 0
         trainer.save_checkpoint(f"{path}.ckpt")
         pl_module.save_model(f"{path}_model", do_postprocessing=True)
+
+
+class DenoisingErrorCurve(Callback):
+    """Log the validation denoising error of a force model at fixed noise
+    levels, ``val/e_sigma_<sigma>``, and its integral over log(sigma),
+    ``val/e_log_sigma_integral`` (see ``gpff.analysis.landscape.denoising_errors``).
+
+    Unlike val/loss, which mixes randomly drawn noise levels under the training
+    loss weights, the curve shows which noise levels the model gets wrong, in
+    units of the noise. Its noise comes from a generator seeded per validation
+    batch, so the curve is a deterministic function of the weights and the
+    global RNGs the training draws from stay untouched.
+    """
+
+    def __init__(
+        self,
+        sigmas: List[float],
+        aligned: bool = True,
+        seed: int = 0,
+        every_n_epochs: int = 1,
+    ) -> None:
+        super().__init__()
+        self.sigmas = sorted(sigmas)
+        self.aligned = aligned
+        self.seed = seed
+        self.every_n_epochs = every_n_epochs
+        self._log_sigmas = torch.log(torch.tensor(self.sigmas))
+
+    def on_validation_batch_end(
+        self,
+        trainer: Any,
+        pl_module: Any,
+        outputs: Any,
+        batch: Dict[str, torch.Tensor],
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
+        if trainer.current_epoch % self.every_n_epochs != 0:
+            return
+        x_0 = batch[keys.x_0]
+        seed = int(np.random.SeedSequence((self.seed, batch_idx)).generate_state(1)[0])
+        noise = mean_free_noise(x_0, batch[properties.idx_m], torch.Generator().manual_seed(seed))
+        errors = denoising_errors(
+            pl_module.predict_without_postprocessing, batch, x_0, self.sigmas, noise, self.aligned
+        ).mean(0)
+
+        # epoch values are batch means weighted by the number of molecules
+        log_kwargs = dict(on_step=False, on_epoch=True, batch_size=len(batch[properties.n_atoms]))
+        for sigma, error in zip(self.sigmas, errors):
+            pl_module.log(f"val/e_sigma_{sigma:g}", error, **log_kwargs)
+        integral = torch.trapezoid(errors, self._log_sigmas.to(errors))
+        pl_module.log("val/e_log_sigma_integral", integral, **log_kwargs)

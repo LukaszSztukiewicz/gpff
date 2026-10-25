@@ -160,6 +160,11 @@ gpff_calculate_metrics --samples_db_path samples.db \
 gpff_landscape_report \
   --model_path /path/to/best_model --split_path /path/to/split.npz \
   --datapath /path/to/qm9_filtered.db
+
+# Log e(sigma) and its integral over log(sigma) on the validation set while
+# training, and optionally select checkpoints by it:
+gpff_train experiment=gpff +callbacks=denoising_error \
+  callbacks.model_checkpoint.monitor=val/e_log_sigma_integral
 ```
 
 ## Citation

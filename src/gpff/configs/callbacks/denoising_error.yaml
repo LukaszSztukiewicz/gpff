@@ -1,0 +1,15 @@
+# Logs the validation denoising error e(sigma) in units of the noise at fixed
+# noise levels (val/e_sigma_<sigma>) and its integral over log(sigma)
+# (val/e_log_sigma_integral); a perfect model approaches 1/(N-1) at small sigma.
+# Off by default; enable with
+#   +callbacks=denoising_error
+# and select checkpoints by it with
+#   callbacks.model_checkpoint.monitor=val/e_log_sigma_integral
+# Costs one forward pass per sigma and validation batch, plus a CPU Hungarian
+# alignment per molecule and sigma when aligned (the GPFF training target).
+denoising_error:
+    _target_: gpff.callbacks.DenoisingErrorCurve
+    sigmas: [0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0]
+    aligned: true
+    seed: 0
+    every_n_epochs: 1
