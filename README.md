@@ -16,11 +16,12 @@ gpff/
         │   ├── train.py            # gpff_train
         │   ├── generate.py         # gpff_generate
         │   ├── prepare_metadata.py  # gpff_prepare_metadata
-        │   └── calculate_metrics.py # gpff_calculate_metrics
+        │   ├── calculate_metrics.py # gpff_calculate_metrics
+        │   └── landscape_report.py  # gpff_landscape_report
         ├── callbacks.py
         ├── keys.py
         ├── task.py
-        ├── analysis/               # validity, metrics, DB metadata
+        ├── analysis/               # validity, metrics, DB metadata, landscape diagnostics
         ├── configs/                # Hydra config tree
         ├── data/                   # data modules, datasets (QM9), transforms
         ├── model/                  # network heads (PaiNN, gated equivariant outputs)
@@ -55,6 +56,7 @@ After install the entry points are on `PATH`:
 | `gpff_generate`  | Sample molecules from a checkpoint. Wraps `gpff.cli.generate:sample_molecules()`. |
 | `gpff_prepare_metadata`  | Compute the per-sample arrays of a sampled DB into `evaluation/metadata/`. Wraps `gpff.cli.prepare_metadata:main()`. |
 | `gpff_calculate_metrics` | Reduce those arrays to `evaluation/results.json`. Wraps `gpff.cli.calculate_metrics:main()`. |
+| `gpff_landscape_report` | Evaluate the learned pseudo-force field on held-out molecules, without a full sampling run. Wraps `gpff.cli.landscape_report:main()`. |
 
 `gpfftrain` still works as a deprecated alias for `gpff_train`.
 
@@ -149,6 +151,15 @@ gpff_prepare_metadata --samples_db_path samples.db \
   --targets rdkit_valid posebusters_valid smiles
 gpff_calculate_metrics --samples_db_path samples.db \
   --metrics rdkit_validity posebusters_validity uniqueness mean_tanimoto_similarity
+
+# Evaluate the learned field itself on the test split, where a perfect landscape
+# has known values: the denoising error e(sigma) in units of the noise (-> 1/(N-1)
+# as sigma -> 0), fixed points and Jacobians dD/dx at the clean molecules, and
+# validity after relaxing or regenerating (stochastic Heun) from x0 + sigma * eps.
+# Writes landscape_report.json; gpff_landscape_report --help lists the options.
+gpff_landscape_report \
+  --model_path /path/to/best_model --split_path /path/to/split.npz \
+  --datapath /path/to/qm9_filtered.db
 ```
 
 ## Citation
