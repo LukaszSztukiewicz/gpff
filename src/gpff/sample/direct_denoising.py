@@ -24,6 +24,7 @@ __all__ = [
     "ShapeDirectDenoisingSampler",
     "ScaffoldDirectDenoisingSampler",
     "ShapeScaffoldDirectDenoisingSampler",
+    "DesignFreedomDirectDenoisingSampler",
 ]
 
 
@@ -301,3 +302,65 @@ class ShapeScaffoldDirectDenoisingSampler(ScaffoldDirectDenoisingSampler):
         )
         denoising_ratio = self.get_denoising_ratio(step) ** self.prior_shape_denoising_power
         return (1 - denoising_ratio) * reshaped + denoising_ratio * x_free
+
+
+class DesignFreedomDirectDenoisingSampler(DirectDenoisingSampler):
+    """
+    Direct denoising under a per-atom design-freedom field.
+
+    Each atom's stochastic perturbation is capped by its own sigma: with the
+    schedule at level s(step), atom i is perturbed by min(s(step), sigma_i), so
+    a low-freedom atom settles while the free ones are still being kicked, and
+    atoms of zero freedom are restored to the prior's geometry every step. A
+    field taking only zero and a value above the schedule's first level
+    reproduces :class:`ScaffoldDirectDenoisingSampler`; what the continuous
+    field adds is every setting between a frozen atom and a free one.
+
+    Capping instead of drawing each atom's level freely is what keeps the noise
+    configuration near the ones training covered, since every level stays tied
+    to one global schedule (Equivariant Asynchronous Diffusion,
+    arXiv:2603.10093). Train with
+    ``generative_transform.geometry_sampler.sigma_spread`` above zero so the
+    model has seen a field of levels at all.
+
+    Conditions:
+        - keys.sigma_field: (n_atoms, 1) starting sigma of each atom.
+    """
+
+    def _init_state(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """
+        Snapshot the prior geometry, which the frozen atoms are held at.
+        """
+        batch = super()._init_state(batch)
+        batch[keys.x_prior] = batch[properties.R].clone()
+        return batch
+
+    def preprocess_step(
+        self,
+        batch: Dict[str, torch.Tensor],
+        step: int,
+        conditions: Optional[Dict[str, torch.Tensor]] = None,
+        **kwargs,
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Perturb every atom by the lesser of the schedule's level and its own.
+        """
+        noise_scale = self.stochastic_lambda * self.get_noise_ratio(step)
+        scale = conditions[keys.sigma_field].clamp(max=noise_scale)
+        positions = batch[properties.R]
+        batch[properties.R] = positions + scale * torch.randn_like(positions)
+        return batch
+
+    def postprocess_step(
+        self,
+        batch: Dict[str, torch.Tensor],
+        step: int,
+        conditions: Optional[Dict[str, torch.Tensor]] = None,
+        **kwargs,
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Restore the atoms of zero freedom to the geometry the prior left.
+        """
+        frozen = (conditions[keys.sigma_field] <= 0).squeeze(-1)
+        batch[properties.R][frozen] = batch[keys.x_prior][frozen]
+        return batch

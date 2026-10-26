@@ -121,6 +121,29 @@ gpff_generate \
   model_path=/path/to/best_model split_path=/path/to/split.npz \
   datapath=/path/to/qm9_filtered.db n_samples=10000
 
+# Prescribe a per-atom design-freedom field instead of a binary scaffold mask:
+# each atom's sigma caps how far it may travel from the reference geometry, so
+# one sampler covers a conformational nudge, a bioisosteric swap, an R-group
+# and de novo generation. Train with sigma_spread above zero first, so the
+# model has seen a field of levels rather than one level per molecule:
+gpff_train experiment=gpff generative_transform.geometry_sampler.sigma_spread=0.3
+gpff_generate \
+  sampler=design_freedom_direct_denoising \
+  prior=design_freedom condition_generator=design_freedom \
+  'condition_generator.groups=[{sigma: 0.0, ids: [0,1,2,3,4,5]}]' \
+  condition_generator.default_sigma=3.0 \
+  model_path=/path/to/best_model split_path=/path/to/split.npz \
+  datapath=/path/to/qm9_filtered.db n_samples=10000
+
+# Sample at a single noise level instead of along a schedule: a Langevin chain
+# on p_sigma, then one jump to the clean estimate. n_steps is the chain length,
+# and the prior wants to sit at the same scale as the walk:
+gpff_generate \
+  sampler=walk_jump sampler.sigma=0.5 sampler.n_steps=200 \
+  prior=gaussian prior.sigma=0.5 \
+  model_path=/path/to/best_model split_path=/path/to/split.npz \
+  datapath=/path/to/qm9_filtered.db n_samples=10000
+
 # Evaluate a sampled DB in two phases, both writing into an evaluation folder
 # next to the database (unless --evaluation_dir says otherwise); the database
 # itself is only read. No reference database is used — the reference

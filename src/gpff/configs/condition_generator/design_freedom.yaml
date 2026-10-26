@@ -1,0 +1,18 @@
+# Builds the per-atom design-freedom field (keys.sigma_field) from groups of
+# atom ids. Each atom's sigma says how far it may travel from the reference
+# geometry: 0 freezes it, a few tenths of an Angstrom is a conformational
+# nudge, about 1 a bioisosteric swap, a few an R-group, and globals.sigma_max
+# leaves it de novo.
+#
+# Pair with prior=design_freedom and sampler=design_freedom_direct_denoising,
+# e.g. freeze atoms 0-5 and redesign the rest:
+#   gpff_generate sampler=design_freedom_direct_denoising \
+#     prior=design_freedom condition_generator=design_freedom \
+#     'condition_generator.groups=[{sigma: 0.0, ids: [0,1,2,3,4,5]}]' \
+#     condition_generator.default_sigma=3.0 ...
+_target_: gpff.sample.conditions.DesignFreedomConditionGenerator
+# One entry per group: its sigma and the 0-based atom ids within each molecule.
+# An atom may be listed in one group only.
+groups: ???
+# The freedom of every atom no group lists.
+default_sigma: 0.0

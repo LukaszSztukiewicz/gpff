@@ -9,7 +9,7 @@ required is documented on the individual prior and sampler classes.
 import json
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 import torch
 from schnetpack import properties
@@ -23,6 +23,7 @@ __all__ = [
     "ShapeConditionGenerator",
     "ScaffoldConditionGenerator",
     "PrecomputedScaffoldConditionGenerator",
+    "DesignFreedomConditionGenerator",
 ]
 
 
@@ -263,3 +264,86 @@ class PrecomputedScaffoldConditionGenerator(ConditionGenerator):
             keys.free_covariance: torch.stack(covariances),
             keys.free_center: torch.stack(centers),
         }
+
+
+class DesignFreedomConditionGenerator(ConditionGenerator):
+    """
+    Supplies the per-atom design-freedom field: one starting sigma per atom.
+
+    Emits:
+        - keys.sigma_field: (n_atoms, 1) starting sigma of each atom.
+
+    The field says how far an atom may travel from the reference geometry:
+    zero freezes it, the model's sigma_max leaves it de novo, and the values
+    in between bound a redesign -- a few tenths of an Angstrom for a
+    conformational nudge, about one for a bioisosteric swap, a few for an
+    R-group. A field taking only zero and sigma_max is the scaffold mask of
+    :class:`ScaffoldConditionGenerator`; what the continuous one adds is the
+    range between them.
+
+    Pairs with :class:`gpff.sample.priors.DesignFreedomPrior` and
+    :class:`gpff.sample.direct_denoising.DesignFreedomDirectDenoisingSampler`.
+    """
+
+    def __init__(
+        self,
+        groups: Sequence[Dict[str, Any]],
+        default_sigma: float = 0.0,
+    ):
+        """
+        Args:
+            groups: the freedom of each group of atoms, as entries holding a
+                ``sigma`` and the ``ids`` it applies to, 0-based within every
+                molecule, e.g.
+                ``[{sigma: 0.0, ids: [0, 1, 2]}, {sigma: 2.0, ids: [3, 4]}]``.
+                An atom may be listed in one group only.
+            default_sigma: the freedom of every atom no group lists.
+        """
+        if default_sigma < 0:
+            raise ValueError(f"default_sigma must be non-negative, got {default_sigma}.")
+        self.default_sigma = default_sigma
+        self.groups: List[tuple] = []
+        claimed: Dict[int, float] = {}
+        for group in groups:
+            try:
+                sigma = float(group["sigma"])
+                ids = torch.as_tensor(list(group["ids"]), dtype=torch.long)
+            except (KeyError, TypeError) as error:
+                raise ValueError(
+                    f"Each group needs a 'sigma' and an 'ids' list, got {group}."
+                ) from error
+            if sigma < 0:
+                raise ValueError(f"Group sigmas must be non-negative, got {sigma}.")
+            for atom_id in ids.tolist():
+                if atom_id in claimed:
+                    raise ValueError(
+                        f"Atom {atom_id} is listed with sigma {claimed[atom_id]} and "
+                        f"again with {sigma}; each atom belongs to one group."
+                    )
+                claimed[atom_id] = sigma
+            self.groups.append((sigma, ids))
+        if not self.groups:
+            raise ValueError("groups must not be empty; use default_sigma for a flat field.")
+
+    def from_batch(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        idx_m = batch[properties.idx_m]
+        sigma_field = torch.full(
+            (len(idx_m), 1),
+            self.default_sigma,
+            dtype=batch[properties.R].dtype,
+            device=idx_m.device,
+        )
+        for molecule_id in idx_m.unique():
+            atom_indices = torch.where(idx_m == molecule_id)[0]
+            n_atoms = len(atom_indices)
+            for sigma, ids in self.groups:
+                if ids.numel() == 0:
+                    continue
+                if ids.min() < 0 or ids.max() >= n_atoms:
+                    raise ValueError(
+                        f"Group ids {ids.tolist()} are out of range for a molecule "
+                        f"with {n_atoms} atoms."
+                    )
+                sigma_field[atom_indices[ids.to(atom_indices.device)]] = sigma
+
+        return {keys.sigma_field: sigma_field}

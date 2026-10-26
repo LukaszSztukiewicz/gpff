@@ -1,0 +1,5 @@
+# Displaces every atom from the reference geometry by its own freedom,
+# x = x_ref + sigma_field * eps, so a frozen atom keeps its position exactly.
+# Requires condition_generator=design_freedom; pair with
+# sampler=design_freedom_direct_denoising.
+_target_: gpff.sample.priors.DesignFreedomPrior

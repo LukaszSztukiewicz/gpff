@@ -19,6 +19,7 @@ __all__ = [
     "ShapePrior",
     "ScaffoldPrior",
     "ScaffoldGaussianPrior",
+    "DesignFreedomPrior",
 ]
 
 
@@ -164,4 +165,29 @@ class ScaffoldGaussianPrior(Prior):
         free_mask = ~scaffold_mask
         positions[free_mask] = torch.randn_like(positions[free_mask]) * self.sigma
         batch[properties.R] = positions
+        return batch
+
+
+class DesignFreedomPrior(Prior):
+    """
+    Prior that displaces every atom from the reference geometry by its own
+    freedom: x = x_ref + sigma_field * eps.
+
+    The batch's positions are the reference, so this has to run before
+    anything else overwrites them. No centering is needed, unlike
+    :class:`ScaffoldGaussianPrior`: every atom is drawn in the reference's own
+    frame, and an atom of zero freedom keeps its position exactly.
+
+    Conditions:
+        - keys.sigma_field: (n_atoms, 1) starting sigma of each atom.
+    """
+
+    def sample_from_batch(
+        self,
+        batch: Dict[str, torch.Tensor],
+        conditions: Optional[Dict[str, torch.Tensor]] = None,
+    ) -> Dict[str, torch.Tensor]:
+        positions = batch[properties.R]
+        sigma_field = conditions[keys.sigma_field]
+        batch[properties.R] = positions + sigma_field * torch.randn_like(positions)
         return batch

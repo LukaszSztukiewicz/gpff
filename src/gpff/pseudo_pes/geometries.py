@@ -51,14 +51,38 @@ class VarianceExplodingGeometries(Geometries):
         destroy_signal: bool | str = False,
         mean_free_noise: bool = False,
         sample_uniformly: bool = False,
-    ):  
+        sigma_spread: float = 0.0,
+    ):
+        """
+        Args:
+            sigma_max: the largest noise level.
+            sigma_mean: mean of the log-normal the molecule's sigma is drawn from.
+            sigma_std: standard deviation of that log-normal.
+            destroy_signal: unused by this class.
+            mean_free_noise: center the noise over the molecule.
+            sample_uniformly: draw sigma uniformly in (0, sigma_max] instead.
+            sigma_spread: standard deviation, in log sigma, of a per-atom
+                spread around the molecule's own noise level, so that one
+                molecule carries a field of levels rather than a single one.
+                Zero, the default, gives every atom the molecule's sigma.
 
+                The spread is multiplicative and centered on the molecule's
+                sigma, so the atoms stay coupled to one clock and their levels
+                stay within a bounded factor of it. Drawing per-atom levels
+                freely instead leaves the reachable noise configurations far
+                too numerous to cover, which is where a hand-set asynchronous
+                schedule is reported to fall behind a synchronous one
+                (Equivariant Asynchronous Diffusion, arXiv:2603.10093).
+        """
         super().__init__(mean_free_noise)
+        if sigma_spread < 0:
+            raise ValueError(f"sigma_spread must be non-negative, got {sigma_spread}.")
         self.sigma_max = sigma_max
         self.sigma_mean = sigma_mean
         self.sigma_std = sigma_std
         self.destroy_signal = destroy_signal
         self.sample_uniformly = sample_uniformly
+        self.sigma_spread = sigma_spread
 
     def get_noisy_geometry(
         self, 
@@ -96,6 +120,12 @@ class VarianceExplodingGeometries(Geometries):
         # repeat t and sigma_t for each atom (shape: (N, 1))
         t = torch.ones(size=(x_0.shape[0], 1), device=x_0.device, dtype=x_0.dtype) * t
         sigma_t = torch.ones(size=(x_0.shape[0], 1), device=x_0.device, dtype=x_0.dtype) * sigma_t
+
+        # spread the atoms' levels around the molecule's own; t stays the one
+        # clock they are spread around, and only sigma_t carries the field
+        if self.sigma_spread > 0:
+            sigma_t = sigma_t * torch.exp(self.sigma_spread * torch.randn_like(sigma_t))
+            sigma_t = sigma_t.clamp(min=1e-4, max=self.sigma_max)
 
         # sample noise
         if noise is None:
