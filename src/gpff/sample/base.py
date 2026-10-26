@@ -129,6 +129,26 @@ class Calculator:
             forces = forces + potential.forces(positions, idx_m)
         return forces
 
+    def bias_energy(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """
+        The summed energies of the bias potentials per molecule, zero when
+        there are none.
+
+        The counterpart of :meth:`bias_forces`, so that a sampler accepting
+        moves on the energy and one following the force see the same composed
+        surface rather than drifting apart.
+        """
+        positions = batch[properties.R]
+        n_molecules = batch[properties.n_atoms].shape[0]
+        total = torch.zeros(n_molecules, device=positions.device, dtype=positions.dtype)
+        if not self.bias_potentials:
+            return total
+
+        idx_m = batch[properties.idx_m]
+        for potential in self.bias_potentials:
+            total = total + potential.energy(positions, idx_m).detach()
+        return total
+
     def check_model(self):
         """
         Raise RuntimeError if no model is set.
@@ -199,6 +219,7 @@ class Calculator:
         x0: bool = False,
         estimate_sigma: bool = False,
         sigma_t: Optional[float] = None,
+        energy: bool = False,
     ) -> Dict[str, torch.Tensor]:
         """
         Run one model forward pass and return the requested quantities.
@@ -214,6 +235,9 @@ class Calculator:
             estimate_sigma: if True, estimate sigma_t from the prediction and
                 return it under keys.sigma_curr.
             sigma_t: The current sigma_t.
+            energy: if True, return the energy, the model's plus any bias
+                potentials'. Needs a model that has one, i.e.
+                experiment=gpff_conservative.
         Returns:
             Dictionary with the requested quantities.
         """
@@ -226,6 +250,16 @@ class Calculator:
         batch = self.update_neighbors(batch)
         predictions = self.run_model(batch)
         results = {}
+
+        if energy:
+            if keys.energy not in predictions:
+                raise ValueError(
+                    f"The model has no '{keys.energy}' output, so there is no energy "
+                    f"to return; train it with experiment=gpff_conservative."
+                )
+            results[keys.energy] = predictions[keys.energy].detach() + self.bias_energy(
+                batch
+            )
 
         # noise model
         if self.noise_model:
