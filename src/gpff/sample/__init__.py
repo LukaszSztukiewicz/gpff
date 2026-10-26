@@ -1,3 +1,4 @@
+from .bias import *
 from .base import *
 from .observers import *
 from .results import *

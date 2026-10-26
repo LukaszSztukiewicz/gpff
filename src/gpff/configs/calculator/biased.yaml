@@ -1,0 +1,27 @@
+# A calculator whose forces are the model's plus those of one or more bias
+# potentials. On a conservative pseudo-PES this is exact composition: the total
+# force is the gradient of the summed energy, so the stationary target is the
+# product of the distributions (Du et al., ICML 2023, arXiv:2302.11552).
+#
+# Each potential is measured against one reference point cloud shared by the
+# batch, read from a .npy of positions or anything ASE can open. Fill in the
+# paths, drop the terms you do not want, and point a sampler at this
+# calculator, e.g.
+#   gpff_generate sampler=direct_denoising sampler/calculator=biased \
+#     sampler.calculator.bias_potentials.0.reference_path=pocket.pdb ...
+defaults:
+  - default
+  - _self_
+
+bias_potentials:
+  # pulls the molecule into a reference volume without saying which atom goes
+  # where; keep width near the spacing of the reference points
+  - _target_: gpff.sample.bias.GaussianShapeBias
+    reference_path: ???
+    strength: 1.0
+    width: 1.0
+  # flat until a clash appears, quadratic beyond, e.g. against a pocket
+  - _target_: gpff.sample.bias.StericBias
+    reference_path: ???
+    strength: 1.0
+    min_distance: 3.0

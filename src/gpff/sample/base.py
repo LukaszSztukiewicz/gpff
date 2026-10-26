@@ -1,10 +1,11 @@
 # python
 import torch
 import torch.nn as nn
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Sequence
 from abc import ABC, abstractmethod
 from gpff.utils import compute_neighbors
 from gpff.utils.alignment import _pad_by_molecule
+from gpff.sample.bias import BiasPotential
 from gpff.sample.schedules import NoiseSchedule, EDMNoiseSchedule
 from gpff.sample.observers import SamplerObserver
 from gpff.sample.results import clone_batch
@@ -33,6 +34,8 @@ class Calculator:
         noise_key: the prediction key holding the noise.
         dtype: the data type to use for model and batch.
         device: the device to use for model and batch.
+        bias_potentials: optional bias potentials whose forces are added to
+            the model's, see :mod:`gpff.sample.bias`.
     """
 
     def __init__(
@@ -42,9 +45,16 @@ class Calculator:
         noise_key: str = keys.noise,
         dtype: torch.dtype | str = torch.float32,
         device: torch.device | str = "cuda",
+        bias_potentials: Optional[Sequence[BiasPotential]] = None,
     ):
         self.noise_model = noise_model
         self.noise_key = noise_key
+        self.bias_potentials = list(bias_potentials or [])
+        if self.bias_potentials and self.noise_model:
+            raise ValueError(
+                "bias_potentials compose with a force, so they need a force model; "
+                "pass noise_model=false."
+            )
         if isinstance(dtype, str):
             if dtype.lower() == "float32":
                 self.dtype = torch.float32
@@ -93,6 +103,31 @@ class Calculator:
         with torch.enable_grad():
             batch = {**batch, properties.R: batch[properties.R].detach().clone()}
             return self.model(batch)
+
+    def bias_forces(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """
+        The summed forces of the bias potentials, zero when there are none.
+
+        Adding them to the model's force is exact composition on the
+        pseudo-PES: the total force is the gradient of the summed energy, so
+        the stationary target is the product of the distributions. Scores do
+        not compose that way, which is why the composition literature needs an
+        energy parameterization and a Metropolis-corrected sampler to get the
+        product right (Du et al., ICML 2023, arXiv:2302.11552).
+
+        A bias enters as a force, so in score terms its weight is
+        1 / (2 sigma^2) and grows as sigma falls: a restraint that tightens as
+        the geometry converges.
+        """
+        positions = batch[properties.R]
+        if not self.bias_potentials:
+            return torch.zeros_like(positions)
+
+        idx_m = batch[properties.idx_m]
+        forces = torch.zeros_like(positions)
+        for potential in self.bias_potentials:
+            forces = forces + potential.forces(positions, idx_m)
+        return forces
 
     def check_model(self):
         """
@@ -210,6 +245,9 @@ class Calculator:
             if estimate_sigma:
                 sigma_t = self._compute_std_per_molecule(batch[properties.idx_m], predicted_forces/2)
                 results[keys.sigma_curr] = sigma_t
+            # after the sigma estimate, which reads the model's own force as
+            # the noise it still sees, and before everything derived from it
+            predicted_forces = predicted_forces + self.bias_forces(batch)
             if forces:
                 results[keys.forces] = predicted_forces
             if noise:
