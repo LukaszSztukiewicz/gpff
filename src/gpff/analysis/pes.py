@@ -38,6 +38,8 @@ __all__ = [
     "force_jacobian",
     "hessian_eigenvalues",
     "jacobian_asymmetry",
+    "mode_trajectory",
+    "normal_modes",
     "relax",
     "residual_force",
 ]
@@ -104,13 +106,60 @@ def jacobian_asymmetry(jacobian: torch.Tensor) -> float:
     return ((jacobian - jacobian.T).norm() / symmetric_norm.clamp(min=1e-30)).item()
 
 
-def hessian_eigenvalues(jacobian: torch.Tensor) -> torch.Tensor:
+def normal_modes(jacobian: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Ascending eigenvalues of the Hessian H = -(J + J^T)/2 a force Jacobian
-    implies. The symmetrization is a no-op for a conservative model.
+    Ascending eigenvalues and eigenvectors of the Hessian H = -(J + J^T)/2 a
+    force Jacobian implies. The symmetrization is a no-op for a conservative
+    model, and meaningless for one whose forces are not a gradient.
+
+    The first six eigenvalues are the translations and rotations the learned
+    energy is invariant under, so the softest chemically meaningful mode is
+    the seventh: the structural change the surface holds cheapest. Reading
+    those off is a direct account of which modifications the data manifold
+    permits, which only a potential with a symmetric Hessian can give.
     """
     hessian = -0.5 * (jacobian + jacobian.T)
-    return torch.linalg.eigvalsh(hessian.double())
+    return torch.linalg.eigh(hessian.double())
+
+
+def hessian_eigenvalues(jacobian: torch.Tensor) -> torch.Tensor:
+    """
+    Ascending eigenvalues of the Hessian a force Jacobian implies, see
+    :func:`normal_modes`.
+    """
+    return normal_modes(jacobian)[0]
+
+
+def mode_trajectory(
+    positions: torch.Tensor,
+    mode: torch.Tensor,
+    amplitude: float = 0.5,
+    n_frames: int = 7,
+) -> torch.Tensor:
+    """
+    Sweep a geometry along one normal mode, of shape (n_frames, n_atoms, 3).
+
+    The frames run from -amplitude to +amplitude along the unit mode, so
+    written out as a trajectory they animate it. Amplitude is a length, the
+    largest displacement any atom takes.
+
+    Args:
+        positions: the geometry the mode was taken at, of shape (n_atoms, 3).
+        mode: one eigenvector from :func:`normal_modes`, of shape (3 n_atoms,).
+        amplitude: the largest per-atom displacement, in the positions' units.
+        n_frames: how many frames to sweep, at least two.
+    """
+    if n_frames < 2:
+        raise ValueError(f"n_frames must be at least 2, got {n_frames}.")
+    displacement = mode.reshape(positions.shape).to(
+        device=positions.device, dtype=positions.dtype
+    )
+    largest = displacement.norm(dim=-1).max().clamp(min=1e-30)
+    displacement = displacement / largest
+    scales = torch.linspace(
+        -amplitude, amplitude, n_frames, device=positions.device, dtype=positions.dtype
+    )
+    return positions[None] + scales[:, None, None] * displacement[None]
 
 
 def count_modes(eigenvalues: torch.Tensor, zero_tol: float = 1e-3) -> Dict[str, int]:
@@ -176,6 +225,7 @@ def diagnose(
     perturbation: float = 0.1,
     zero_tol: float = 1e-3,
     generator: Optional[torch.Generator] = None,
+    jacobian: Optional[torch.Tensor] = None,
     **relax_kwargs,
 ) -> Dict[str, float]:
     """
@@ -190,6 +240,9 @@ def diagnose(
             from the data geometry itself.
         zero_tol: zero-mode tolerance, relative to the largest eigenvalue.
         generator: random generator for the displacement.
+        jacobian: a force Jacobian already taken at this geometry, to save
+            recomputing the most expensive part when the caller wants the
+            normal modes too. Taken here when None.
         **relax_kwargs: forwarded to :func:`relax`.
 
     Returns:
@@ -198,7 +251,8 @@ def diagnose(
     data_positions = batch[properties.R].detach().clone()
 
     forces = residual_force(model, batch)
-    jacobian = force_jacobian(model, batch)
+    if jacobian is None:
+        jacobian = force_jacobian(model, batch)
     eigenvalues = hessian_eigenvalues(jacobian)
 
     # drawn on the CPU so one seed gives the same displacement on any device

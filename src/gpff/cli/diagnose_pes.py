@@ -22,6 +22,11 @@ relaxation checks while failing the other two, which is the point of the
 comparison; and a model that fails the residual check has not learned the small
 sigma end of the surface, whatever the rest says.
 
+With --modes_dir the softest non-zero normal modes are written out as .xyz
+trajectories: the structural changes the surface holds cheapest, which read as
+the modifications the data manifold permits. They are only meaningful once the
+curvature check passes, since a Hessian needs a potential behind it.
+
     gpff_diagnose_pes --model_path runs/<project>/<date>/best_model \\
       --datapath /path/to/qm9_filtered.db \\
       --split_path runs/<project>/<date>/split.npz
@@ -37,13 +42,16 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import torch
+from ase import Atoms
+from ase.io import write as ase_write
+from schnetpack import properties
 from schnetpack.data import ASEAtomsData, AtomsLoader
 from schnetpack.utils import load_model
 
 # gpff/__init__.py installs the matred -> gpff alias so torch.load can unpickle
 # bundled checkpoints saved under the old package name.
 import gpff  # noqa: F401
-from gpff.analysis.pes import diagnose
+from gpff.analysis.pes import diagnose, force_jacobian, mode_trajectory, normal_modes
 from gpff.utils.neighbors import AllToAllNeighborList
 
 log = logging.getLogger(__name__)
@@ -105,8 +113,57 @@ def parse_args() -> argparse.Namespace:
                         help="Seed of the relaxation's displacement (default: 999).")
     parser.add_argument("--output_json", type=Path, default=None,
                         help="Also write the rows and the summary to this JSON file.")
+    parser.add_argument("--modes_dir", type=Path, default=None,
+                        help="Also write the softest non-zero normal modes into this "
+                             "directory, one molecule_<i>_mode_<k>.xyz trajectory each. "
+                             "The modes are the structural changes the surface holds "
+                             "cheapest, so they read as the modifications it permits.")
+    parser.add_argument("--n_modes", type=int, default=3,
+                        help="How many of the softest non-zero modes to write "
+                             "(default: 3). Needs --modes_dir.")
+    parser.add_argument("--mode_amplitude", type=float, default=0.5,
+                        help="Largest per-atom displacement of a written mode, in "
+                             "Angstrom (default: 0.5).")
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
+
+
+def write_modes(
+    directory: Path,
+    molecule_index: int,
+    positions: torch.Tensor,
+    numbers: torch.Tensor,
+    jacobian: torch.Tensor,
+    n_modes: int,
+    amplitude: float,
+    n_zero_modes: int = 6,
+) -> None:
+    """
+    Write the softest non-zero modes of one molecule as .xyz trajectories.
+
+    The first ``n_zero_modes`` eigenvalues are the translations and rotations
+    the learned energy is invariant under, so the modes written start past
+    them.
+    """
+    eigenvalues, eigenvectors = normal_modes(jacobian)
+    numbers = numbers.detach().cpu().numpy()
+    directory.mkdir(parents=True, exist_ok=True)
+
+    for offset in range(n_modes):
+        index = n_zero_modes + offset
+        if index >= eigenvalues.numel():
+            break
+        frames = mode_trajectory(
+            positions, eigenvectors[:, index], amplitude=amplitude
+        )
+        ase_write(
+            directory / f"molecule_{molecule_index}_mode_{offset}.xyz",
+            [
+                Atoms(numbers=numbers, positions=frame.detach().cpu().numpy())
+                for frame in frames
+            ],
+            format="extxyz",
+        )
 
 
 def load_indices(split_path: Optional[Path], split: str) -> Optional[np.ndarray]:
@@ -229,6 +286,9 @@ def main() -> int:
             )
             for key, value in batch.items()
         }
+        # taken once here when the modes are wanted too, since the Jacobian is
+        # the expensive part of the report
+        jacobian = force_jacobian(model, batch) if args.modes_dir else None
         rows.append(
             diagnose(
                 model,
@@ -236,11 +296,22 @@ def main() -> int:
                 perturbation=args.perturbation,
                 zero_tol=args.zero_tol,
                 generator=generator,
+                jacobian=jacobian,
                 n_steps=args.n_steps,
                 step_size=args.step_size,
                 force_tol=args.force_tol,
             )
         )
+        if jacobian is not None:
+            write_modes(
+                args.modes_dir,
+                len(rows) - 1,
+                batch[properties.R],
+                batch[properties.Z],
+                jacobian,
+                n_modes=args.n_modes,
+                amplitude=args.mode_amplitude,
+            )
         if len(rows) >= args.n_molecules:
             break
 
@@ -256,6 +327,8 @@ def main() -> int:
             json.dumps({"molecules": rows, "summary": summary}, indent=2)
         )
         log.info(f"Wrote {args.output_json}")
+    if args.modes_dir is not None:
+        log.info(f"Wrote up to {args.n_modes} modes per molecule into {args.modes_dir}")
 
     return 0
 
