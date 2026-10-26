@@ -6,6 +6,7 @@ from gpff.data.transform.pseudo_pes import PseudoPESTransform
 from gpff.pseudo_pes.geometries import VarianceExplodingGeometries
 from gpff.pseudo_pes.labels import VEPseudoCalculator
 from gpff.pseudo_pes.weights import SigmaWeights
+from gpff.sample.conditions import DesignFreedomConditionGenerator
 from gpff.utils.alignment import align_permutation
 
 
@@ -52,3 +53,27 @@ def test_per_atom_sigma_follows_the_permuted_noisy_positions():
         source = int((x_t - out[properties.R][i]).norm(dim=-1).argmin())
         assert out[keys.sigma_curr][i] == sigma_t[source]
         assert out[keys.forces_weight][i] == (1 / sigma_t[source] ** 2).clamp(max=1.0)
+
+
+def test_design_freedom_skips_ids_past_a_small_molecule():
+    generator = DesignFreedomConditionGenerator(
+        groups=[{"sigma": 0.0, "ids": [0, 1, 2, 3, 4, 5]}], default_sigma=3.0
+    )
+    batch = {
+        properties.idx_m: torch.tensor([0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]),
+        properties.R: torch.zeros(11, 3),
+    }
+
+    field = generator.from_batch(batch)[keys.sigma_field].squeeze(-1)
+
+    assert field[:3].eq(0.0).all()
+    assert field[3:9].eq(0.0).all() and field[9:].eq(3.0).all()
+
+
+def test_design_freedom_without_groups_is_flat():
+    generator = DesignFreedomConditionGenerator(groups=[], default_sigma=0.3)
+    batch = {properties.idx_m: torch.tensor([0, 0, 1]), properties.R: torch.zeros(3, 3)}
+
+    field = generator.from_batch(batch)[keys.sigma_field]
+
+    assert field.eq(0.3).all()

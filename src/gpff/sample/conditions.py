@@ -296,7 +296,9 @@ class DesignFreedomConditionGenerator(ConditionGenerator):
                 ``sigma`` and the ``ids`` it applies to, 0-based within every
                 molecule, e.g.
                 ``[{sigma: 0.0, ids: [0, 1, 2]}, {sigma: 2.0, ids: [3, 4]}]``.
-                An atom may be listed in one group only.
+                An atom may be listed in one group only. Ids past a molecule's
+                last atom are skipped for that molecule, so one list serves a
+                dataset of mixed sizes; an empty list gives a flat field.
             default_sigma: the freedom of every atom no group lists.
         """
         if default_sigma < 0:
@@ -314,6 +316,8 @@ class DesignFreedomConditionGenerator(ConditionGenerator):
                 ) from error
             if sigma < 0:
                 raise ValueError(f"Group sigmas must be non-negative, got {sigma}.")
+            if ids.numel() > 0 and ids.min() < 0:
+                raise ValueError(f"Group ids must be non-negative, got {ids.tolist()}.")
             for atom_id in ids.tolist():
                 if atom_id in claimed:
                     raise ValueError(
@@ -322,8 +326,6 @@ class DesignFreedomConditionGenerator(ConditionGenerator):
                     )
                 claimed[atom_id] = sigma
             self.groups.append((sigma, ids))
-        if not self.groups:
-            raise ValueError("groups must not be empty; use default_sigma for a flat field.")
 
     def from_batch(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         idx_m = batch[properties.idx_m]
@@ -337,13 +339,9 @@ class DesignFreedomConditionGenerator(ConditionGenerator):
             atom_indices = torch.where(idx_m == molecule_id)[0]
             n_atoms = len(atom_indices)
             for sigma, ids in self.groups:
+                ids = ids[ids < n_atoms]
                 if ids.numel() == 0:
                     continue
-                if ids.min() < 0 or ids.max() >= n_atoms:
-                    raise ValueError(
-                        f"Group ids {ids.tolist()} are out of range for a molecule "
-                        f"with {n_atoms} atoms."
-                    )
                 sigma_field[atom_indices[ids.to(atom_indices.device)]] = sigma
 
         return {keys.sigma_field: sigma_field}
