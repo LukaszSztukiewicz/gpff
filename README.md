@@ -55,6 +55,7 @@ After install the entry points are on `PATH`:
 | `gpff_generate`  | Sample molecules from a checkpoint. Wraps `gpff.cli.generate:sample_molecules()`. |
 | `gpff_prepare_metadata`  | Compute the per-sample arrays of a sampled DB into `evaluation/metadata/`. Wraps `gpff.cli.prepare_metadata:main()`. |
 | `gpff_calculate_metrics` | Reduce those arrays to `evaluation/results.json`. Wraps `gpff.cli.calculate_metrics:main()`. |
+| `gpff_diagnose_pes` | Check the pseudo-PES a checkpoint defines on clean data geometries. Wraps `gpff.cli.diagnose_pes:main()`. |
 
 `gpfftrain` still works as a deprecated alias for `gpff_train`.
 

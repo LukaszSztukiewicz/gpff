@@ -7,6 +7,7 @@ One module per command, each registered in ``pyproject.toml``:
     gpff_prepare_metadata   gpff.cli.prepare_metadata:main
     gpff_calculate_metrics  gpff.cli.calculate_metrics:main
     gpff_reference_assets   gpff.cli.reference_assets:main
+    gpff_diagnose_pes       gpff.cli.diagnose_pes:main
 
 This module holds only what every command shares. Cheap imports only
 so that running one command does not drag in another's dependencies.

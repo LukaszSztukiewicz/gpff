@@ -52,6 +52,7 @@ gpff_generate = "gpff.cli.generate:sample_molecules"
 gpff_prepare_metadata = "gpff.cli.prepare_metadata:main"
 gpff_calculate_metrics = "gpff.cli.calculate_metrics:main"
 gpff_reference_assets = "gpff.cli.reference_assets:main"
+gpff_diagnose_pes = "gpff.cli.diagnose_pes:main"
 # Deprecated alias for gpff_train, kept for existing job scripts.
 gpfftrain = "gpff.cli.train:train"
 
