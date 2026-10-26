@@ -320,7 +320,7 @@ class DesignFreedomDirectDenoisingSampler(DirectDenoisingSampler):
     configuration near the ones training covered, since every level stays tied
     to one global schedule (Equivariant Asynchronous Diffusion,
     arXiv:2603.10093). Train with
-    ``generative_transform.geometry_sampler.sigma_spread`` above zero so the
+    ``+pseudo_pes.geometry_sampler.sigma_spread`` above zero so the
     model has seen a field of levels at all.
 
     Conditions:

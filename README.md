@@ -126,7 +126,7 @@ gpff_generate \
 # one sampler covers a conformational nudge, a bioisosteric swap, an R-group
 # and de novo generation. Train with sigma_spread above zero first, so the
 # model has seen a field of levels rather than one level per molecule:
-gpff_train experiment=gpff generative_transform.geometry_sampler.sigma_spread=0.3
+gpff_train experiment=gpff +pseudo_pes.geometry_sampler.sigma_spread=0.3
 gpff_generate \
   sampler=design_freedom_direct_denoising \
   prior=design_freedom condition_generator=design_freedom \

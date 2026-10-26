@@ -3,7 +3,7 @@
 # atoms of zero freedom are held at the prior's geometry.
 #
 # Requires condition_generator=design_freedom and prior=design_freedom. Train
-# the model with generative_transform.geometry_sampler.sigma_spread above zero
+# the model with +pseudo_pes.geometry_sampler.sigma_spread above zero
 # so it has seen a field of levels rather than one level per molecule.
 defaults:
   - /calculator@calculator: default
