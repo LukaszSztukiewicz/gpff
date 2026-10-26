@@ -141,6 +141,8 @@ gpff_calculate_metrics \
   --reference_energy_U0_path assets/qm9_energy_U0_values.npy \
   --reference_gap_path assets/qm9_gap_values.npy \
   --reference_elongation_path assets/qm9_elongation_values.npy \
+  --reference_bond_lengths_path assets/qm9_bond_lengths.npz \
+  --reference_bond_angles_path assets/qm9_bond_angles.npz \
   --reference_smiles_path assets/qm9_smiles_values.txt \
   --split_path /path/to/split.npz
 
@@ -149,6 +151,35 @@ gpff_prepare_metadata --samples_db_path samples.db \
   --targets rdkit_valid posebusters_valid smiles
 gpff_calculate_metrics --samples_db_path samples.db \
   --metrics rdkit_validity posebusters_validity uniqueness mean_tanimoto_similarity
+
+# Bond lengths, each bond against the reference bonds of its own chemical
+# environment (e.g. C(sp2)-C(sp3)); the reference bond table is built once with
+# gpff_reference_assets --targets bond_lengths. Also writes the per-environment
+# breakdown to evaluation/bond_length_w1.json:
+gpff_prepare_metadata --samples_db_path samples.db --targets rdkit_valid bond_lengths
+gpff_calculate_metrics --samples_db_path samples.db --metrics bond_length_w1 \
+  --reference_bond_lengths_path assets/qm9_bond_lengths.npz
+
+# Bond angles work the same way, in degrees, with the central atom's
+# hybridization as the environment (e.g. C-C(sp3)-C):
+gpff_prepare_metadata --samples_db_path samples.db --targets rdkit_valid bond_angles
+gpff_calculate_metrics --samples_db_path samples.db --metrics bond_angle_w1 \
+  --reference_bond_angles_path assets/qm9_bond_angles.npz
+
+# What a relaxation has to move is the geometry the model got wrong, as opposed
+# to the molecule it chose: relax the samples (uff, xtb or a MACE model on the
+# GPU) and compare the two databases with the same metrics. mean_strain is the
+# energy the relaxation released:
+# (relax the reference molecules the same way and build the reference tables
+# from those: every method pulls structures toward its own minima, UFF by some
+# 40 mA even for real QM9 geometries)
+gpff_relax --samples_db_path samples.db --output_db_path relaxed.db --method uff
+# or, with mace-torch installed (pip install -e .[mace]), many molecules at a
+# time on the GPU, which is the fastest and the most accurate of the three:
+# gpff_relax ... --method mace --mace_model_path MACE-OFF24_medium.model
+gpff_prepare_metadata --samples_db_path relaxed.db --targets rdkit_valid strain bond_lengths
+gpff_calculate_metrics --samples_db_path relaxed.db --metrics mean_strain bond_length_w1 \
+  --reference_bond_lengths_path assets/qm9_bond_lengths.npz
 ```
 
 ## Citation
