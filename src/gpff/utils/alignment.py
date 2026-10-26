@@ -441,7 +441,8 @@ def align_permutation(
     target_positions: np.ndarray | torch.Tensor,
     numbers: np.ndarray | torch.Tensor,
     target_numbers: np.ndarray | torch.Tensor,
-) -> Tuple[np.ndarray | torch.Tensor, np.ndarray | torch.Tensor]:
+    return_permutation: bool = False,
+) -> Tuple[np.ndarray | torch.Tensor, ...]:
     """
     Find the best permutation of positions to align with target_positions using the Hungarian algorithm.
     
@@ -450,11 +451,14 @@ def align_permutation(
         target_positions: (N, 3) tensor of reference coordinates.
         numbers: (N,) tensor of atomic numbers for positions.
         target_numbers: (N,) tensor of atomic numbers for target_positions.
+        return_permutation: also return the (N,) indices into the inputs, so that
+            a per-atom quantity of the positions can be permuted along with them.
     
     Returns:
         Tuple of (aligned_positions, aligned_numbers) where aligned_positions is the permuted
         positions that best match target_positions, and aligned_numbers are the corresponding
-        permuted atomic numbers.
+        permuted atomic numbers; with return_permutation, the indices as a third entry,
+        aligned_positions == positions[indices] up to the centroid.
     """
     # Convert numpy inputs to torch
     numpy_inputs = False
@@ -471,7 +475,8 @@ def align_permutation(
     target_positions = target_positions.clone()
 
     # Align atomic numbers first (permute positions to match target_numbers)
-    positions, numbers = align_numbers(positions, numbers, target_numbers)
+    numbers_permutation = _numbers_permutation(numbers, target_numbers)
+    positions, numbers = positions[numbers_permutation], numbers[numbers_permutation]
 
     # Center both sets of positions (remove global translation)
     centroid = positions.mean(dim=0, keepdim=True)
@@ -501,7 +506,14 @@ def align_permutation(
         aligned_positions = aligned_positions.numpy()
         aligned_numbers = aligned_numbers.numpy()
 
-    return aligned_positions, aligned_numbers
+    if not return_permutation:
+        return aligned_positions, aligned_numbers
+
+    # compose both steps into indices of the inputs
+    indices = torch.as_tensor(numbers_permutation)[torch.as_tensor(permutation)]
+    if numpy_inputs:
+        indices = indices.numpy()
+    return aligned_positions, aligned_numbers, indices
 
 
 def align(
@@ -534,7 +546,19 @@ def align_numbers(
         permuted: The array that needs to be reordered (e.g., [6, 1, 1, 8, 1]).
 
     Returns:
-        A list of indices (the permutation array) that aligns 'permuted' to 'target'.
+        positions and numbers, permuted so that the numbers equal target_numbers.
+    """
+    permutation_indices = _numbers_permutation(numbers, target_numbers)
+    return positions[permutation_indices], numbers[permutation_indices]
+
+
+def _numbers_permutation(
+    numbers: np.ndarray | torch.Tensor,
+    target_numbers: np.ndarray | torch.Tensor,
+) -> List[int]:
+    """
+    The permutation array (indices) 'I' that align_numbers applies, such that
+    numbers[I[k]] == target_numbers[k].
     """
     numbers_list = numbers.tolist()
     target_numbers_list = target_numbers.tolist()
@@ -565,4 +589,4 @@ def align_numbers(
         # Add the index to our result list.
         permutation_indices.append(original_index)
     
-    return positions[permutation_indices], numbers[permutation_indices]
+    return permutation_indices

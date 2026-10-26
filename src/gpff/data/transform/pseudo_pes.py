@@ -67,12 +67,16 @@ class PseudoPESTransform(trn.Transform):
             
         # align best permutation of x_t to x_0
         if self.align_permutation:
-            x_t, atom_types = align_permutation(
+            x_t, atom_types, permutation = align_permutation(
                 positions=x_t,
                 target_positions=x_0,
                 numbers=atom_types,
                 target_numbers=atom_types,
+                return_permutation=True,
             )
+            # a per-atom noise level (sigma_spread) travels with its noisy
+            # position, so the weights stay those of the noise each label saw
+            sigma_t = sigma_t[permutation]
 
         # align rotation of x_t to x_0
         if self.align_rotation:
