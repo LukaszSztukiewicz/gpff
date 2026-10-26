@@ -141,6 +141,15 @@ class GrandCanonicalSampler:
         self.box_margin = box_margin
         self.atom_types = [int(number) for number in atom_types]
         self.move_weights = weights / weights.sum()
+        # insertion and deletion are each other's reverse, so unequal weights
+        # enter their acceptance as the ratio; without one of them the chain
+        # never proposes the other's reverse and the ratio is never used
+        insert_weight, delete_weight = float(weights[1]), float(weights[2])
+        self.log_insert_over_delete = (
+            math.log(insert_weight / delete_weight)
+            if insert_weight > 0 and delete_weight > 0
+            else 0.0
+        )
         self.min_atoms = min_atoms
         self.max_atoms = max_atoms
         self.generator = torch.Generator()
@@ -227,6 +236,7 @@ class GrandCanonicalSampler:
         """
         n_atoms = positions.shape[0]
         log_activity = self.chemical_potential / self.temperature
+        log_insert_over_delete = self.log_insert_over_delete
 
         if move == "displace":
             if n_atoms == 0:
@@ -259,7 +269,8 @@ class GrandCanonicalSampler:
             return (
                 new_positions,
                 new_numbers,
-                log_activity + log_volume - math.log(n_element + 1),
+                log_activity + log_volume - math.log(n_element + 1)
+                - log_insert_over_delete,
             )
 
         if move == "delete":
@@ -275,7 +286,8 @@ class GrandCanonicalSampler:
             return (
                 positions[keep],
                 numbers[keep],
-                math.log(candidates.numel()) - log_activity - log_volume,
+                math.log(candidates.numel()) - log_activity - log_volume
+                + log_insert_over_delete,
             )
 
         raise ValueError(f"Unknown move {move!r}; expected one of {self.MOVES}.")
