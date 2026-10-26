@@ -23,6 +23,10 @@ class Calculator:
     and converts the model's raw prediction -- noise for noise models, forces
     for force models -- into the quantities a sampler requests.
 
+    A force model may predict the forces directly or derive them from an energy
+    (experiment=gpff_conservative); the latter is run with grad enabled, which
+    the samplers' no_grad scope would otherwise deny it.
+
     Args:
         model: the model to run inference with.
         noise_model: if True, the model predicts noise; otherwise forces.
@@ -58,10 +62,37 @@ class Calculator:
     def update_model(self, model: Optional[nn.Module] = None):
         """
         Update the wrapped model, moving it to the calculator's device and dtype.
+
+        The model is put in eval mode: sampling is inference, and a model whose
+        forces are a derivative would otherwise keep the graph for a second
+        derivative no sampler takes.
         """
         if model is not None:
             model = model.to(device=self.device, dtype=self.dtype)
+            model.eval()
         self.model = model
+
+    @property
+    def derives_forces(self) -> bool:
+        """
+        True if the model derives an output from the positions by autograd.
+        """
+        return bool(getattr(self.model, "required_derivatives", None))
+
+    def run_model(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """
+        Run one model forward pass, enabling autograd if the model needs it.
+
+        A model that differentiates w.r.t. the positions gets its own leaf copy
+        of them, so neither requires_grad nor the graph leaks into the batch the
+        samplers go on updating in place.
+        """
+        if not self.derives_forces:
+            return self.model(batch)
+
+        with torch.enable_grad():
+            batch = {**batch, properties.R: batch[properties.R].detach().clone()}
+            return self.model(batch)
 
     def check_model(self):
         """
@@ -158,7 +189,7 @@ class Calculator:
 
         self.check_model()
         batch = self.update_neighbors(batch)
-        predictions = self.model(batch)
+        predictions = self.run_model(batch)
         results = {}
 
         # noise model

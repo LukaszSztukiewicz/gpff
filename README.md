@@ -67,6 +67,11 @@ sampler's calculator, so those overrides are addressed as
 ```bash
 gpff_train experiment=gpff data=qm9_valid trainer.max_epochs=300
 
+# Fit the forces as the gradient of a learned energy, so the model defines a
+# conservative pseudo-PES: same force loss and weights, one scalar energy head
+# and F = -dE/dR, at one extra backward pass per step:
+gpff_train experiment=gpff_conservative
+
 # Runs are seeded from `seed` (default 999); vary it to repeat an experiment.
 # The split stays the same: only data.splitting.seed (default 999, the split
 # of the paper's baseline) changes it.

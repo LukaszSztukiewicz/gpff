@@ -1,0 +1,39 @@
+# @package _global_
+# GPFF whose forces are the gradient of a learned energy: one scalar energy
+# head, and schnetpack's Forces response for F = -dE/dR. The model then defines
+# a conservative pseudo-PES instead of a bare vector field, so the surface has
+# a potential to optimize on, a symmetric Hessian, and the stationary target
+# that Langevin or Monte Carlo sampling needs. Direct forces give none of those
+# (Bigi et al., ICML 2025, arXiv:2412.11569).
+#
+# Labels, loss and 1/sigma^2 weights stay those of experiment=gpff, so -dE/dR
+# is fit to the same 2(x_0 - x_t). The energy is deliberately *not* fit to the
+# pseudo-energy label: the two conditional means are not a potential and its
+# gradient, because E[|x_t - x_0|^2 | x_t] also carries the posterior variance
+# of x_0, so regressing it would pull against the force loss. Fitting the
+# gradient alone pins the energy up to an additive constant, as for any force
+# field trained on forces only.
+#
+# Costs one backward pass per forward pass, and the response has not been tried
+# under +compile.
+defaults:
+  - gpff
+  - _self_
+
+run:
+  experiment: gpff_conservative
+  tags:
+    - gpff
+    - gpff_conservative
+
+model:
+  output_modules:
+    - _target_: schnetpack.atomistic.Atomwise
+      n_in: ${globals.n_atom_basis}
+      n_hidden: null
+      n_layers: 3
+      aggregation_mode: sum
+      output_key: ${key:energy}
+    - _target_: schnetpack.atomistic.Forces
+      energy_key: ${key:energy}
+      force_key: ${key:forces}
