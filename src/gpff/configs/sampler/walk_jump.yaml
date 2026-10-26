@@ -1,0 +1,23 @@
+# Walk-jump sampling at a single noise level: an underdamped Langevin chain on
+# p_sigma, then one jump to the denoiser's clean estimate. n_steps is the chain
+# length, so it wants to be longer than a schedule's step count.
+#
+# The chain mixes within p_sigma rather than across scales, so pair it with a
+# prior at the same scale:
+#   gpff_generate sampler=walk_jump prior.sigma=0.5 sampler.sigma=0.5 ...
+defaults:
+  - /calculator@calculator: default
+  - _self_
+
+_target_: gpff.sample.walk_jump.WalkJumpSampler
+n_steps: 200
+time_aware_model: false
+observers:
+  - _target_: gpff.sample.observers.ProgressReporter
+    verbose: false
+    show_progressbar: false
+sigma: 0.5
+# dt of the Langevin integrator; stable for roughly dt < 2 sigma / sqrt(inverse_mass)
+step_size: 0.2
+friction: 1.0
+inverse_mass: 1.0
