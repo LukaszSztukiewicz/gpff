@@ -11,11 +11,15 @@ computed again; the report only reads them and writes
     DIR/figures/*.png
 
 The figures: the causes RDKit rejects samples for, validity by heavy-atom count,
-the bond and angle environments of every set, and with --control every other
-set's difference to it (paired when both come from the same test molecules and
+the elongation and ring sizes of the valid molecules, the heteroatom shares
+(when a set generates the atom types), the bond and angle environments of every
+set, and with --control every other set's difference to it, overall and per
+heavy-atom count (paired when both come from the same test molecules and
 seeds). Sets named <run>:<epoch>, the default name of a milestone, are also
 drawn against the epoch. Only the configs every set has are shown, unless
---configs names them.
+--configs names them. A gallery at the end shows --gallery samples per failure
+cause, config and set in a 3D viewer (3Dmol.js, loaded from jsDelivr when the
+page opens; drawn when a section is opened).
 """
 from __future__ import annotations
 
@@ -56,11 +60,33 @@ th, td {{ padding: 3px 10px; border-bottom: 1px solid #e1e0d9; text-align: right
 th:nth-child(-n+2), td:nth-child(-n+2) {{ text-align: left; }}
 img {{ max-width: 100%; }}
 p, li {{ color: #52514e; max-width: 80ch; }}
+summary {{ cursor: pointer; padding: 3px 0; }}
+.mols {{ display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 12px; }}
+.mol {{ width: 220px; }}
+.mol .view {{ width: 220px; height: 200px; position: relative; background: #fcfcfb;
+              border: 1px solid #e1e0d9; }}
+.mol p {{ font-size: 12px; margin: 2px 0; }}
 </style></head><body>
 <h1>{title}</h1>
 {body}
 </body></html>
 """
+# draws the molecules of a gallery section the first time it is opened
+GALLERY_SCRIPT = """<script src="https://cdn.jsdelivr.net/npm/3dmol@2.4.2/build/3Dmol-min.js"></script>
+<script>
+document.querySelectorAll("details.gallery").forEach(function (section) {
+  section.addEventListener("toggle", function () {
+    section.querySelectorAll(".mol[data-xyz]:not(.drawn)").forEach(function (cell) {
+      cell.classList.add("drawn");
+      var viewer = $3Dmol.createViewer(cell.querySelector(".view"), {backgroundColor: "#fcfcfb"});
+      viewer.addModel(cell.dataset.xyz, "xyz");
+      viewer.setStyle({}, {stick: {radius: 0.12}, sphere: {scale: 0.22}});
+      viewer.zoomTo();
+      viewer.render();
+    });
+  });
+});
+</script>"""
 
 
 def default_name(model_dir: Path) -> str:
@@ -112,6 +138,37 @@ def results_table(sets: dict, configs) -> str:
     return "\n".join(lines)
 
 
+def gallery_html(sets: dict, configs, n: int) -> str:
+    """The gallery: one collapsible section per set, config and failure cause."""
+    parts = [
+        "<h2>Gallery</h2>",
+        f"<p>Up to {n} samples per cause of every set and config, drawn at random (seed 0) "
+        "from its first seed; a section draws them when it is opened. # is the row in the "
+        "samples database. The viewer guesses its bonds from the distances, which need "
+        "not be RDKit's.</p>",
+    ]
+    for name, data in sets.items():
+        groups: dict = {}
+        for entry in report.gallery(data, configs, n):
+            groups.setdefault((entry["config"], entry["cause"]), []).append(entry)
+        for (config, cause), entries in groups.items():
+            cells = []
+            for entry in entries:
+                label = f"#{entry['index']} {html.escape(entry['formula'])}"
+                if entry["xyz"] is None:
+                    cells.append(f'<div class="mol"><p>{label}: non-finite coordinates</p></div>')
+                else:
+                    cells.append(f'<div class="mol" data-xyz="{html.escape(entry["xyz"])}">'
+                                 f'<div class="view"></div><p>{label}</p></div>')
+            parts.append(
+                f'<details class="gallery"><summary>{html.escape(name)} · {html.escape(config)} · '
+                f'{cause}: {entries[0]["n_cause"]} of {entries[0]["n"]} samples</summary>'
+                f'<div class="mols">{"".join(cells)}</div></details>'
+            )
+    parts.append(GALLERY_SCRIPT)
+    return "\n".join(parts)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -128,6 +185,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed_band", type=float, default=1.5,
                         help="Points of validity separately trained runs differ by; "
                              "shaded in the comparison. Default: 1.5.")
+    parser.add_argument("--gallery", type=int, default=4,
+                        help="Samples per failure cause, config and set in the gallery; "
+                             "0 leaves it out. Default: 4.")
     parser.add_argument("--title", default="GPFF evaluation")
     return parser.parse_args()
 
@@ -180,6 +240,11 @@ def main() -> int:
             f"The grey band on the validity panel is ±{args.seed_band:g} points, how far "
             "separately trained runs lie apart; a difference inside it needs a second "
             "training seed.")
+        add(report.size_delta_figure(sets, args.control, configs), "deltas_by_size.png",
+            f"Difference to {args.control} by size",
+            "The validity difference per heavy-atom count, ±1.96 sd from the samples of "
+            "that size valid in only one of the two; paired comparisons only. Shows which "
+            "molecules a change helps.")
     add(report.failure_figure(sets, configs), "failures.png", "Why samples are invalid",
         "nonfinite: NaN or infinite coordinates. bond_orders: no bond orders fit the "
         "geometry. radical: an atom is left with an unpaired electron. fragments: the "
@@ -187,6 +252,15 @@ def main() -> int:
     add(report.size_figure(sets, configs), "validity_by_size.png", "Validity by size",
         f"RDKit validity per heavy-atom count with its 95% Wilson band; counts with "
         f"fewer than {report.MIN_SAMPLES} samples are left out.")
+    add(report.composition_figure(sets, configs), "composition.png", "Heteroatoms",
+        "The share of the atoms and of the molecules each heteroatom has, for models that "
+        "generate the atom types; an untyped set has its test molecules' composition. "
+        "Fewer N or O than that makes validity easier without the model getting better.")
+    add(report.elongation_figure(sets, configs), "elongation.png", "Elongation",
+        "Cumulative distribution of the valid molecules' largest atom distance.")
+    add(report.ring_figure(sets, configs), "rings.png", "Rings",
+        "Rings per valid molecule by ring size; 3- and 4-rings are strained and rare in "
+        "the data.")
     for metric, scale, ylabel in EPOCH_METRICS:
         add(report.epoch_figure(sets, configs, metric, scale, ylabel), f"epoch_{metric}.png",
             f"{ylabel} by epoch", "Mean over seeds, one line per run.")
@@ -200,6 +274,8 @@ def main() -> int:
                 f"reference {what}s; a perfect model sits on the crossing at (0, 1). Right of "
                 f"0: {larger} than the reference; above 1: more spread out. The three "
                 f"environments that add most to the W1 are named.")
+    if args.gallery > 0:
+        sections.append(gallery_html(sets, configs, args.gallery))
 
     index = args.output_dir / "index.html"
     index.write_text(PAGE.format(title=html.escape(args.title), body="\n".join(sections)))

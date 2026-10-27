@@ -3,8 +3,9 @@
 A set is one model's repro folder, <run>/frozen/repro/<model>, holding
 <config>/seed<N>/evaluation/ per sampler config. The figures read the
 per-sample arrays of gpff_prepare_metadata (rdkit_valid, failure,
-element_counts) and the results and breakdowns of gpff_calculate_metrics; what
-an evaluation lacks is left out of the figures, never filled in.
+element_counts, elongation, ring_counts) and the results and breakdowns of
+gpff_calculate_metrics; what an evaluation lacks is left out of the figures,
+never filled in. The gallery also reads a few rows of the sample database.
 """
 import json
 import re
@@ -15,18 +16,25 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
+from ase.data import chemical_symbols  # noqa: E402
+from ase.db import connect  # noqa: E402
 
 from gpff.analysis.structure import FAILURES  # noqa: E402
 
 __all__ = [
     "CONFIG_ORDER",
+    "composition_figure",
     "delta_figure",
     "difference",
+    "elongation_figure",
     "environment_figure",
     "epoch_figure",
     "failure_figure",
+    "gallery",
     "load_set",
     "pooled",
+    "ring_figure",
+    "size_delta_figure",
     "size_figure",
     "wilson",
 ]
@@ -63,7 +71,12 @@ def load_evaluation(evaluation_dir: Path) -> dict:
     """The results and the per-sample arrays the figures use of one evaluation folder."""
     metadata = evaluation_dir / "metadata"
     evaluation = {"results": json.loads((evaluation_dir / "results.json").read_text())}
-    for key in ("rdkit_valid", "failure"):
+    # the database the arrays were made from: Open Babel's H for heavy-atom data
+    for name in ("samples_h.db", "samples.db"):
+        if (evaluation_dir.parent / name).exists():
+            evaluation["db"] = evaluation_dir.parent / name
+            break
+    for key in ("rdkit_valid", "failure", "elongation", "ring_counts"):
         if (metadata / f"{key}.npy").exists():
             evaluation[key] = np.load(metadata / f"{key}.npy")
     if (metadata / "element_counts.npz").exists():
@@ -110,6 +123,18 @@ def _same_rows(a: dict, b: dict) -> bool:
     return "sizes" in a and "sizes" in b and np.array_equal(a["sizes"], b["sizes"])
 
 
+def _paired_seeds(a: dict, b: dict) -> list:
+    """The seeds a and b share, if all of them hold the same test molecules row by row; else []."""
+    common = sorted(set(a) & set(b))
+    return common if common and all(_same_rows(a[seed], b[seed]) for seed in common) else []
+
+
+def _mcnemar(x: np.ndarray, y: np.ndarray) -> tuple[float, float]:
+    """y minus x in points of two paired booleans, and its sd from the discordant pairs."""
+    n10, n01 = int((x & ~y).sum()), int((~x & y).sum())
+    return 100 * (n01 - n10) / len(x), 100 * np.sqrt(n10 + n01) / len(x)
+
+
 def difference(a: dict, b: dict, get) -> tuple[float, float, bool]:
     """b minus a in points of a per-sample boolean, its sd, and whether it is paired.
 
@@ -119,13 +144,12 @@ def difference(a: dict, b: dict, get) -> tuple[float, float, bool]:
     the sd then comes from the discordant samples (McNemar), otherwise from two
     independent proportions. nan if either lacks the array.
     """
-    common = sorted(set(a) & set(b))
-    if common and all(_same_rows(a[seed], b[seed]) for seed in common):
+    common = _paired_seeds(a, b)
+    if common:
         x, y = pooled(a, get, common), pooled(b, get, common)
         if x is None or y is None:
             return np.nan, np.nan, True
-        n10, n01 = int((x & ~y).sum()), int((~x & y).sum())
-        return 100 * (n01 - n10) / len(x), 100 * np.sqrt(n10 + n01) / len(x), True
+        return (*_mcnemar(x, y), True)
     x, y = pooled(a, get), pooled(b, get)
     if x is None or y is None:
         return np.nan, np.nan, False
@@ -335,3 +359,199 @@ def epoch_figure(sets: dict, configs, metric: str, scale: float, ylabel: str):
                           ncols=min(len(runs), 4), bbox_to_anchor=(0.5, 1.02))
         figure.tight_layout(rect=(0, 0, 1, 0.9 if len(runs) > 1 else 1))
     return figure
+
+
+def _legend_above(figure, axes, n_series: int) -> None:
+    """One legend above the panels when there is more than one series."""
+    if n_series > 1:
+        figure.legend(*axes[0][0].get_legend_handles_labels(), loc="upper center",
+                      ncols=min(n_series, 4), bbox_to_anchor=(0.5, 1.02))
+    figure.tight_layout(rect=(0, 0, 1, 0.9 if n_series > 1 else 1))
+
+
+def _mean_result(evaluations: dict, key: str) -> float:
+    values = [e["results"][key] for e in evaluations.values() if key in e["results"]]
+    return float(np.mean(values)) if values else np.nan
+
+
+def composition_figure(sets: dict, configs):
+    """The heteroatoms' share of the atoms and of the molecules, per config and set.
+
+    Only drawn when some set changed the composition of its test molecules
+    (element_tv > 0), i.e. a model that generates the atom types; an untyped set
+    next to it shows the composition the others should match. H and C are left
+    out, they would dwarf the rest.
+    """
+    if not any(_mean_result(data[config], "element_tv") > 0
+               for data in sets.values() for config in configs):
+        return None
+    elements = sorted(
+        {key.removeprefix("element_fraction_") for data in sets.values() for config in configs
+         for e in data[config].values() for key in e["results"]
+         if key.startswith("element_fraction_")} - {"H", "C"},
+        key=chemical_symbols.index,
+    )
+    width = 0.8 / len(sets)
+    panels = (("element_fraction_", "share of the atoms (%)"),
+              ("molecule_fraction_", "share of the molecules (%)"))
+    with plt.rc_context(STYLE):
+        figure, axes = plt.subplots(2, len(configs), squeeze=False, sharey="row",
+                                    figsize=(2.6 * len(configs) + 1, 5.4))
+        for column, config in enumerate(configs):
+            for row, (prefix, ylabel) in enumerate(panels):
+                ax = axes[row][column]
+                for i, (name, data) in enumerate(sets.items()):
+                    values = [100 * _mean_result(data[config], prefix + symbol) for symbol in elements]
+                    ax.bar(np.arange(len(elements)) + (i - (len(sets) - 1) / 2) * width, values,
+                           width, color=SERIES[i % len(SERIES)], label=name,
+                           edgecolor=SURFACE, linewidth=1)
+                ax.set_xticks(range(len(elements)), elements)
+                ax.grid(axis="x", visible=False)
+                if row == 0:
+                    ax.set_title(config)
+                if column == 0:
+                    ax.set_ylabel(ylabel)
+        _legend_above(figure, axes, len(sets))
+    return figure
+
+
+def elongation_figure(sets: dict, configs):
+    """The cumulative distribution of the valid molecules' elongation, per config."""
+    def valid_elongation(e):
+        values = e["elongation"][e["rdkit_valid"].astype(bool)]
+        return values[np.isfinite(values)]
+
+    with plt.rc_context(STYLE):
+        figure, axes = plt.subplots(1, len(configs), sharey=True, squeeze=False,
+                                    figsize=(2.5 * len(configs) + 1, 3.2))
+        drawn = False
+        for ax, config in zip(axes[0], configs):
+            for i, (name, data) in enumerate(sets.items()):
+                values = pooled(data[config], valid_elongation)
+                if values is None or not values.size:
+                    continue
+                values = np.sort(values)
+                ax.plot(values, np.arange(1, len(values) + 1) / len(values),
+                        color=SERIES[i % len(SERIES)], label=name)
+                drawn = True
+            ax.set_title(config)
+            ax.set_xlabel("elongation (Å)")
+        if not drawn:
+            plt.close(figure)
+            return None
+        axes[0][0].set_ylabel("share of the valid molecules")
+        _legend_above(figure, axes, len(sets))
+    return figure
+
+
+def ring_figure(sets: dict, configs):
+    """Rings of 3, 4, 5 and 6 atoms per valid molecule, per config and set."""
+    def valid_rings(e):
+        return e["ring_counts"][e["rdkit_valid"].astype(bool)]
+
+    width = 0.8 / len(sets)
+    with plt.rc_context(STYLE):
+        figure, axes = plt.subplots(1, len(configs), sharey=True, squeeze=False,
+                                    figsize=(2.5 * len(configs) + 1, 3.2))
+        drawn = False
+        for ax, config in zip(axes[0], configs):
+            for i, (name, data) in enumerate(sets.items()):
+                rings = pooled(data[config], valid_rings)
+                if rings is None or not len(rings):
+                    continue
+                ax.bar(np.arange(4) + (i - (len(sets) - 1) / 2) * width, np.nanmean(rings, axis=0),
+                       width, color=SERIES[i % len(SERIES)], label=name,
+                       edgecolor=SURFACE, linewidth=1)
+                drawn = True
+            ax.set_xticks(range(4), ["3", "4", "5", "6"])
+            ax.grid(axis="x", visible=False)
+            ax.set_title(config)
+            ax.set_xlabel("ring size (atoms)")
+        if not drawn:
+            plt.close(figure)
+            return None
+        axes[0][0].set_ylabel("rings per valid molecule")
+        _legend_above(figure, axes, len(sets))
+    return figure
+
+
+def size_delta_figure(sets: dict, control: str, configs):
+    """Each set's validity difference to the control per heavy-atom count, ±1.96 sd.
+
+    Paired comparisons only (the same test molecules and seeds), so the sd comes
+    from the samples of that size valid in one set and not the other. Counts with
+    fewer than MIN_SAMPLES samples are left out.
+    """
+    labels = list(sets)
+    arms = [label for label in labels if label != control]
+    if not arms:
+        return None
+    valid = lambda e: e["rdkit_valid"].astype(bool)  # noqa: E731
+    with plt.rc_context(STYLE):
+        figure, axes = plt.subplots(1, len(configs), sharey=True, squeeze=False,
+                                    figsize=(2.5 * len(configs) + 1, 3.2))
+        drawn = False
+        for ax, config in zip(axes[0], configs):
+            ax.axhline(0, color=AXIS, linewidth=1)
+            for j, arm in enumerate(arms):
+                a, b = sets[control][config], sets[arm][config]
+                seeds = _paired_seeds(a, b)
+                heavy = pooled(a, lambda e: e["heavy_atoms"], seeds) if seeds else None
+                x, y = (pooled(a, valid, seeds), pooled(b, valid, seeds)) if seeds else (None, None)
+                if heavy is None or x is None or y is None:
+                    continue
+                sizes, n = np.unique(heavy, return_counts=True)
+                sizes = sizes[n >= MIN_SAMPLES]
+                if not len(sizes):
+                    continue
+                gaps = np.array([_mcnemar(x[heavy == size], y[heavy == size]) for size in sizes])
+                offset = (j - (len(arms) - 1) / 2) * 0.15
+                ax.errorbar(sizes + offset, gaps[:, 0], yerr=1.96 * gaps[:, 1], fmt="o-",
+                            markersize=5, color=SERIES[labels.index(arm) % len(SERIES)],
+                            elinewidth=1.5, capsize=0, label=arm)
+                drawn = True
+            ax.set_title(config)
+            ax.set_xlabel("heavy atoms")
+        if not drawn:
+            plt.close(figure)
+            return None
+        axes[0][0].set_ylabel(f"Δ RDKit valid vs {control} (points)")
+        _legend_above(figure, axes, len(arms))
+    return figure
+
+
+def _xyz(atoms) -> str:
+    lines = [str(len(atoms)), atoms.get_chemical_formula()]
+    lines += [f"{symbol} {x:.4f} {y:.4f} {z:.4f}"
+              for symbol, (x, y, z) in zip(atoms.get_chemical_symbols(), atoms.positions)]
+    return "\n".join(lines)
+
+
+def gallery(data: dict, configs, n: int, seed: int = 0) -> list[dict]:
+    """Up to n samples per failure cause (valid ones too) of every config's first seed.
+
+    Drawn at random with a fixed seed. Each entry has the config, cause, sample
+    index (its row in the samples database), formula, the cause's count and the
+    number of samples, and the structure as XYZ text (None for non-finite
+    coordinates, which no viewer can show).
+    """
+    rng = np.random.default_rng(seed)
+    entries = []
+    for config in configs:
+        evaluation = next(iter(data[config].values()))
+        if "failure" not in evaluation or "db" not in evaluation:
+            continue
+        failure = evaluation["failure"]
+        with connect(evaluation["db"]) as db:
+            for cause in FAILURES:
+                rows = np.flatnonzero(failure == cause)
+                for index in sorted(rng.choice(rows, min(n, len(rows)), replace=False).tolist()):
+                    atoms = db.get(id=index + 1).toatoms()
+                    finite = bool(np.isfinite(atoms.positions).all())
+                    entries.append({
+                        "config": config, "cause": cause, "index": index,
+                        "formula": atoms.get_chemical_formula(),
+                        "n_cause": len(rows), "n": len(failure),
+                        "xyz": _xyz(atoms) if finite else None,
+                    })
+    return entries
