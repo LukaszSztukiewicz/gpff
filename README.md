@@ -16,7 +16,8 @@ gpff/
         │   ├── train.py            # gpff_train
         │   ├── generate.py         # gpff_generate
         │   ├── prepare_metadata.py  # gpff_prepare_metadata
-        │   └── calculate_metrics.py # gpff_calculate_metrics
+        │   ├── calculate_metrics.py # gpff_calculate_metrics
+        │   └── report.py            # gpff_report
         ├── callbacks.py
         ├── keys.py
         ├── task.py
@@ -55,6 +56,7 @@ After install the entry points are on `PATH`:
 | `gpff_generate`  | Sample molecules from a checkpoint. Wraps `gpff.cli.generate:sample_molecules()`. |
 | `gpff_prepare_metadata`  | Compute the per-sample arrays of a sampled DB into `evaluation/metadata/`. Wraps `gpff.cli.prepare_metadata:main()`. |
 | `gpff_calculate_metrics` | Reduce those arrays to `evaluation/results.json`. Wraps `gpff.cli.calculate_metrics:main()`. |
+| `gpff_report` | Figures and an HTML page of evaluated sample sets. Wraps `gpff.cli.report:main()`. |
 
 `gpfftrain` still works as a deprecated alias for `gpff_train`.
 
@@ -194,6 +196,12 @@ gpff_calculate_metrics --samples_db_path samples.db \
   --reference_elongation_path assets/qm9_elongation_values.npy \
   --reference_element_counts_path assets/qm9_element_counts.npz \
   --split_path /path/to/split.npz
+
+# Figures and an HTML page of evaluated models, each <run>/frozen/repro/<model>
+# with <config>/seed<N>/evaluation/ folders; --control adds the paired
+# differences of the others to it:
+gpff_report runs/a/frozen/repro/epoch_5000_model runs/b/frozen/repro/epoch_5000_model \
+  --control a:5000 --output_dir report/
 ```
 
 ## Citation
