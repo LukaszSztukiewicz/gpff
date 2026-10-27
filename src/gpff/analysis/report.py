@@ -37,14 +37,19 @@ __all__ = [
     "pooled",
     "reference_path",
     "ring_figure",
+    "set_styles",
     "size_delta_figure",
     "size_figure",
     "wilson",
 ]
 
-# categorical colors, used in this order: the i-th set (or run, or failure
-# cause) of a figure always gets SERIES[i]
+# categorical colors, used in this order and never repeated: a run (see
+# set_styles), or the i-th failure cause, gets SERIES[i]
 SERIES = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948")
+# what tells the sets of one run apart: lines, markers and bar hatches, in order
+LINESTYLES = ("-", "--", ":", "-.", (0, (5, 1, 1, 1, 1, 1)))
+MARKERS = ("o", "s", "^", "D", "v")
+HATCHES = ("", "//", "..", "xx", "\\\\")
 SURFACE, INK, INK_SECONDARY, MUTED, GRID, AXIS = (
     "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
 )
@@ -60,14 +65,39 @@ STYLE = {
 # the repro configs in the paper's order; any other config follows by name
 CONFIG_ORDER = ("dd16", "sdd16", "sddshape16", "heun16", "sheun16", "anc16",
                 "dd256", "sdd256", "sddshape256", "heun256", "sheun256", "anc256")
-# fewest samples a heavy-atom count needs to get a point in size_figure
+# fewest samples a point of the by-size figures needs
 MIN_SAMPLES = 20
+# heavy-atom counts spanning more than this many values (GEOM-Drugs) are binned
+MAX_SIZES = 15
 
 
 def config_key(config: str) -> tuple:
     if config in CONFIG_ORDER:
         return (0, CONFIG_ORDER.index(config), "")
     return (1, 0, config)
+
+
+def set_styles(labels) -> dict:
+    """{label: color, linestyle, marker, hatch}, so that a set looks the same in every figure.
+
+    A set <run>:<model> takes its run's color, the runs in order of first
+    appearance, and the sets of one run differ by line style, marker and bar
+    hatch. Raises ValueError for more runs than SERIES has colors: a repeated
+    color would make two runs look alike.
+    """
+    runs = list(dict.fromkeys(label.split(":")[0] for label in labels))
+    if len(runs) > len(SERIES):
+        raise ValueError(f"{len(runs)} runs, but only {len(SERIES)} colors; report fewer at once.")
+    styles, seen = {}, {}
+    for label in labels:
+        run = label.split(":")[0]
+        k = seen.get(run, 0)
+        seen[run] = k + 1
+        styles[label] = {"color": SERIES[runs.index(run)],
+                         "linestyle": LINESTYLES[k % len(LINESTYLES)],
+                         "marker": MARKERS[k % len(MARKERS)],
+                         "hatch": HATCHES[k % len(HATCHES)]}
+    return styles
 
 
 def load_evaluation(evaluation_dir: Path) -> dict:
@@ -139,6 +169,25 @@ def wilson(k, n, z: float = 1.96):
 
 def _same_rows(a: dict, b: dict) -> bool:
     return "sizes" in a and "sizes" in b and np.array_equal(a["sizes"], b["sizes"])
+
+
+def _size_bins(heavy: np.ndarray) -> list[tuple[float, np.ndarray]]:
+    """(x, mask) of every point of a by-size figure.
+
+    One point per heavy-atom count with MIN_SAMPLES samples or more; counts that
+    span more than MAX_SIZES values are grouped instead into up to MAX_SIZES bins
+    of equal sample count, each drawn at its mean size, so that a sparse tail of
+    large molecules does not draw lines across sizes nobody sampled.
+    """
+    sizes, n = np.unique(heavy, return_counts=True)
+    if sizes.max() - sizes.min() <= MAX_SIZES:
+        return [(float(size), heavy == size) for size, count in zip(sizes, n)
+                if count >= MIN_SAMPLES]
+    n_bins = int(min(MAX_SIZES, len(heavy) // MIN_SAMPLES))
+    edges = np.unique(np.quantile(heavy, np.linspace(0, 1, n_bins + 1)))
+    bins = np.clip(np.searchsorted(edges, heavy, side="right") - 1, 0, len(edges) - 2)
+    return [(float(heavy[bins == b].mean()), bins == b) for b in range(len(edges) - 1)
+            if (bins == b).sum() >= MIN_SAMPLES]
 
 
 def _paired_seeds(a: dict, b: dict) -> list:
@@ -217,24 +266,30 @@ def failure_figure(sets: dict, configs):
 
 def size_figure(sets: dict, configs):
     """RDKit validity against the number of heavy atoms, with 95% Wilson bands."""
+    styles = set_styles(sets)
     with plt.rc_context(STYLE):
         figure, axes = plt.subplots(
             1, len(configs), sharey=True, squeeze=False, figsize=(2.5 * len(configs) + 1, 3.2)
         )
         drawn = False
         for ax, config in zip(axes[0], configs):
-            for i, (label, data) in enumerate(sets.items()):
+            for label, data in sets.items():
                 heavy = pooled(data[config], lambda e: e["heavy_atoms"])
                 valid = pooled(data[config], lambda e: e["rdkit_valid"])
                 if heavy is None or valid is None:
                     continue
-                sizes, n = np.unique(heavy, return_counts=True)
-                sizes, n = sizes[n >= MIN_SAMPLES], n[n >= MIN_SAMPLES]
-                k = np.array([valid[heavy == size].sum() for size in sizes])
+                points = _size_bins(heavy)
+                if not points:
+                    continue
+                sizes = np.array([x for x, _ in points])
+                k = np.array([valid[mask].sum() for _, mask in points])
+                n = np.array([mask.sum() for _, mask in points])
                 low, high = wilson(k, n)
-                ax.fill_between(sizes, 100 * low, 100 * high, color=SERIES[i], alpha=0.15,
+                style = styles[label]
+                ax.fill_between(sizes, 100 * low, 100 * high, color=style["color"], alpha=0.12,
                                 linewidth=0)
-                ax.plot(sizes, 100 * k / n, color=SERIES[i], label=label)
+                ax.plot(sizes, 100 * k / n, color=style["color"], linestyle=style["linestyle"],
+                        label=label)
                 drawn = True
             ax.set_title(config)
             ax.set_xlabel("heavy atoms")
@@ -313,7 +368,7 @@ def delta_figure(sets: dict, pairs: dict, configs, seed_band: float, control: st
         (cause, lambda e, cause=cause: e["failure"] == cause)
         for cause in _causes(sets, configs)
     ]
-    labels = list(sets)
+    styles = set_styles(sets)
     arms = list(pairs)
     if not arms:
         return None
@@ -328,10 +383,10 @@ def delta_figure(sets: dict, pairs: dict, configs, seed_band: float, control: st
                 ax.axvspan(-seed_band, seed_band, color=GRID, alpha=0.7, linewidth=0)
             ax.axvline(0, color=AXIS, linewidth=1)
             for arm, offset in zip(arms, offsets):
-                color = SERIES[labels.index(arm) % len(SERIES)]
+                color, marker = styles[arm]["color"], styles[arm]["marker"]
                 for row, config in enumerate(configs):
                     delta, sd, is_paired = difference(sets[pairs[arm]][config], sets[arm][config], get)
-                    ax.errorbar(delta, row + offset, xerr=1.96 * sd, fmt="o", markersize=6,
+                    ax.errorbar(delta, row + offset, xerr=1.96 * sd, fmt=marker, markersize=6,
                                 color=color, markerfacecolor=color if is_paired else SURFACE,
                                 elinewidth=1.5, capsize=0,
                                 label=arm if (row == 0 and ax is axes[0][0]) else None)
@@ -360,13 +415,14 @@ def epoch_figure(sets: dict, configs, metric: str, scale: float, ylabel: str):
     runs = {run: sorted(points) for run, points in runs.items() if len(points) > 1}
     if not runs:
         return None
+    styles = set_styles(sets)
     with plt.rc_context(STYLE):
         figure, axes = plt.subplots(
             1, len(configs), squeeze=False, figsize=(2.5 * len(configs) + 1, 3.2)
         )
         drawn = False
         for ax, config in zip(axes[0], configs):
-            for i, (run, points) in enumerate(runs.items()):
+            for run, points in runs.items():
                 epochs, values = [], []
                 for epoch, label in points:
                     seeds = sets[label][config].values()
@@ -375,7 +431,7 @@ def epoch_figure(sets: dict, configs, metric: str, scale: float, ylabel: str):
                         epochs.append(epoch)
                         values.append(scale * np.mean(found))
                 if epochs:
-                    ax.plot(epochs, values, color=SERIES[i % len(SERIES)], marker="o",
+                    ax.plot(epochs, values, color=styles[points[0][1]]["color"], marker="o",
                             markersize=5, label=run)
                     drawn = True
             # milestones double from 100 to 10000, so a log axis with a tick at each
@@ -427,6 +483,7 @@ def composition_figure(sets: dict, configs):
         key=chemical_symbols.index,
     )
     width = 0.8 / len(sets)
+    styles = set_styles(sets)
     panels = (("element_fraction_", "share of the atoms (%)"),
               ("molecule_fraction_", "share of the molecules (%)"))
     with plt.rc_context(STYLE):
@@ -438,8 +495,8 @@ def composition_figure(sets: dict, configs):
                 for i, (name, data) in enumerate(sets.items()):
                     values = [100 * _mean_result(data[config], prefix + symbol) for symbol in elements]
                     ax.bar(np.arange(len(elements)) + (i - (len(sets) - 1) / 2) * width, values,
-                           width, color=SERIES[i % len(SERIES)], label=name,
-                           edgecolor=SURFACE, linewidth=1)
+                           width, color=styles[name]["color"], hatch=styles[name]["hatch"],
+                           label=name, edgecolor=SURFACE, linewidth=1)
                 ax.set_xticks(range(len(elements)), elements)
                 ax.grid(axis="x", visible=False)
                 if row == 0:
@@ -462,6 +519,7 @@ def elongation_figure(sets: dict, configs):
 
     path = reference_path(sets, "elongation_w1", "reference_elongation_path")
     reference = np.sort(np.load(path)) if path is not None else None
+    styles = set_styles(sets)
     with plt.rc_context(STYLE):
         figure, axes = plt.subplots(1, len(configs), sharey=True, squeeze=False,
                                     figsize=(2.5 * len(configs) + 1, 3.2))
@@ -470,13 +528,14 @@ def elongation_figure(sets: dict, configs):
             if reference is not None:
                 ax.plot(reference, np.arange(1, len(reference) + 1) / len(reference),
                         color=INK_SECONDARY, linestyle="--", linewidth=1.5, label="reference")
-            for i, (name, data) in enumerate(sets.items()):
+            for name, data in sets.items():
                 values = pooled(data[config], valid_elongation)
                 if values is None or not values.size:
                     continue
                 values = np.sort(values)
                 ax.plot(values, np.arange(1, len(values) + 1) / len(values),
-                        color=SERIES[i % len(SERIES)], label=name)
+                        color=styles[name]["color"], linestyle=styles[name]["linestyle"],
+                        label=name)
                 drawn = True
             ax.set_title(config)
             ax.set_xlabel("elongation (Å)")
@@ -494,6 +553,7 @@ def ring_figure(sets: dict, configs):
         return e["ring_counts"][e["rdkit_valid"].astype(bool)]
 
     width = 0.8 / len(sets)
+    styles = set_styles(sets)
     with plt.rc_context(STYLE):
         figure, axes = plt.subplots(1, len(configs), sharey=True, squeeze=False,
                                     figsize=(2.5 * len(configs) + 1, 3.2))
@@ -504,8 +564,8 @@ def ring_figure(sets: dict, configs):
                 if rings is None or not len(rings):
                     continue
                 ax.bar(np.arange(4) + (i - (len(sets) - 1) / 2) * width, np.nanmean(rings, axis=0),
-                       width, color=SERIES[i % len(SERIES)], label=name,
-                       edgecolor=SURFACE, linewidth=1)
+                       width, color=styles[name]["color"], hatch=styles[name]["hatch"],
+                       label=name, edgecolor=SURFACE, linewidth=1)
                 drawn = True
             ax.set_xticks(range(4), ["3", "4", "5", "6"])
             ax.grid(axis="x", visible=False)
@@ -523,10 +583,10 @@ def size_delta_figure(sets: dict, pairs: dict, configs, control: str):
     """Each arm's validity difference to its control per heavy-atom count, ±1.96 sd.
 
     Paired comparisons only (the same test molecules and seeds), so the sd comes
-    from the samples of that size valid in one set and not the other. Counts with
-    fewer than MIN_SAMPLES samples are left out.
+    from the samples of that size valid in one set and not the other. The points
+    are those of _size_bins, binned like size_figure's.
     """
-    labels = list(sets)
+    styles = set_styles(sets)
     arms = list(pairs)
     if not arms:
         return None
@@ -544,15 +604,16 @@ def size_delta_figure(sets: dict, pairs: dict, configs, control: str):
                 x, y = (pooled(a, valid, seeds), pooled(b, valid, seeds)) if seeds else (None, None)
                 if heavy is None or x is None or y is None:
                     continue
-                sizes, n = np.unique(heavy, return_counts=True)
-                sizes = sizes[n >= MIN_SAMPLES]
-                if not len(sizes):
+                points = _size_bins(heavy)
+                if not points:
                     continue
-                gaps = np.array([_mcnemar(x[heavy == size], y[heavy == size]) for size in sizes])
+                sizes = np.array([size for size, _ in points])
+                gaps = np.array([_mcnemar(x[mask], y[mask]) for _, mask in points])
                 offset = (j - (len(arms) - 1) / 2) * 0.15
-                ax.errorbar(sizes + offset, gaps[:, 0], yerr=1.96 * gaps[:, 1], fmt="o-",
-                            markersize=5, color=SERIES[labels.index(arm) % len(SERIES)],
-                            elinewidth=1.5, capsize=0, label=arm)
+                style = styles[arm]
+                ax.errorbar(sizes + offset, gaps[:, 0], yerr=1.96 * gaps[:, 1],
+                            marker=style["marker"], linestyle=style["linestyle"], markersize=5,
+                            color=style["color"], elinewidth=1.5, capsize=0, label=arm)
                 drawn = True
             ax.set_title(config)
             ax.set_xlabel("heavy atoms")
@@ -615,8 +676,7 @@ def epoch_delta_figure(sets: dict, pairs: dict, configs, seed_band: float, contr
             ax.grid(False)
             ax.set_title(run)
             ax.set_xlabel("epoch")
-        figure.colorbar(image, ax=axes[0].tolist(), shrink=0.9,
-                        label=f"Δ RDKit valid vs {control} at the same epoch (points)")
+        figure.colorbar(image, ax=axes[0].tolist(), shrink=0.9, label="Δ RDKit valid (points)")
     return figure
 
 

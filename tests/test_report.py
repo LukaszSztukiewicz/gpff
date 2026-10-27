@@ -92,6 +92,31 @@ def test_a_control_run_pairs_every_set_with_its_own_epoch():
     assert report.control_pairs(sets, "z") == {}
 
 
+def test_sizes_are_binned_only_over_a_wide_range():
+    narrow = np.repeat([3, 4, 5, 6, 7], 30)
+    assert [x for x, _ in report._size_bins(narrow)] == [3, 4, 5, 6, 7]
+
+    rng = np.random.default_rng(0)
+    wide = rng.integers(10, 71, 2000)
+    points = report._size_bins(wide)
+    assert 2 <= len(points) <= report.MAX_SIZES
+    assert all(mask.sum() >= report.MIN_SAMPLES for _, mask in points)
+    assert sum(mask.sum() for _, mask in points) == len(wide)
+    assert [x for x, _ in points] == sorted(x for x, _ in points)
+
+
+def test_a_run_keeps_one_color_and_its_sets_differ_in_style():
+    labels = [f"{run}:{epoch}" for run in ("a", "b", "c") for epoch in (500, 1000, 2000)]
+
+    styles = report.set_styles(labels)
+
+    assert len({styles[label]["color"] for label in labels}) == 3
+    assert styles["a:500"]["color"] == styles["a:2000"]["color"] != styles["b:500"]["color"]
+    assert len({styles[f"a:{epoch}"]["linestyle"] for epoch in (500, 1000, 2000)}) == 3
+    with pytest.raises(ValueError):
+        report.set_styles([f"run{i}:100" for i in range(len(report.SERIES) + 1)])
+
+
 def test_the_reference_path_comes_from_the_provenance(tmp_path):
     reference = tmp_path / "elongation.npy"
     np.save(reference, np.arange(3.0))
@@ -142,12 +167,13 @@ def test_the_report_writes_every_figure_and_the_page(tmp_path, monkeypatch):
 
 
 def test_a_control_run_adds_the_epoch_map(tmp_path, monkeypatch):
+    # three runs at three epochs: nine sets, more than one color each could take
     model_dirs = []
-    for run, epoch, validity in (("run-a", 100, 0.6), ("run-a", 200, 0.8),
-                                 ("run-b", 100, 0.7), ("run-b", 200, 0.75)):
-        model_dir = tmp_path / run / "frozen" / "repro" / f"epoch_{epoch}_model"
-        write_evaluation(model_dir, "dd16", validity, seed=epoch)
-        model_dirs.append(str(model_dir))
+    for i, run in enumerate(("run-a", "run-b", "run-c")):
+        for epoch in (100, 200, 500):
+            model_dir = tmp_path / run / "frozen" / "repro" / f"epoch_{epoch}_model"
+            write_evaluation(model_dir, "dd16", 0.6 + 0.05 * i, seed=epoch + i)
+            model_dirs.append(str(model_dir))
     output = tmp_path / "report"
 
     monkeypatch.setattr(sys, "argv", ["gpff_report", *model_dirs, "--control", "run-a",

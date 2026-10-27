@@ -200,6 +200,11 @@ def main() -> int:
     if len(names) != len(args.model_dirs) or len(set(names)) != len(names):
         print("ERROR: give one distinct name per model dir (--names).", file=sys.stderr)
         return 1
+    try:
+        styles = report.set_styles(names)
+    except ValueError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
     sets = {name: report.load_set(path) for name, path in zip(names, args.model_dirs)}
     empty = [name for name, data in sets.items() if not data]
     if empty:
@@ -253,16 +258,18 @@ def main() -> int:
             "difference inside it needs a second training seed.")
         add(report.size_delta_figure(sets, pairs, configs, args.control), "deltas_by_size.png",
             f"Difference to {args.control} by size",
-            "The validity difference per heavy-atom count, ±1.96 sd from the samples of "
-            "that size valid in only one of the two; paired comparisons only. Shows which "
-            "molecules a change helps.")
+            "The validity difference per heavy-atom count (or size bin, as in validity by "
+            "size), ±1.96 sd from the samples of that size valid in only one of the two; "
+            "paired comparisons only. Shows which molecules a change helps.")
     add(report.failure_figure(sets, configs), "failures.png", "Why samples are invalid",
         "nonfinite: NaN or infinite coordinates. bond_orders: no bond orders fit the "
         "geometry. radical: an atom is left with an unpaired electron. fragments: the "
         "bond graph falls apart. The bar's length is 100 minus the validity.")
     add(report.size_figure(sets, configs), "validity_by_size.png", "Validity by size",
         f"RDKit validity per heavy-atom count with its 95% Wilson band; counts with "
-        f"fewer than {report.MIN_SAMPLES} samples are left out.")
+        f"fewer than {report.MIN_SAMPLES} samples are left out. Counts spanning more than "
+        f"{report.MAX_SIZES} values (GEOM-Drugs) are grouped into up to {report.MAX_SIZES} "
+        "bins of equal sample count, each drawn at its mean size.")
     add(report.composition_figure(sets, configs), "composition.png", "Heteroatoms",
         "The share of the atoms and of the molecules each heteroatom has, for models that "
         "generate the atom types; an untyped set has its test molecules' composition. "
@@ -278,10 +285,9 @@ def main() -> int:
         add(report.epoch_figure(sets, configs, metric, scale, ylabel), f"epoch_{metric}.png",
             f"{ylabel} by epoch", "Mean over seeds, one line per run.")
     for i, (name, data) in enumerate(sets.items()):
-        color = report.SERIES[i % len(report.SERIES)]
         for metric, what, larger in (("bond_length_w1", "bond", "longer bonds"),
                                      ("bond_angle_w1", "angle", "wider angles")):
-            add(report.environment_figure(data, configs, metric, color),
+            add(report.environment_figure(data, configs, metric, styles[name]["color"]),
                 f"{what}s_{i}.png", f"{what.capitalize()} environments of {name}",
                 f"One dot per chemical environment, its area the environment's share of the "
                 f"reference {what}s; a perfect model sits on the crossing at (0, 1). Right of "
