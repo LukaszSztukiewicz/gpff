@@ -180,6 +180,19 @@ gpff_relax --samples_db_path samples.db --output_db_path relaxed.db --method uff
 gpff_prepare_metadata --samples_db_path relaxed.db --targets rdkit_valid strain bond_lengths
 gpff_calculate_metrics --samples_db_path relaxed.db --metrics mean_strain bond_length_w1 \
   --reference_bond_lengths_path assets/qm9_bond_lengths.npz
+
+# Why molecules are invalid (failure_<cause> shares), valid+unique+novel, the
+# elongation W1 and, for models that generate the atom types, the composition
+# against the test molecules the samples came from (the reference element counts
+# come from gpff_reference_assets --targets element_counts):
+gpff_prepare_metadata --samples_db_path samples.db \
+  --targets rdkit_valid failure smiles elongation element_counts
+gpff_calculate_metrics --samples_db_path samples.db \
+  --metrics rdkit_validity failures vun elongation_w1 composition \
+  --reference_smiles_path assets/qm9_smiles_values.txt \
+  --reference_elongation_path assets/qm9_elongation_values.npy \
+  --reference_element_counts_path assets/qm9_element_counts.npz \
+  --split_path /path/to/split.npz
 ```
 
 ## Citation
