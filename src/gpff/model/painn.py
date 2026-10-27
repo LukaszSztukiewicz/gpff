@@ -8,8 +8,28 @@ import schnetpack.properties as properties
 import schnetpack.nn as snn
 from schnetpack.representation.painn import PaiNNInteraction, PaiNNMixing
 
+from gpff import keys
 
-__all__ = ["PaiNN", "VectorRMSNorm"]
+
+__all__ = ["PaiNN", "VectorRMSNorm", "molecule_scale"]
+
+
+def molecule_scale(inputs: Dict[str, torch.Tensor], epsilon: float) -> torch.Tensor:
+    r"""RMS radius per axis of every molecule, :math:`\sqrt{\mathrm{mean}_i \lVert x_i - \bar{x}\rVert^2 / 3 + \epsilon}`,
+    shape (n_molecules, 1).
+
+    A molecule of per-axis radius :math:`\sigma_\mathrm{data}` noised to :math:`\sigma` has
+    :math:`\sqrt{\sigma_\mathrm{data}^2 + \sigma^2}`, the length EDM divides the network input by
+    (:math:`c_\mathrm{in}`). It is read off the geometry, so the model needs no noise level as input.
+    """
+    idx_m = inputs[properties.idx_m]
+    n_atoms = inputs[properties.n_atoms]
+    pos = inputs[properties.R]
+    count = n_atoms.unsqueeze(-1).to(pos.dtype)
+    centroid = snn.scatter_add(pos, idx_m, dim_size=n_atoms.shape[0]) / count
+    sq_radius = (pos - centroid[idx_m]).pow(2).sum(-1, keepdim=True)
+    ms = snn.scatter_add(sq_radius, idx_m, dim_size=n_atoms.shape[0]) / count
+    return torch.sqrt(ms / 3 + epsilon)
 
 
 class VectorRMSNorm(nn.Module):
@@ -44,6 +64,7 @@ class PaiNN(nn.Module):
 
     # class-level default, so models pickled before the option existed still load
     prenorm: bool = False
+    scale_norm: bool = False
 
     def __init__(
         self,
@@ -60,6 +81,8 @@ class PaiNN(nn.Module):
         nuclear_embedding: Optional[nn.Module] = None,
         electronic_embeddings: Optional[List] = None,
         prenorm: bool = False,
+        scale_norm: bool = False,
+        scale_epsilon: float = 1e-2,
     ):
         """
         Args:
@@ -84,6 +107,19 @@ class PaiNN(nn.Module):
                 feature excursion compounds over the blocks into an unbounded output;
                 with it every update is bounded and the features grow at most
                 linearly with depth.
+            scale_norm: if True, distances are measured in units of the molecule's own RMS
+                radius (see ``molecule_scale``), the c_in of EDM, and the log of that radius
+                is added to the atom embeddings, the c_noise of EDM. VE noise spans
+                0.01-30 A, and a network that sees both the bond lengths of a clean molecule
+                and a cloud of 30 A has to cover two orders of magnitude of length with one
+                set of weights. In these units a noised molecule always looks like a
+                molecule of radius ~1, and the embedding, zero at the start, restores the
+                absolute scale where the network needs it (bond lengths). Set ``cutoff``
+                and ``n_rbf`` of the radial basis in these units too, and ``norm_epsilon``
+                is one radius. Pair it with ``GatedEquivariant(scaled=True)``, which
+                multiplies its output by the radius (c_out).
+            scale_epsilon: floor of the squared radius in A^2, only for the numerics of
+                (near) single-atom molecules.
         """
         super(PaiNN, self).__init__()
 
@@ -136,6 +172,15 @@ class PaiNN(nn.Module):
             shared_interactions,
         )
 
+        self.scale_norm = scale_norm
+        if scale_norm:
+            self.scale_epsilon = scale_epsilon
+            # zero at the start: the model begins exactly dilation-equivariant and learns
+            # the dependence on the absolute scale only where it helps
+            self.scale_embedding = nn.Linear(1, n_atom_basis)
+            nn.init.zeros_(self.scale_embedding.weight)
+            nn.init.zeros_(self.scale_embedding.bias)
+
         # one norm per block input (interaction, mixing) and one for the output
         self.prenorm = prenorm
         if prenorm:
@@ -171,6 +216,13 @@ class PaiNN(nn.Module):
         idx_j = inputs[properties.idx_j]
         n_atoms = atomic_numbers.shape[0]
 
+        # measure distances in units of the molecule's own radius
+        if self.scale_norm:
+            idx_m = inputs[properties.idx_m]
+            scale = molecule_scale(inputs, self.scale_epsilon)
+            inputs[keys.length_scale] = scale
+            r_ij = r_ij / scale[idx_m[idx_i]]
+
         # compute atom and pair features
         d_ij = torch.sqrt(torch.sum(r_ij**2, dim=-1, keepdim=True) + self.epsilon)
         dir_ij = r_ij / (d_ij + self.norm_epsilon)
@@ -187,6 +239,8 @@ class PaiNN(nn.Module):
         q = self.embedding(atomic_numbers)
         for embedding in self.electronic_embeddings:
             q = q + embedding(q, inputs)
+        if self.scale_norm:
+            q = q + self.scale_embedding(torch.log(scale))[idx_m]
         q = q.unsqueeze(1)
 
         # compute interaction blocks and update atomic embeddings

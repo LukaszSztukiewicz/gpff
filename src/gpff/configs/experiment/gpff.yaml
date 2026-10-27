@@ -13,12 +13,22 @@ globals:
   n_atom_basis: 256
   n_interactions: 4
   n_rbf: ${mul:${globals.cutoff}, 4}
-  # growth control: normalized PaiNN blocks and forces bounded like their target
+  # growth control: normalized PaiNN blocks (prenorm) keep a feature excursion from compounding
+  # over the blocks; it is enough for lr 1e-3 (scratch/lr_instability)
   prenorm: false
+  # legacy: clamps the network's share of the force at 2 x0_radius, a length of the dataset.
+  # Off, and not needed with prenorm
   bounded_forces: false
   # bound on the network's share of the force: the radius of a clean molecule
   # (QM9: 7.4 A) plus what the skip term leaves at intermediate sigma, ~2x
   x0_radius: 15.0
+  # EDM's c_in/c_out from the molecule's own RMS radius, which is about sqrt(sigma_data^2 + sigma^2):
+  # the network sees distances in units of that radius and outputs forces in units of it. Lengths
+  # of the representation are then in these units too: with scale_norm=true set globals.cutoff=10
+  # and globals.n_rbf=60. Clean QM9 molecules have a radius of 1.0-2.1 A (median 1.4) and no pair
+  # farther apart than 6 radii, and 60 over 10 radii is about the 0.25 A spacing of 600 over 150 A.
+  # Not combinable with bounded_forces
+  scale_norm: false
 
   # Transform alignment
   align_permutation: true
@@ -49,6 +59,7 @@ model:
     radial_basis:
       n_rbf: ${globals.n_rbf}
     prenorm: ${globals.prenorm}
+    scale_norm: ${globals.scale_norm}
   output_modules:
     - _target_: gpff.model.heads.GatedEquivariant
       n_in: ${globals.n_atom_basis}
@@ -57,6 +68,7 @@ model:
       output_key: ${key:forces}
       bounded: ${globals.bounded_forces}
       x0_radius: ${globals.x0_radius}
+      scaled: ${globals.scale_norm}
 
 data:
   transforms:

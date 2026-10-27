@@ -20,6 +20,7 @@ class GatedEquivariant(nn.Module):
 
     # class-level default, so models pickled before the option existed still load
     bounded: bool = False
+    scaled: bool = False
 
     def __init__(
         self,
@@ -35,6 +36,7 @@ class GatedEquivariant(nn.Module):
         detach_time_head: bool = False,
         bounded: bool = False,
         x0_radius: float = 15.0,
+        scaled: bool = False,
     ):
         """
         Args:
@@ -64,6 +66,14 @@ class GatedEquivariant(nn.Module):
             x0_radius: bound on |E[x_0 | x_t]_i - (1 - alpha) (x_i - x_mean)|, the
                 network's share of the force: the radius of a denoised molecule (QM9:
                 7.4 A) plus what the skip term leaves at intermediate noise levels.
+            scaled: the c_out and c_skip of EDM for the pseudo force 2 (D(x_t) - x_t), for a
+                representation with ``scale_norm=True`` that saw the molecule in units of its
+                own RMS radius r (``keys.length_scale``):
+                F_i = -2 alpha (x_i - x_mean) + r v_i,
+                with v the vector output, a length in units of r, and alpha in (0, 1) per
+                molecule from the pooled scalar output and log r (log r is about the noise
+                level at large sigma). Nothing is clamped and no length of the dataset
+                enters, unlike ``bounded``, which it replaces.
         """
 
         super().__init__()
@@ -81,10 +91,14 @@ class GatedEquivariant(nn.Module):
         self.model_outputs = [self.output_key]
 
         self.bounded = bounded
-        if bounded:
+        self.scaled = scaled
+        if bounded and scaled:
+            raise ValueError("bounded and scaled forces are alternatives")
+        if bounded or scaled:
             if n_out != 1:
-                raise ValueError("bounded forces need n_out=1")
-            self.x0_radius = x0_radius
+                raise ValueError("bounded and scaled forces need n_out=1")
+            if bounded:
+                self.x0_radius = x0_radius
             # starts as the plain head (alpha ~ 0.02)
             self.skip_logit_bias = nn.Parameter(torch.tensor(-4.0))
             self.skip_logit_radius_weight = nn.Parameter(torch.tensor(0.0))
@@ -138,6 +152,8 @@ class GatedEquivariant(nn.Module):
         x = torch.squeeze(x, -1)
         if self.bounded:
             x = self._bounded_forces(inputs, s, x)
+        elif self.scaled:
+            x = self._scaled_forces(inputs, s, x)
         inputs[self.output_key] = x
 
         return inputs
@@ -160,6 +176,21 @@ class GatedEquivariant(nn.Module):
         alpha = torch.sigmoid(logit + self.skip_logit_bias)[idx_m]
         v = v * torch.rsqrt(1 + v.pow(2).sum(-1, keepdim=True) / (2 * self.x0_radius) ** 2)
         return -2 * alpha * x + v
+
+    def _scaled_forces(self, inputs: Dict[str, torch.Tensor], s: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+        if keys.length_scale not in inputs:
+            raise KeyError("scaled forces need a representation with scale_norm=True")
+        idx_m = inputs[properties.idx_m]
+        n_atoms = inputs[properties.n_atoms]
+        pos = inputs[properties.R]
+        scale = inputs[keys.length_scale]
+        count = n_atoms.unsqueeze(-1).to(pos.dtype)
+        centroid = snn.scatter_add(pos, idx_m, dim_size=n_atoms.shape[0]) / count
+        x = pos - centroid[idx_m]
+        logit = snn.scatter_add(s, idx_m, dim_size=n_atoms.shape[0]) / count
+        logit = logit + self.skip_logit_radius_weight * torch.log(scale)
+        alpha = torch.sigmoid(logit + self.skip_logit_bias)[idx_m]
+        return -2 * alpha * x + scale[idx_m] * v
 
 
 class TimeConditionedGatedEquivariant(nn.Module):
