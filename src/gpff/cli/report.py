@@ -16,7 +16,8 @@ the elongation and ring sizes of the valid molecules, the heteroatom shares
 set, and with --control every other set's difference to it, overall and per
 heavy-atom count (paired when both come from the same test molecules and
 seeds). Sets named <run>:<epoch>, the default name of a milestone, are also
-drawn against the epoch. Only the configs every set has are shown, unless
+drawn against the epoch, and --control <run> compares every such set with the
+control run's same epoch, adding a config x epoch map of the differences. Only the configs every set has are shown, unless
 --configs names them. A gallery at the end shows --gallery samples per failure
 cause, config and set in a 3D viewer (3Dmol.js, loaded from jsDelivr when the
 page opens; drawn when a section is opened).
@@ -179,7 +180,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--names", nargs="+", default=None,
                         help="One name per set. Default: <run>:<epoch> or <run>:best.")
     parser.add_argument("--control", default=None,
-                        help="Name of the set the others are compared with.")
+                        help="The set the others are compared with, or a run: then every "
+                             "<run>:<epoch> is compared with the control run's same epoch.")
     parser.add_argument("--configs", nargs="+", default=None,
                         help="Configs to show. Default: those every set has.")
     parser.add_argument("--seed_band", type=float, default=1.5,
@@ -198,13 +200,15 @@ def main() -> int:
     if len(names) != len(args.model_dirs) or len(set(names)) != len(names):
         print("ERROR: give one distinct name per model dir (--names).", file=sys.stderr)
         return 1
-    if args.control is not None and args.control not in names:
-        print(f"ERROR: --control {args.control} is none of {', '.join(names)}.", file=sys.stderr)
-        return 1
     sets = {name: report.load_set(path) for name, path in zip(names, args.model_dirs)}
     empty = [name for name, data in sets.items() if not data]
     if empty:
         print(f"ERROR: no evaluation/results.json under {', '.join(empty)}.", file=sys.stderr)
+        return 1
+    pairs = report.control_pairs(sets, args.control) if args.control is not None else {}
+    if args.control is not None and not pairs:
+        print(f"ERROR: --control {args.control} is no set, nor a run with an epoch another "
+              f"set has; the sets are {', '.join(names)}.", file=sys.stderr)
         return 1
 
     shared = set.intersection(*(set(data) for data in sets.values()))
@@ -232,15 +236,22 @@ def main() -> int:
         sections.append(f"<h2>{html.escape(heading)}</h2><p>{caption}</p>"
                         f'<img src="figures/{filename}" alt="{html.escape(heading)}">')
 
-    if args.control is not None:
-        add(report.delta_figure(sets, args.control, configs, args.seed_band), "deltas.png",
-            f"Difference to {args.control}",
-            "Points of the samples, ±1.96 sd. A filled dot is paired (same test molecules "
-            "and seeds, McNemar sd from the discordant samples), a hollow one unpaired. "
-            f"The grey band on the validity panel is ±{args.seed_band:g} points, how far "
-            "separately trained runs lie apart; a difference inside it needs a second "
-            "training seed.")
-        add(report.size_delta_figure(sets, args.control, configs), "deltas_by_size.png",
+    if pairs:
+        against = (f"Each set against {args.control} at its own epoch. "
+                   if args.control not in sets else "")
+        add(report.epoch_delta_figure(sets, pairs, configs, args.seed_band, args.control),
+            "deltas_by_epoch.png", f"Difference to {args.control} by epoch",
+            "RDKit validity of each run minus the control run at the same epoch, in points; "
+            "blue is ahead, red behind. * marks a difference outside both its 95% interval "
+            f"and ±{args.seed_band:g} points, the spread of separately trained runs.")
+        add(report.delta_figure(sets, pairs, configs, args.seed_band, args.control),
+            "deltas.png", f"Difference to {args.control}",
+            f"{against}Points of the samples, ±1.96 sd. A filled dot is paired "
+            "(same test molecules and seeds, McNemar sd from the discordant samples), a "
+            "hollow one unpaired. The grey band on the validity panel is "
+            f"±{args.seed_band:g} points, how far separately trained runs lie apart; a "
+            "difference inside it needs a second training seed.")
+        add(report.size_delta_figure(sets, pairs, configs, args.control), "deltas_by_size.png",
             f"Difference to {args.control} by size",
             "The validity difference per heavy-atom count, ±1.96 sd from the samples of "
             "that size valid in only one of the two; paired comparisons only. Shows which "
@@ -257,10 +268,12 @@ def main() -> int:
         "generate the atom types; an untyped set has its test molecules' composition. "
         "Fewer N or O than that makes validity easier without the model getting better.")
     add(report.elongation_figure(sets, configs), "elongation.png", "Elongation",
-        "Cumulative distribution of the valid molecules' largest atom distance.")
+        "Cumulative distribution of the valid molecules' largest atom distance; dashed, "
+        "the reference elongation_w1 was computed against, when an evaluation recorded it.")
     add(report.ring_figure(sets, configs), "rings.png", "Rings",
-        "Rings per valid molecule by ring size; 3- and 4-rings are strained and rare in "
-        "the data.")
+        "Rings per valid molecule by ring size. For scale: the QM9 database itself has "
+        "0.50, 0.45, 0.48 and 0.16 rings of 3, 4, 5 and 6 atoms per molecule (43%, 35%, "
+        "39% and 14% of its molecules have one).")
     for metric, scale, ylabel in EPOCH_METRICS:
         add(report.epoch_figure(sets, configs, metric, scale, ylabel), f"epoch_{metric}.png",
             f"{ylabel} by epoch", "Mean over seeds, one line per run.")

@@ -24,15 +24,18 @@ from gpff.analysis.structure import FAILURES  # noqa: E402
 __all__ = [
     "CONFIG_ORDER",
     "composition_figure",
+    "control_pairs",
     "delta_figure",
     "difference",
     "elongation_figure",
     "environment_figure",
+    "epoch_delta_figure",
     "epoch_figure",
     "failure_figure",
     "gallery",
     "load_set",
     "pooled",
+    "reference_path",
     "ring_figure",
     "size_delta_figure",
     "size_figure",
@@ -85,10 +88,25 @@ def load_evaluation(evaluation_dir: Path) -> dict:
             evaluation["heavy_atoms"] = evaluation["sizes"] - (
                 table["H"] if "H" in table.files else 0
             )
-    for name in ("bond_length_w1", "bond_angle_w1"):
+    for name in ("bond_length_w1", "bond_angle_w1", "provenance"):
         if (evaluation_dir / f"{name}.json").exists():
             evaluation[name] = json.loads((evaluation_dir / f"{name}.json").read_text())
     return evaluation
+
+
+def reference_path(sets: dict, metric: str, argument: str):
+    """The reference file `metric` was computed against, as provenance.json records it.
+
+    The first evaluation that has one decides; None if no set recorded it.
+    """
+    for data in sets.values():
+        for evaluations in data.values():
+            for evaluation in evaluations.values():
+                entry = evaluation.get("provenance", {}).get("results", {}).get(metric, {})
+                path = entry.get("inputs", {}).get(argument, {}).get("path")
+                if path and Path(path).exists():
+                    return Path(path)
+    return None
 
 
 def load_set(model_dir) -> dict:
@@ -268,8 +286,25 @@ def environment_figure(data: dict, configs, metric: str, color: str, n_labels: i
     return figure
 
 
-def delta_figure(sets: dict, control: str, configs, seed_band: float):
-    """Each set's difference to the control in validity and the failure shares.
+def control_pairs(sets: dict, control: str) -> dict:
+    """{arm: the set it is compared with}, for every set but the controls.
+
+    `control` names a set, the control of every other one, or a run: then each set
+    <run>:<epoch> of another run is compared with <control>:<epoch>, the control
+    at the same epoch, and a set whose epoch the control run lacks is left out.
+    """
+    if control in sets:
+        return {label: control for label in sets if label != control}
+    pairs = {}
+    for label in sets:
+        match = re.fullmatch(r"(.+):(\d+)", label)
+        if match and match[1] != control and f"{control}:{match[2]}" in sets:
+            pairs[label] = f"{control}:{match[2]}"
+    return pairs
+
+
+def delta_figure(sets: dict, pairs: dict, configs, seed_band: float, control: str):
+    """Each arm's difference to its control (see control_pairs) in validity and the failure shares.
 
     Bars are ±1.96 sd; a hollow dot is an unpaired comparison. The shaded band on
     the validity panel is ±seed_band points, the spread of separately trained runs.
@@ -279,7 +314,7 @@ def delta_figure(sets: dict, control: str, configs, seed_band: float):
         for cause in _causes(sets, configs)
     ]
     labels = list(sets)
-    arms = [label for label in labels if label != control]
+    arms = list(pairs)
     if not arms:
         return None
     offsets = (np.arange(len(arms)) - (len(arms) - 1) / 2) * 0.6 / max(len(arms), 1)
@@ -295,7 +330,7 @@ def delta_figure(sets: dict, control: str, configs, seed_band: float):
             for arm, offset in zip(arms, offsets):
                 color = SERIES[labels.index(arm) % len(SERIES)]
                 for row, config in enumerate(configs):
-                    delta, sd, is_paired = difference(sets[control][config], sets[arm][config], get)
+                    delta, sd, is_paired = difference(sets[pairs[arm]][config], sets[arm][config], get)
                     ax.errorbar(delta, row + offset, xerr=1.96 * sd, fmt="o", markersize=6,
                                 color=color, markerfacecolor=color if is_paired else SURFACE,
                                 elinewidth=1.5, capsize=0,
@@ -416,16 +451,25 @@ def composition_figure(sets: dict, configs):
 
 
 def elongation_figure(sets: dict, configs):
-    """The cumulative distribution of the valid molecules' elongation, per config."""
+    """The cumulative distribution of the valid molecules' elongation, per config.
+
+    The reference distribution elongation_w1 was computed against, when an
+    evaluation recorded it in its provenance, is drawn dashed in every panel.
+    """
     def valid_elongation(e):
         values = e["elongation"][e["rdkit_valid"].astype(bool)]
         return values[np.isfinite(values)]
 
+    path = reference_path(sets, "elongation_w1", "reference_elongation_path")
+    reference = np.sort(np.load(path)) if path is not None else None
     with plt.rc_context(STYLE):
         figure, axes = plt.subplots(1, len(configs), sharey=True, squeeze=False,
                                     figsize=(2.5 * len(configs) + 1, 3.2))
         drawn = False
         for ax, config in zip(axes[0], configs):
+            if reference is not None:
+                ax.plot(reference, np.arange(1, len(reference) + 1) / len(reference),
+                        color=INK_SECONDARY, linestyle="--", linewidth=1.5, label="reference")
             for i, (name, data) in enumerate(sets.items()):
                 values = pooled(data[config], valid_elongation)
                 if values is None or not values.size:
@@ -440,7 +484,7 @@ def elongation_figure(sets: dict, configs):
             plt.close(figure)
             return None
         axes[0][0].set_ylabel("share of the valid molecules")
-        _legend_above(figure, axes, len(sets))
+        _legend_above(figure, axes, len(sets) + (reference is not None))
     return figure
 
 
@@ -475,15 +519,15 @@ def ring_figure(sets: dict, configs):
     return figure
 
 
-def size_delta_figure(sets: dict, control: str, configs):
-    """Each set's validity difference to the control per heavy-atom count, ±1.96 sd.
+def size_delta_figure(sets: dict, pairs: dict, configs, control: str):
+    """Each arm's validity difference to its control per heavy-atom count, ±1.96 sd.
 
     Paired comparisons only (the same test molecules and seeds), so the sd comes
     from the samples of that size valid in one set and not the other. Counts with
     fewer than MIN_SAMPLES samples are left out.
     """
     labels = list(sets)
-    arms = [label for label in labels if label != control]
+    arms = list(pairs)
     if not arms:
         return None
     valid = lambda e: e["rdkit_valid"].astype(bool)  # noqa: E731
@@ -494,7 +538,7 @@ def size_delta_figure(sets: dict, control: str, configs):
         for ax, config in zip(axes[0], configs):
             ax.axhline(0, color=AXIS, linewidth=1)
             for j, arm in enumerate(arms):
-                a, b = sets[control][config], sets[arm][config]
+                a, b = sets[pairs[arm]][config], sets[arm][config]
                 seeds = _paired_seeds(a, b)
                 heavy = pooled(a, lambda e: e["heavy_atoms"], seeds) if seeds else None
                 x, y = (pooled(a, valid, seeds), pooled(b, valid, seeds)) if seeds else (None, None)
@@ -517,6 +561,62 @@ def size_delta_figure(sets: dict, control: str, configs):
             return None
         axes[0][0].set_ylabel(f"Δ RDKit valid vs {control} (points)")
         _legend_above(figure, axes, len(arms))
+    return figure
+
+
+def epoch_delta_figure(sets: dict, pairs: dict, configs, seed_band: float, control: str):
+    """Each run's validity difference to the control run, per config and epoch.
+
+    Only for a control that is a run (see control_pairs), and runs with two or
+    more epochs: one panel per run, a cell per config and epoch, blue where the
+    run is ahead of the control at that epoch and red where it is behind. A cell
+    is starred when its difference lies outside both its 95% interval and
+    ±seed_band, the spread of separately trained runs.
+    """
+    runs: dict = {}
+    for arm, against in pairs.items():
+        match = re.fullmatch(r"(.+):(\d+)", arm)
+        if match and against != control:
+            runs.setdefault(match[1], []).append((int(match[2]), arm))
+    runs = {run: sorted(points) for run, points in runs.items() if len(points) > 1}
+    if not runs:
+        return None
+    valid = lambda e: e["rdkit_valid"].astype(bool)  # noqa: E731
+    grids = {}
+    for run, points in runs.items():
+        grid = np.full((len(configs), len(points), 2), np.nan)
+        for column, (_, arm) in enumerate(points):
+            for row, config in enumerate(configs):
+                grid[row, column] = difference(sets[pairs[arm]][config], sets[arm][config], valid)[:2]
+        grids[run] = grid
+    largest = np.nanmax([np.nanmax(np.abs(grid[..., 0])) for grid in grids.values()])
+    limit = max(float(largest) if np.isfinite(largest) else 0.0, 2 * seed_band)
+    colormap = matplotlib.colors.LinearSegmentedColormap.from_list(
+        "diverging", ["#e34948", "#f0efec", "#2a78d6"]
+    )
+    with plt.rc_context(STYLE):
+        figure, axes = plt.subplots(
+            1, len(runs), squeeze=False, layout="constrained",
+            figsize=(sum(0.8 * len(points) + 1 for points in runs.values()) + 2,
+                     0.42 * len(configs) + 1.6),
+            gridspec_kw={"width_ratios": [len(points) for points in runs.values()]},
+        )
+        for ax, (run, points) in zip(axes[0], runs.items()):
+            grid = grids[run]
+            image = ax.imshow(grid[..., 0], cmap=colormap, vmin=-limit, vmax=limit, aspect="auto")
+            for row, column in np.ndindex(grid.shape[:2]):
+                delta, sd = grid[row, column]
+                if np.isfinite(delta):
+                    star = "*" if abs(delta) > max(1.96 * sd, seed_band) else ""
+                    ax.text(column, row, f"{delta:+.1f}{star}", ha="center", va="center",
+                            fontsize=8, color=INK)
+            ax.set_xticks(range(len(points)), [str(epoch) for epoch, _ in points])
+            ax.set_yticks(range(len(configs)), configs if ax is axes[0][0] else [])
+            ax.grid(False)
+            ax.set_title(run)
+            ax.set_xlabel("epoch")
+        figure.colorbar(image, ax=axes[0].tolist(), shrink=0.9,
+                        label=f"Δ RDKit valid vs {control} at the same epoch (points)")
     return figure
 
 

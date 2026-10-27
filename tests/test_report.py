@@ -81,6 +81,28 @@ def test_default_names_are_run_and_epoch(tmp_path):
     assert report_cli.default_name(tmp_path / "somewhere") == "somewhere"
 
 
+def test_a_control_run_pairs_every_set_with_its_own_epoch():
+    sets = {name: {} for name in ("a:100", "a:200", "b:100", "b:200", "b:500", "c")}
+
+    assert report.control_pairs(sets, "a:100") == {
+        name: "a:100" for name in ("a:200", "b:100", "b:200", "b:500", "c")
+    }
+    # b:500 has no a:500 to be compared with, c no epoch
+    assert report.control_pairs(sets, "a") == {"b:100": "a:100", "b:200": "a:200"}
+    assert report.control_pairs(sets, "z") == {}
+
+
+def test_the_reference_path_comes_from_the_provenance(tmp_path):
+    reference = tmp_path / "elongation.npy"
+    np.save(reference, np.arange(3.0))
+    entry = {"inputs": {"reference_elongation_path": {"path": str(reference), "md5": "x"}}}
+    sets = {"a": {"dd16": {"seed1": {"provenance": {"results": {"elongation_w1": entry}}}}},
+            "b": {"dd16": {"seed1": {}}}}
+
+    assert report.reference_path(sets, "elongation_w1", "reference_elongation_path") == reference
+    assert report.reference_path(sets, "bond_length_w1", "reference_bond_lengths_path") is None
+
+
 def test_the_gallery_draws_every_cause_from_the_samples_database(tmp_path):
     model_dir = tmp_path / "run-a" / "frozen" / "repro" / "epoch_100_model"
     write_evaluation(model_dir, "dd16", 0.6, seed=0)
@@ -116,3 +138,23 @@ def test_the_report_writes_every_figure_and_the_page(tmp_path, monkeypatch):
         assert f"figures/{name}.png" in page
     assert page.count('<details class="gallery">') == 3 * 2 * 4  # sets x configs x causes
     assert "non-finite coordinates" in page and "3dmol@2.4.2" in page
+    assert not (output / "figures" / "deltas_by_epoch.png").exists()
+
+
+def test_a_control_run_adds_the_epoch_map(tmp_path, monkeypatch):
+    model_dirs = []
+    for run, epoch, validity in (("run-a", 100, 0.6), ("run-a", 200, 0.8),
+                                 ("run-b", 100, 0.7), ("run-b", 200, 0.75)):
+        model_dir = tmp_path / run / "frozen" / "repro" / f"epoch_{epoch}_model"
+        write_evaluation(model_dir, "dd16", validity, seed=epoch)
+        model_dirs.append(str(model_dir))
+    output = tmp_path / "report"
+
+    monkeypatch.setattr(sys, "argv", ["gpff_report", *model_dirs, "--control", "run-a",
+                                      "--output_dir", str(output), "--gallery", "0"])
+    assert report_cli.main() == 0
+
+    page = (output / "index.html").read_text()
+    for name in ("deltas_by_epoch", "deltas", "deltas_by_size"):
+        assert f"figures/{name}.png" in page
+    assert "Each set against run-a at its own epoch" in page and "gallery" not in page
