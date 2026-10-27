@@ -166,7 +166,9 @@ def main() -> int:
         for target in (t for t in targets if t in TABLE_TARGETS):
             out_path = args.assets_dir / f"{args.prefix}_{target}.npz"
             np.savez(out_path, **tables[target])
-            print(f"  wrote {out_path} ({len(tables[target]['molecule'])} rows)")
+            # every column of a table is equally long; element_counts has no molecule one
+            n_rows = len(next(iter(tables[target].values()), []))
+            print(f"  wrote {out_path} ({n_rows} rows)")
 
     return 0
 
