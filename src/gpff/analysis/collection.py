@@ -5,6 +5,7 @@ needs which of them, and how they are wired together, lives in the
 ``gpff_calculate_metrics`` script.
 """
 import numpy as np
+from ase.data import chemical_symbols
 from rdkit import Chem, DataStructs
 from rdkit.Chem import rdFingerprintGenerator
 from scipy.spatial.distance import jensenshannon
@@ -20,6 +21,8 @@ __all__ = [
     "check_uniqueness",
     "collect_angles",
     "collect_bonds",
+    "collect_element_counts",
+    "numbers_from_element_counts",
 ]
 
 
@@ -134,6 +137,36 @@ def collect_angles(per_molecule_angles: list[dict]) -> dict[str, np.ndarray]:
     Its columns are molecule, angle_type, environment and angle.
     """
     return _collect(per_molecule_angles, ("angle_type", "environment"), "angle")
+
+
+def collect_element_counts(per_molecule_numbers: list) -> dict[str, np.ndarray]:
+    """Count the atoms of every molecule per element, one row per molecule.
+
+    The table is a dict with one array per element that occurs in any of the
+    molecules, keyed by its symbol (H, C, N, ...), holding that element's count
+    in each molecule. Unlike the bond table it has a row for every molecule,
+    the invalid ones too.
+    """
+    numbers = [np.asarray(molecule, dtype=int) for molecule in per_molecule_numbers]
+    present = sorted({int(z) for molecule in numbers for z in np.unique(molecule)})
+    return {
+        chemical_symbols[z]: np.array([int((molecule == z).sum()) for molecule in numbers])
+        for z in present
+    }
+
+
+def numbers_from_element_counts(table: dict) -> list[np.ndarray]:
+    """The atomic numbers of every molecule of an element count table.
+
+    The inverse of collect_element_counts, up to the order of the atoms, which
+    no composition metric depends on.
+    """
+    symbols = sorted(table, key=chemical_symbols.index)
+    if not symbols:
+        return []
+    numbers = np.array([chemical_symbols.index(symbol) for symbol in symbols])
+    counts = np.stack([np.asarray(table[symbol], dtype=int) for symbol in symbols], axis=1)
+    return [np.repeat(numbers, row) for row in counts]
 
 
 def _group_lengths(table: dict, by: str, value: str = "length") -> dict[str, np.ndarray]:

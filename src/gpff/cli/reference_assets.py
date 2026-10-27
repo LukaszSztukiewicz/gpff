@@ -13,9 +13,11 @@ files from the reference QM9 database so they can be rebuilt from scratch:
                                         molecule, bond_type, environment, length
     <prefix>_bond_angles.npz            reference angle table: every angle's
                                         molecule, angle_type, environment, angle
+    <prefix>_element_counts.npz         every molecule's atom count per element,
+                                        one array per element, in database order
 
 The distribution and atom-reference arrays are read from the database's own
-metadata; the SMILES and the two tables are computed in one walk of the database
+metadata; the SMILES and the three tables are computed in one walk of the database
 with RDKit (slow; one SMILES line per molecule including the empty lines of
 invalid ones, so positions still line up with a split file). --targets picks
 which assets to build (default: all).
@@ -33,7 +35,12 @@ from ase.db import connect
 from tqdm import tqdm
 
 import gpff  # noqa: F401
-from gpff.analysis import analyze_with_rdkit, collect_angles, collect_bonds
+from gpff.analysis import (
+    analyze_with_rdkit,
+    collect_angles,
+    collect_bonds,
+    collect_element_counts,
+)
 
 # assets read straight from the reference database's metadata, saved as .npy
 METADATA_ARRAY_TARGETS = (
@@ -49,6 +56,7 @@ SMILES_TARGET = "smiles_values"
 TABLE_TARGETS = {
     "bond_lengths": ("bonds", collect_bonds),
     "bond_angles": ("angles", collect_angles),
+    "element_counts": ("numbers", collect_element_counts),
 }
 WALK_TARGETS = (SMILES_TARGET, *TABLE_TARGETS)
 TARGETS = (*METADATA_ARRAY_TARGETS, *WALK_TARGETS)
@@ -84,6 +92,7 @@ def analyze_reference(
             db.select(), total=db.count(), desc="Analyzing reference molecules", disable=not verbose
         ):
             analysis = analyze_with_rdkit(row.toatoms(), timeout=timeout)
+            analysis["numbers"] = row.numbers
             smiles.append(analysis["smiles"])
             for target, (key, _) in TABLE_TARGETS.items():
                 measured[target].append(analysis[key])

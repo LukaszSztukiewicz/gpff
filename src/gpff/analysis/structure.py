@@ -16,6 +16,7 @@ from rdkit.Chem import rdDetermineBonds
 from rdkit.rdBase import BlockLogs
 
 __all__ = [
+    "FAILURES",
     "analyze_with_rdkit",
     "describe_angles",
     "describe_bonds",
@@ -70,9 +71,15 @@ def _raise_timeout(signum, frame):
     raise _RDKitTimeout()
 
 
-def _invalid_analysis() -> Dict[str, Any]:
+# why a molecule is invalid, checked in this order; "valid" if it is not
+FAILURES = ("valid", "nonfinite", "timeout", "bond_orders", "radical", "fragments", "error")
+
+
+def _invalid_analysis(failure: str = "error") -> Dict[str, Any]:
     return {
         "rdkit_valid": False,
+        "failure": failure,
+        "n_fragments": -1,
         "ring_counts": np.array([np.nan, np.nan, np.nan, np.nan]),
         "smiles": "",
         "canonical_smiles": "",
@@ -202,7 +209,7 @@ def analyze_with_rdkit(
         # the alarm can also go off just after the analysis, e.g. while an RDKit
         # error is being handled, where _analyze_with_rdkit cannot catch it
         signal.alarm(0)
-        return _invalid_analysis()
+        return _invalid_analysis("timeout")
 
 
 def _analyze_with_rdkit(
@@ -223,6 +230,11 @@ def _analyze_with_rdkit(
     Returns:
         Dictionary with keys:
         - rdkit_valid: Boolean indicating if the molecule is chemically valid
+        - failure: why it is invalid, the first of FAILURES that applies:
+          nonfinite coordinates, timeout, bond_orders (no bond orders fit the
+          geometry), radical, fragments, error (anything else); "valid" if valid
+        - n_fragments: disconnected parts of the perceived bond graph, a stray
+          atom included (-1 if no bonds were perceived)
         - ring_counts: Array with counts of 3-, 4-, 5-, and 6-membered rings
         - smiles: isomeric SMILES of the molecule, i.e. with stereochemistry
           (empty if invalid)
@@ -231,13 +243,19 @@ def _analyze_with_rdkit(
           remove_hs (empty lists if invalid)
         - angles: describe_angles of the same molecule (empty lists if invalid)
     """
+    # a non-finite coordinate is a sampler failure; RDKit would only see a
+    # molecule without bonds
+    if not np.isfinite(atoms.positions).all():
+        return _invalid_analysis("nonfinite")
 
     # Set up timeout if specified
     if timeout > 0:
         old_handler = signal.signal(signal.SIGALRM, _raise_timeout)
         signal.alarm(timeout)
 
-    # analyze molecule
+    # analyze molecule; failure names the step that is running, so that the
+    # except clause below can tell where it stopped
+    failure = "error"
     try:
         # Block RDKit logs
         with BlockLogs():
@@ -249,12 +267,15 @@ def _analyze_with_rdkit(
             mol = Chem.MolFromXYZBlock(xyz)
 
             # Try to find valid structure
+            failure = "bond_orders" if mol is not None else "error"
             rdDetermineBonds.DetermineBonds(
                 mol,
                 charge=0,
                 allowChargedFragments=False,
                 embedChiral=True,
             )
+            failure = "error"
+            n_fragments = len(Chem.GetMolFrags(mol))
             # before the hydrogens go, so the X-H bonds and angles are described too
             bonds = describe_bonds(mol)
             angles = describe_angles(mol)
@@ -282,6 +303,12 @@ def _analyze_with_rdkit(
                 valid = True
             else:
                 valid = False
+            if valid:
+                failure = "valid"
+            elif radical_found:
+                failure = "radical"
+            elif "." in canonical_smiles:
+                failure = "fragments"
 
             # get other statistics
             if valid:
@@ -303,6 +330,8 @@ def _analyze_with_rdkit(
 
         return {
             "rdkit_valid": valid,
+            "failure": failure,
+            "n_fragments": n_fragments,
             "ring_counts": ring_counts,
             "smiles": smiles,
             "canonical_smiles": canonical_smiles,
@@ -311,9 +340,12 @@ def _analyze_with_rdkit(
             "angles": angles,
         }
 
+    except _RDKitTimeout:
+        return _invalid_analysis("timeout")
+
     except Exception:
-        # Any other exception (the timeout among them), return invalid
-        return _invalid_analysis()
+        # Any other exception, return invalid, labelled with the step it stopped in
+        return _invalid_analysis(failure)
 
     finally:
         # Clean up timeout

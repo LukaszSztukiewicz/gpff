@@ -1,4 +1,5 @@
 from .structure import (
+    FAILURES,
     analyze_with_rdkit,
     compute_elongation,
     describe_angles,
@@ -20,9 +21,13 @@ from .collection import (
     check_uniqueness,
     collect_angles,
     collect_bonds,
+    collect_element_counts,
+    numbers_from_element_counts,
 )
+from .composition import composition_metrics
 
 __all__ = [
+    "FAILURES",
     "analyze_with_rdkit",
     "calculate_angle_w1",
     "calculate_bond_length_w1",
@@ -32,12 +37,15 @@ __all__ = [
     "check_uniqueness",
     "collect_angles",
     "collect_bonds",
+    "collect_element_counts",
+    "composition_metrics",
     "compute_elongation",
     "describe_angles",
     "describe_bonds",
     "get_posebusters_validity",
     "get_rdkit_validity",
     "mol_from_atoms",
+    "numbers_from_element_counts",
     "relax_with_uff",
     "relax_with_xtb",
 ]
