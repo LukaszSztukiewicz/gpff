@@ -71,6 +71,7 @@ from gpff.analysis import (
     collect_element_counts,
     get_posebusters_validity,
 )
+from gpff.cli import record_provenance
 
 # the RDKit pass yields these arrays in one walk; the PoseBusters pass is
 # separate and much slower. The property arrays are predicted, one model each.
@@ -502,6 +503,9 @@ def main() -> int:
 
     for key in targets:
         write_array(metadata_dir, key, arrays[key])
+    record_provenance(
+        evaluation_dir, "metadata", targets, {name: getattr(args, name) for name in PATH_ARGS}
+    )
     return 0
 
 

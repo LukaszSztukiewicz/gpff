@@ -184,7 +184,8 @@ gpff_calculate_metrics --samples_db_path relaxed.db --metrics mean_strain bond_l
 # Why molecules are invalid (failure_<cause> shares), valid+unique+novel, the
 # elongation W1 and, for models that generate the atom types, the composition
 # against the test molecules the samples came from (the reference element counts
-# come from gpff_reference_assets --targets element_counts):
+# come from gpff_reference_assets --targets element_counts). Each call also notes
+# in evaluation/provenance.json which code computed every array and metric:
 gpff_prepare_metadata --samples_db_path samples.db \
   --targets rdkit_valid failure smiles elongation element_counts
 gpff_calculate_metrics --samples_db_path samples.db \

@@ -8,6 +8,7 @@ this time are kept):
     <run>/evaluation/<metric>.json         per-environment breakdown of
                                            bond_length_w1 / bond_angle_w1,
                                            when computed
+    <run>/evaluation/provenance.json       which code computed each metric
 
 --metrics selects the metrics (default: all of them):
 
@@ -95,6 +96,7 @@ from gpff.analysis import (
     composition_metrics,
     numbers_from_element_counts,
 )
+from gpff.cli import record_provenance
 
 # splits a sampled molecule has to be absent from to count as novel: the model
 # was fitted on train and model selection used val, test was never seen
@@ -572,6 +574,9 @@ def main() -> int:
         )
         return 1
     merge_results(results_path, values)
+    record_provenance(
+        evaluation_dir, "results", values, {name: getattr(args, name) for name in path_args}
+    )
     for name in reference_tables:
         breakdown_path = evaluation_dir / f"{name}.json"
         breakdown = _table_w1(name, reference_tables, arrays)

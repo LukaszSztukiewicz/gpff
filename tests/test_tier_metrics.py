@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from gpff.analysis import FAILURES, collect_element_counts
+from gpff.cli import record_provenance
 from gpff.cli import calculate_metrics
 from gpff.cli.calculate_metrics import (
     compute_metrics,
@@ -86,7 +87,22 @@ def test_test_compositions_follow_the_split_order(tmp_path):
     assert [m.tolist() for m in compositions] == [[8], [7]]
 
 
-def test_the_command_line_computes_the_new_metrics(tmp_path, monkeypatch):
+def test_provenance_keeps_one_entry_per_name(tmp_path):
+    reference = tmp_path / "reference.npy"
+    np.save(reference, np.arange(3))
+
+    record_provenance(tmp_path, "results", ["a", "b"], {"reference": reference, "unused": None})
+    record_provenance(tmp_path, "results", ["b"])
+    provenance = json.loads((tmp_path / "provenance.json").read_text())
+
+    assert set(provenance["results"]) == {"a", "b"}
+    assert provenance["results"]["a"]["inputs"]["reference"]["md5"]
+    assert "unused" not in provenance["results"]["a"]["inputs"]
+    assert provenance["results"]["b"]["inputs"] == {}
+    assert provenance["results"]["a"]["code"].endswith("gpff")
+
+
+def test_the_command_line_computes_the_new_metrics_and_their_provenance(tmp_path, monkeypatch):
     evaluation = tmp_path / "evaluation"
     metadata = evaluation / "metadata"
     metadata.mkdir(parents=True)
@@ -117,3 +133,6 @@ def test_the_command_line_computes_the_new_metrics(tmp_path, monkeypatch):
     assert results["vun"] == pytest.approx(0.25)
     assert results["elongation_w1"] == pytest.approx(0.0)
     assert results["element_tv"] == pytest.approx(0.0)
+    provenance = json.loads((evaluation / "provenance.json").read_text())
+    assert {"rdkit_validity", "failure_fragments", "vun", "element_tv"} <= set(provenance["results"])
+    assert "reference_element_counts_path" in provenance["results"]["element_tv"]["inputs"]
