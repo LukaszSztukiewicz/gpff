@@ -132,6 +132,7 @@ def build_geom_drugs(
     target_dir: str,
     max_conformers: Optional[int] = None,
     max_shards: Optional[int] = None,
+    heavy_atoms: bool = False,
     progress: bool = True,
 ) -> Dict:
     """Write the conformers of the GEOM-Drugs TFDS export to one database.
@@ -141,9 +142,9 @@ def build_geom_drugs(
     Its train/val/test_small splits become the train/val/test splits, so the
     database rows are the train conformers, then the val ones, then the test
     ones, in shard and record order. Each row holds one conformer with all its
-    atoms (hydrogens included) and its molecule's SMILES as the key-value pair
-    "smiles". Only atomic numbers, positions and SMILES are read; the other
-    features of the export are ignored.
+    atoms (hydrogens included, unless heavy_atoms) and its molecule's SMILES as
+    the key-value pair "smiles". Only atomic numbers, positions and SMILES are
+    read; the other features of the export are ignored.
 
     Args:
         source_dir: directory of the TFDS export.
@@ -153,6 +154,8 @@ def build_geom_drugs(
             the first ones in shard and record order. The export does not carry
             conformer energies, so these are not the lowest-energy ones.
         max_shards: read only the first shards of each split, for trial builds.
+        heavy_atoms: drop the hydrogens of every conformer, as the CrossDocked
+            ligands are; the heavy atoms keep their positions and order.
         progress: show a progress bar.
 
     Returns:
@@ -186,6 +189,9 @@ def build_geom_drugs(
                         if max_conformers is not None and conformers[smiles] >= max_conformers:
                             continue
                         conformers[smiles] += 1
+                        if heavy_atoms:
+                            keep = numbers > 1
+                            numbers, positions = numbers[keep], positions[keep]
                         elements.update(numbers.tolist())
                         db.write(Atoms(numbers=numbers, positions=positions), smiles=smiles)
                         n_rows += 1
@@ -202,6 +208,7 @@ def build_geom_drugs(
             "source_splits": TFDS_SPLITS,
             "max_conformers": max_conformers,
             "max_shards": max_shards,
+            "hydrogens": "removed" if heavy_atoms else "kept",
             "_property_unit_dict": {},
             "_distance_unit": "Ang",
         }

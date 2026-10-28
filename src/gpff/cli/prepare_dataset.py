@@ -11,6 +11,7 @@ Each build writes a new folder that gpff trains on with run.data_dir=<folder>
                                            pocket atom ids of the test complexes,
                                            for condition_generator=precomputed_scaffold
     geom_drugs    geom_drugs.db            one row per conformer, with hydrogens
+                                           (heavy atoms only with --heavy_atoms)
 
     both          split.npz                train_idx / val_idx / test_idx
                   manifest.json            sources, settings, counts and the
@@ -74,6 +75,8 @@ def parse_args() -> argparse.Namespace:
                       help="Keep at most this many conformers per molecule and split.")
     geom.add_argument("--max_shards", type=int, default=None,
                       help="Read only the first shards of each split (trial builds).")
+    geom.add_argument("--heavy_atoms", action="store_true",
+                      help="Drop the hydrogens of every conformer.")
 
     for subparser in (crossdocked, geom):
         subparser.add_argument("--data_root", required=True, type=Path,
@@ -109,6 +112,7 @@ def main() -> int:
                 target_dir=partial_dir,
                 max_conformers=args.max_conformers,
                 max_shards=args.max_shards,
+                heavy_atoms=args.heavy_atoms,
                 progress=not args.quiet,
             )
 

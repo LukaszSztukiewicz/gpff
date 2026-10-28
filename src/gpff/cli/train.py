@@ -73,6 +73,12 @@ def train(config: DictConfig):
     # Init model
     log.info(f"Instantiating model <{config.model._target_}>")
     model = hydra.utils.instantiate(config.model)
+    if config.get("init_model_path") is not None:
+        # a new run from another model's weights (fine-tuning); unlike
+        # run.ckpt_path, none of that run's training state comes along
+        log.info(f"Initializing the weights from <{config.init_model_path}>")
+        pretrained = torch.load(config.init_model_path, map_location="cpu", weights_only=False)
+        model.load_state_dict(pretrained.state_dict())
     if config.get("compile") is not None:
         log.info(f"Compiling the model with <{config.compile}>")
         # in place, so state_dict keys and the pickled model keep their names

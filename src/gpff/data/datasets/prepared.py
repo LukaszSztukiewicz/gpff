@@ -1,3 +1,4 @@
+import logging
 import os
 import pickle
 from typing import Optional
@@ -17,13 +18,15 @@ from gpff.data.datasets.memory import InMemoryASEAtomsData
 
 __all__ = ["PreparedAtomsData"]
 
+log = logging.getLogger(__name__)
+
 
 class PreparedAtomsData(AtomsDataModule):
     """
     Data module for an ASE database that already exists, e.g. one written by
     ``gpff_prepare_dataset``. It never downloads or builds a database: a missing
     ``datapath`` is an error. Also allows to only load molecules with a specified
-    number of atoms.
+    number of atoms, or with at most a number of atoms.
     """
 
     def __init__(
@@ -31,6 +34,7 @@ class PreparedAtomsData(AtomsDataModule):
         datapath: str,
         batch_size: int,
         n_atoms_allowed: Optional[int] = None,
+        max_n_atoms: Optional[int] = None,
         indices_path: str = "n_atoms_indices.pkl",
         cache_in_memory: bool = False,
         persistent_workers: bool = False,
@@ -42,6 +46,9 @@ class PreparedAtomsData(AtomsDataModule):
             datapath: path to the ASE database.
             batch_size: batch size.
             n_atoms_allowed: the exact number of atoms in each molecule.
+            max_n_atoms: keep only the molecules with at most this many atoms, in
+                          every split (e.g. a size curriculum); the split file
+                          is filtered, not replaced.
             indices_path: path to pickle file containing indices of molecules
                           with specific number of atoms.
             cache_in_memory: read the database into memory once in setup and
@@ -51,6 +58,7 @@ class PreparedAtomsData(AtomsDataModule):
         """
         super().__init__(datapath=datapath, batch_size=batch_size, format=format, **kwargs)
         self.n_atoms_allowed = n_atoms_allowed
+        self.max_n_atoms = max_n_atoms
         self.indices_path = indices_path
         self.cache_in_memory = cache_in_memory
         self.persistent_workers = persistent_workers
@@ -125,6 +133,22 @@ class PreparedAtomsData(AtomsDataModule):
             # load and generate partitions if needed
             if self.train_idx is None:
                 self._load_partitions()
+
+            # use only molecules with at most max_n_atoms atoms, in every split
+            if self.max_n_atoms is not None:
+                n_atoms = [
+                    int(sample[properties.n_atoms])
+                    for sample in self.dataset.iter_properties(load_properties=[])
+                ]
+                self.train_idx, self.val_idx, self.test_idx = (
+                    [i for i in idx if n_atoms[i] <= self.max_n_atoms]
+                    for idx in (self.train_idx, self.val_idx, self.test_idx)
+                )
+                log.info(
+                    f"Keeping the molecules with at most {self.max_n_atoms} atoms: "
+                    f"{len(self.train_idx)} train, {len(self.val_idx)} val, "
+                    f"{len(self.test_idx)} test"
+                )
 
             # partition dataset
             self._train_dataset = self.dataset.subset(self.train_idx)

@@ -35,6 +35,10 @@ matmul_precision: high
 # it eagerly. Needs a C and a C++ compiler (gcc, g++) at run time.
 compile: null
 
+# Inference model (e.g. a run's best_model) whose weights a new run starts from,
+# for fine-tuning; it needs the same architecture. null initializes randomly.
+init_model_path: null
+
 # Default project (can be overridden by experiments)
 project: default
 
