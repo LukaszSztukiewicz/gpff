@@ -17,7 +17,7 @@ from schnetpack.utils.script import print_config
 from gpff import keys
 from gpff.analysis import get_rdkit_validity
 from gpff.cli import header
-from gpff.data.datasets.qm9 import QM9Valid
+from gpff.data.datasets import PreparedAtomsData
 from gpff.sample import Calculator, ConditionGenerator, Prior, Sampler
 from gpff.sample.observers import TrajectoryRecorder
 from gpff.sample.results import batches_to_relaxed, batches_to_trajectories
@@ -92,7 +92,8 @@ def sample_molecules(config: DictConfig):
         raise FileNotFoundError(f"No split file at {split_path}.")
     log.info(f"Using split file: {split_path}")
 
-    qm9_valid = QM9Valid(
+    # the database has to exist already; generation never builds one
+    datamodule = PreparedAtomsData(
         datapath=config.datapath,
         batch_size=config.batch_size,
         split_file=split_path,
@@ -100,8 +101,8 @@ def sample_molecules(config: DictConfig):
         num_workers=config.num_workers,
         data_workdir=config.data_workdir,
     )
-    qm9_valid.prepare_data()
-    qm9_valid.setup()
+    datamodule.prepare_data()
+    datamodule.setup()
 
     # initialize sampler; the calculator is built first so it can take the
     # model from the loaded checkpoint
@@ -124,13 +125,13 @@ def sample_molecules(config: DictConfig):
     if condition_generator_config is not None:
         overrides = {}
         if OmegaConf.select(condition_generator_config, "shape_predictor") is not None:
-            overrides["shape_predictor"] = {"train_dataset": qm9_valid._train_dataset}
+            overrides["shape_predictor"] = {"train_dataset": datamodule._train_dataset}
         condition_generator = hydra.utils.instantiate(condition_generator_config, **overrides)
 
-    if config.n_samples > len(qm9_valid._test_dataset):
+    if config.n_samples > len(datamodule._test_dataset):
         raise ValueError(
             f"Requested {config.n_samples} samples, but test split only contains "
-            f"{len(qm9_valid._test_dataset)} structures."
+            f"{len(datamodule._test_dataset)} structures."
         )
 
     # create samples directory and initialize database
@@ -151,7 +152,7 @@ def sample_molecules(config: DictConfig):
     # run sampling loop
     n_samples_written = 0
     trajectory_idx = 0
-    test_loader = qm9_valid.test_dataloader()
+    test_loader = datamodule.test_dataloader()
     for batch in test_loader:
         if n_samples_written >= config.n_samples:
             break

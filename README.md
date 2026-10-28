@@ -55,6 +55,7 @@ After install the entry points are on `PATH`:
 | `gpff_generate`  | Sample molecules from a checkpoint. Wraps `gpff.cli.generate:sample_molecules()`. |
 | `gpff_prepare_metadata`  | Compute the per-sample arrays of a sampled DB into `evaluation/metadata/`. Wraps `gpff.cli.prepare_metadata:main()`. |
 | `gpff_calculate_metrics` | Reduce those arrays to `evaluation/results.json`. Wraps `gpff.cli.calculate_metrics:main()`. |
+| `gpff_prepare_dataset` | Build a CrossDocked2020 or GEOM-Drugs dataset folder from its source files. Wraps `gpff.cli.prepare_dataset:main()`. |
 
 `gpfftrain` still works as a deprecated alias for `gpff_train`.
 
@@ -148,6 +149,44 @@ gpff_prepare_metadata --samples_db_path samples.db \
 gpff_calculate_metrics --samples_db_path samples.db \
   --metrics rdkit_validity posebusters_validity uniqueness mean_tanimoto_similarity
 ```
+
+## Other datasets
+
+QM9 is built automatically. Every other dataset is built once with
+`gpff_prepare_dataset` into a folder of its own, `<data_root>/<id>`, holding the
+database(s), the split and a manifest with the sha256 of every file. Training
+picks the folder with `run.data_dir` and the database with `data=`; the split
+always comes from the folder:
+
+```bash
+# CrossDocked2020: the pocket10 pairs of the official split (split_by_name.pt).
+# One build writes a ligand-only database (heavy atoms) and a complex database
+# (the ligand followed by its pocket), row for row the same pairs.
+gpff_prepare_dataset crossdocked --root /path/to/crossdocked_pocket10 \
+  --split_path /path/to/split_by_name.pt --data_root data/crossdocked
+gpff_train experiment=gpff data=crossdocked_ligand run.data_dir=data/crossdocked/<id>
+gpff_train experiment=gpff data=crossdocked_complex run.data_dir=data/crossdocked/<id>
+
+# GEOM-Drugs, read from its TFDS export (all conformers, hydrogens included,
+# the export's split by molecule):
+gpff_prepare_dataset geom_drugs \
+  --source_dir /path/to/tensorflow_datasets/geom/drugs/0.1.4 --data_root data/geom_drugs
+gpff_train experiment=gpff data=geom_drugs run.data_dir=data/geom_drugs/<id>
+
+# Sample with the folder's database and split:
+gpff_generate model_path=/path/to/best_model \
+  datapath=data/crossdocked/<id>/crossdocked_ligand.db \
+  split_path=data/crossdocked/<id>/split.npz n_samples=100
+```
+
+The complex database has no pocket conditioning in training yet: every atom,
+pocket included, is noised. To sample ligands into fixed pockets, freeze the
+pocket atoms with `prior=scaffold sampler=scaffold_direct_denoising
+condition_generator=precomputed_scaffold
+condition_generator.scaffold_ids_path=<folder>/crossdocked_complex_pocket_ids.json`.
+The QM9 hyperparameters of `experiment=gpff` (`sigma_max`, the cutoff and radial
+basis derived from it) and QM9's validity and property metrics are not tuned
+for these datasets.
 
 ## Citation
 
