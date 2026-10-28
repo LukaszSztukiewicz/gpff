@@ -1,0 +1,117 @@
+# @package _global_
+# GPFF that also generates the atom types, with absorbing-state (masked)
+# discrete diffusion over them instead of a continuous one-hot channel.
+#
+# Each atom's type is replaced by MASK with probability `rate`, drawn per
+# molecule and independently of the position noise level, and the model predicts
+# the clean type from the geometry and the types that are still visible. The
+# loss is the cross-entropy on the masked atoms with the 1/rate weight of the
+# masked-diffusion NELBO. The positions, their pseudo-energy and their loss are
+# exactly experiment=gpff.
+#
+# Compared with experiment=gpff_types, which noises a scaled one-hot with the
+# positions' sigma:
+#   - MASK is a token, so PaiNN embeds it through its existing nn.Embedding and
+#     the model needs no basis expansion of an unbounded input, and no
+#     embedding_key. The representation config is untouched.
+#   - the type input carries either nothing (MASK) or a value that was correct
+#     during training, never a soft mixture the model can drift along.
+#   - the model is given no time, which for an absorbing process is exact rather
+#     than an approximation: the clean-type conditional does not depend on t
+#     (Ou et al., ICLR 2025).
+defaults:
+  - gpff
+  - override /prior: absorbing
+  - _self_
+
+globals:
+  # the dataset's elements; every other token gets a logit of -1e4 so it cannot
+  # be sampled. The vocabulary itself is fixed in gpff.vocab and spans QM9,
+  # CrossDocked and GEOM-Drugs, so the index space survives a dataset change.
+  allowed_elements: [H, C, N, O, F]
+  # ABSENT stays illegal until the canvas work lands: with no padded slots in
+  # the training data its logit would never be trained
+  allow_absent: false
+  # weight of the type cross-entropy against the force loss. Measured at init on
+  # QM9: the force term is 1.38 and the cross-entropy ln(5) ~ 1.61 times the
+  # mean 1/rate weight, which is 1. So 1.0 starts the two terms balanced and
+  # 4.0 lets the type term dominate about 4.6 to 1.
+  type_loss_weight: 1.0
+  # the 1/rate NELBO weight diverges as the rate goes to zero; this clamps it
+  type_min_rate: 0.01
+  type_max_rate: 1.0
+  # tie the masking rate to sigma_t/sigma_max instead of drawing it: the
+  # ablation of the independent draw
+  type_rate_from_sigma: false
+
+run:
+  experiment: gpff_absorbing
+  tags:
+    - gpff
+    - gpff_absorbing
+
+data:
+  transforms:
+    - ${generative_transform}
+    # after the pseudo-PES transform, so align_permutation has already matched
+    # the noisy geometry using the clean elements
+    - _target_: gpff.data.transform.absorbing_types.AbsorbingTypesTransform
+      min_rate: ${globals.type_min_rate}
+      max_rate: ${globals.type_max_rate}
+      rate_from_sigma: ${globals.type_rate_from_sigma}
+      sigma_max: ${globals.sigma_max}
+    - _target_: gpff.utils.neighbors.AllToAllNeighborList
+    - _target_: schnetpack.transform.CastTo32
+
+model:
+  output_modules:
+    - _target_: gpff.model.heads.GatedEquivariant
+      n_in: ${globals.n_atom_basis}
+      n_hidden: null
+      n_layers: 3
+      output_key: ${key:forces}
+    - _target_: gpff.model.type_heads.TypeLogits
+      n_in: ${globals.n_atom_basis}
+      allowed: ${globals.allowed_elements}
+      allow_absent: ${globals.allow_absent}
+      n_hidden: null
+      n_layers: 3
+
+task:
+  warmup_steps: 0
+  outputs:
+    - _target_: gpff.task.ModelOutput
+      name: ${key:forces}
+      metrics:
+        mae:
+          _target_: torchmetrics.regression.MeanAbsoluteError
+        mse:
+          _target_: torchmetrics.regression.MeanSquaredError
+          squared: True
+      loss_weight: 1.
+      scale_loss: ${globals.scale_loss}
+      weights_key: ${globals.weights_key}
+      warmup_steps: 0
+    # the masked cross-entropy. type_weight is 1/rate on the masked atoms and 0
+    # elsewhere, and the loss averages over all atoms, so this is the
+    # continuous-time NELBO of masked diffusion up to the rate clamp.
+    - _target_: gpff.task.ModelOutput
+      name: ${key:type_logits}
+      target_property: ${key:type_target}
+      cross_entropy: true
+      metrics: {}
+      loss_weight: ${globals.type_loss_weight}
+      weights_key: ${key:type_weight}
+      warmup_steps: 0
+    # not trained on: the Brier score of the predicted type distribution over
+    # the masked atoms, as a readable signal next to the force metrics
+    - _target_: gpff.task.ModelOutput
+      name: type_probabilities
+      target_property: ${key:type_target}
+      metrics:
+        mse:
+          _target_: torchmetrics.regression.MeanSquaredError
+          squared: True
+      loss_weight: 0.
+      weights_key: ${key:type_weight}
+      warmup_steps: 0

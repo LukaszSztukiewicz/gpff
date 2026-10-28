@@ -193,6 +193,9 @@ class Calculator:
                     results[keys.h_0] = predictions[keys.h_0].detach()
                 elif keys.type_forces in predictions:
                     results[keys.h_0] = batch[keys.h] + predictions[keys.type_forces].detach() / 2
+            # clean-type distribution of a discrete (absorbing) type head
+            if "type_probabilities" in predictions:
+                results["type_probabilities"] = predictions["type_probabilities"].detach()
 
         # update number of function evaluations
         batch[keys.nfe] += ~batch[keys.converged]

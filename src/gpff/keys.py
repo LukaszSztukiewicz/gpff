@@ -27,3 +27,8 @@ h: Final = "h"
 h_0: Final = "h_0"
 type_forces: Final = "type_forces"
 type_logits: Final = "type_logits"
+# absorbing-state discrete diffusion over the atom types
+type_target: Final = "type_target"
+type_weight: Final = "type_weight"
+type_mask: Final = "type_mask"
+type_rate: Final = "type_rate"

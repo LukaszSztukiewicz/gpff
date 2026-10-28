@@ -1,0 +1,32 @@
+# Direct denoising of the positions with absorbing-state unmasking of the atom
+# types over the same steps. Pair it with prior=absorbing.
+defaults:
+  - /calculator@calculator: default
+  - _self_
+
+_target_: gpff.sample.absorbing.AbsorbingDirectDenoisingSampler
+n_steps: 50
+time_aware_model: false
+observers:
+  - _target_: gpff.sample.observers.ProgressReporter
+    verbose: false
+    show_progressbar: false
+stochastic_lambda: 1.0
+f_max: 0.0
+
+# cosine unmasks few atoms early and many late (MaskGIT); linear is the ablation
+type_schedule: cosine
+type_temperature: 1.0
+type_seed: 0
+# a molecule with an undecided type is not converged, whatever its forces are
+require_types_for_convergence: true
+
+# remasking corrector (ReMDM / targeted-remasking style). 0 is the pure
+# carry-over reverse process; above 0, decided atoms go back to MASK with
+# probability remask_prob * masking_rate(step) so they are decided again with
+# more context. masking_rate is 0 on the last step, so sampling still finishes
+# with every type decided.
+remask_prob: 0.0
+# confidence remasks in proportion to 1 - p(the type currently held); random is
+# the uniform ablation
+remask_mode: confidence
