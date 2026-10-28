@@ -44,6 +44,7 @@ class PaiNN(nn.Module):
 
     # class-level default, so models pickled before the option existed still load
     prenorm: bool = False
+    degree_norm: bool = False
 
     def __init__(
         self,
@@ -60,6 +61,7 @@ class PaiNN(nn.Module):
         nuclear_embedding: Optional[nn.Module] = None,
         electronic_embeddings: Optional[List] = None,
         prenorm: bool = False,
+        degree_norm: bool = False,
     ):
         """
         Args:
@@ -84,6 +86,15 @@ class PaiNN(nn.Module):
                 feature excursion compounds over the blocks into an unbounded output;
                 with it every update is bounded and the features grow at most
                 linearly with depth.
+            degree_norm: if True, the messages an interaction block sums over the
+                neighbors of an atom are divided by the square root of their number,
+                as NequIP divides by the square root of the average number of neighbors.
+                The sum is not normalized otherwise, so with all-to-all neighbors the
+                update of an atom grows with the size of its molecule (QM9: 4-28
+                neighbors, GEOM-Drugs: up to ~180) while the features it is added to
+                are normalized by ``prenorm``. This takes the exact degree of every
+                atom, so no dataset constant enters. The count is not recoverable from a
+                normalized sum, the network has to read it from the distances.
         """
         super(PaiNN, self).__init__()
 
@@ -136,6 +147,8 @@ class PaiNN(nn.Module):
             shared_interactions,
         )
 
+        self.degree_norm = degree_norm
+
         # one norm per block input (interaction, mixing) and one for the output
         self.prenorm = prenorm
         if prenorm:
@@ -143,14 +156,17 @@ class PaiNN(nn.Module):
             self.scalar_norms = nn.ModuleList(nn.LayerNorm(n_atom_basis) for _ in range(n_norms))
             self.vector_norms = nn.ModuleList(VectorRMSNorm(n_atom_basis) for _ in range(n_norms))
 
-    def _block(self, block: nn.Module, k: int, q: torch.Tensor, mu: torch.Tensor, *args):
-        if not self.prenorm:
+    def _block(self, block: nn.Module, k: int, q: torch.Tensor, mu: torch.Tensor, *args, update_scale=None):
+        if not self.prenorm and update_scale is None:
             return block(q, mu, *args)
         # schnetpack's blocks return their input plus the update; add the update to
         # the unnormalized features
-        q_in, mu_in = self.scalar_norms[k](q), self.vector_norms[k](mu)
+        q_in, mu_in = (self.scalar_norms[k](q), self.vector_norms[k](mu)) if self.prenorm else (q, mu)
         q_out, mu_out = block(q_in, mu_in, *args)
-        return q + (q_out - q_in), mu + (mu_out - mu_in)
+        dq, dmu = q_out - q_in, mu_out - mu_in
+        if update_scale is not None:
+            dq, dmu = dq * update_scale, dmu * update_scale
+        return q + dq, mu + dmu
 
     def forward(self, inputs: Dict[str, torch.Tensor]):
         """
@@ -183,6 +199,12 @@ class PaiNN(nn.Module):
         else:
             filter_list = torch.split(filters, 3 * self.n_atom_basis, dim=-1)
 
+        # the interactions sum their messages over the neighbors of an atom: divide by sqrt(degree)
+        update_scale = None
+        if self.degree_norm:
+            degree = snn.scatter_add(torch.ones_like(d_ij), idx_i, dim_size=n_atoms)
+            update_scale = torch.rsqrt(degree.clamp(min=1)).unsqueeze(-1)
+
         # compute initial embeddings
         q = self.embedding(atomic_numbers)
         for embedding in self.electronic_embeddings:
@@ -193,7 +215,9 @@ class PaiNN(nn.Module):
         qs = q.shape
         mu = torch.zeros((qs[0], 3, qs[2]), device=q.device)
         for i, (interaction, mixing) in enumerate(zip(self.interactions, self.mixing)):
-            q, mu = self._block(interaction, 2 * i, q, mu, filter_list[i], dir_ij, idx_i, idx_j, n_atoms)
+            q, mu = self._block(
+                interaction, 2 * i, q, mu, filter_list[i], dir_ij, idx_i, idx_j, n_atoms, update_scale=update_scale
+            )
             q, mu = self._block(mixing, 2 * i + 1, q, mu)
         if self.prenorm:
             q, mu = self.scalar_norms[-1](q), self.vector_norms[-1](mu)

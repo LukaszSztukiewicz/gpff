@@ -15,6 +15,8 @@ globals:
   n_rbf: ${mul:${globals.cutoff}, 4}
   # growth control: normalized PaiNN blocks and forces bounded like their target
   prenorm: false
+  # the messages an interaction sums over the neighbors of an atom are divided by sqrt(degree)
+  degree_norm: false
   bounded_forces: false
   # bound on the network's share of the force: the radius of a clean molecule
   # (QM9: 7.4 A) plus what the skip term leaves at intermediate sigma, ~2x
@@ -49,6 +51,7 @@ model:
     radial_basis:
       n_rbf: ${globals.n_rbf}
     prenorm: ${globals.prenorm}
+    degree_norm: ${globals.degree_norm}
   output_modules:
     - _target_: gpff.model.heads.GatedEquivariant
       n_in: ${globals.n_atom_basis}
