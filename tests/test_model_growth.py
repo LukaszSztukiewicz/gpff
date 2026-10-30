@@ -13,7 +13,7 @@ from gpff.model import GatedEquivariant, PaiNN
 X0_RADIUS = 10.0
 
 
-def _model(prenorm, bounded):
+def _model(prenorm, bounded, degree_norm=False):
     torch.manual_seed(0)
     representation = PaiNN(
         n_atom_basis=16,
@@ -22,6 +22,7 @@ def _model(prenorm, bounded):
         cutoff_fn=CosineCutoff(10.0),
         return_vector_representation=True,
         prenorm=prenorm,
+        degree_norm=degree_norm,
     )
     head = GatedEquivariant(n_in=16, n_layers=2, bounded=bounded, x0_radius=X0_RADIUS)
     model = NeuralNetworkPotential(
@@ -52,6 +53,21 @@ def _batch(positions, numbers):
     }
 
 
+def _chain_batch(positions, numbers):
+    """each atom neighbors the next one, so the degrees are 1, 2, ..., 2, 1"""
+    batch = _batch(positions, numbers)
+    n = batch[properties.n_atoms]
+    start = torch.cumsum(n, 0) - n
+    idx_i, idx_j = [], []
+    for k, s in zip(n.tolist(), start.tolist()):
+        a = torch.arange(k - 1) + s
+        idx_i += [a, a + 1]
+        idx_j += [a + 1, a]
+    batch[properties.idx_i], batch[properties.idx_j] = torch.cat(idx_i), torch.cat(idx_j)
+    batch[properties.offsets] = torch.zeros(len(batch[properties.idx_i]), 3, dtype=torch.float64)
+    return batch
+
+
 def _molecules(scale=1.0):
     torch.manual_seed(1)
     numbers = [torch.tensor([6, 6, 8, 1, 1, 1]), torch.tensor([7, 6, 1, 1, 1])]
@@ -66,8 +82,9 @@ def _forces(model, positions, numbers):
 
 @pytest.mark.parametrize("prenorm", [False, True])
 @pytest.mark.parametrize("bounded", [False, True])
-def test_forces_are_e3_and_permutation_equivariant(prenorm, bounded):
-    model = _model(prenorm, bounded)
+@pytest.mark.parametrize("degree_norm", [False, True])
+def test_forces_are_e3_and_permutation_equivariant(prenorm, bounded, degree_norm):
+    model = _model(prenorm, bounded, degree_norm)
     positions, numbers = _molecules()
     forces = _forces(model, positions, numbers)
 
@@ -110,6 +127,42 @@ def test_prenorm_keeps_a_feature_excursion_from_blowing_up_the_output():
     assert not math.isfinite(gains[False]) or gains[False] > 1e6
 
 
+def _stream_after_first_interaction(model, batch):
+    seen = []
+    hook = model.representation.mixing[0].register_forward_pre_hook(lambda m, args: seen.append(args))
+    with torch.no_grad():
+        model(dict(batch))
+    hook.remove()
+    return seen[0]
+
+
+@pytest.mark.parametrize("graph", [_batch, _chain_batch])
+def test_degree_norm_divides_the_summed_messages_by_the_root_of_the_degree(graph):
+    # without prenorm the mixing block reads the stream the interaction left: embedding + summed messages
+    plain, normed = _model(False, False), _model(False, False, degree_norm=True)
+    batch = graph(*_molecules())
+    q0 = plain.representation.embedding(batch[properties.Z]).unsqueeze(1)
+    q_plain, mu_plain = _stream_after_first_interaction(plain, batch)
+    q_normed, mu_normed = _stream_after_first_interaction(normed, batch)
+
+    degree = torch.bincount(batch[properties.idx_i], minlength=len(batch[properties.Z]))
+    scale = degree.clamp(min=1).double().rsqrt()[:, None, None]
+    torch.testing.assert_close(q_normed - q0, (q_plain - q0) * scale)
+    torch.testing.assert_close(mu_normed, mu_plain * scale)
+    assert not torch.allclose(q_normed, q_plain)
+
+
+def test_degree_norm_leaves_atoms_without_neighbors_alone():
+    model = _model(False, False, degree_norm=True)
+    batch = _chain_batch(*_molecules())
+    # the last atom of the first molecule loses its only neighbor
+    keep = ~((batch[properties.idx_i] == 5) | (batch[properties.idx_j] == 5))
+    for key in (properties.idx_i, properties.idx_j, properties.offsets):
+        batch[key] = batch[key][keep]
+    with torch.no_grad():
+        assert torch.isfinite(model(batch)["forces"]).all()
+
+
 def test_options_default_off_and_old_pickles_still_load():
     model = _model(prenorm=False, bounded=False)
     assert not any("norms" in k or "skip_logit" in k for k in model.state_dict())
@@ -118,6 +171,7 @@ def test_options_default_off_and_old_pickles_still_load():
     forces = _forces(model, positions, numbers)
     # a model pickled before the options existed has no such instance attributes
     del model.representation.prenorm
+    del model.representation.degree_norm
     del model.output_modules[0].bounded
     torch.testing.assert_close(_forces(model, positions, numbers), forces)
 
