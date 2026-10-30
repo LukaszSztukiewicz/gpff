@@ -11,6 +11,7 @@ from schnetpack.task import ModelOutput as SPKModelOutput
 from schnetpack.task import AtomisticTask as SPKAtomisticTask
 from schnetpack.task import UnsupervisedModelOutput
 from schnetpack.model.base import AtomisticModel
+from gpff.nn.normalized import project_weights
 
 
 log = logging.getLogger(__name__)
@@ -155,6 +156,12 @@ class AtomisticTask(SPKAtomisticTask):
         self.n_skipped_val_batches = 0
         self.exit_after_n_skipped_train_batches = exit_after_n_skipped_train_batches
         self.loss_threshold = loss_threshold
+
+    def optimizer_step(self, epoch=None, batch_idx=None, optimizer=None, optimizer_closure=None):
+        super().optimizer_step(epoch, batch_idx, optimizer, optimizer_closure)
+        # Outside forward/backward, once per optimizer step (also with accumulation).
+        # EMA observes projected parameters, and the model can be compiled/reused.
+        project_weights(self.model)
 
     def setup(self, stage=None):
         """

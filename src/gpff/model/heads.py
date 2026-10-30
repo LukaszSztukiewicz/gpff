@@ -8,9 +8,22 @@ import schnetpack.properties as properties
 from schnetpack.atomistic import Atomwise as SPKAtomwise
 
 from gpff import keys
+from gpff.nn.normalized import normalize_linears, soft_unit_vectors
 
 
 __all__ = ["GatedEquivariant", "Atomwise", "TimeAwareEquivariant", "DiffusionTime"]
+
+
+class ProductNormalizedGate(nn.Module):
+    """Prevent repeated scalar/vector gates from multiplying vector magnitudes."""
+
+    def __init__(self, block):
+        super().__init__()
+        self.block = block
+
+    def forward(self, features):
+        scalar, vector = features
+        return self.block((scalar, soft_unit_vectors(vector)))
 
 
 class GatedEquivariant(nn.Module):
@@ -20,6 +33,7 @@ class GatedEquivariant(nn.Module):
 
     # class-level default, so models pickled before the option existed still load
     bounded: bool = False
+    zero_net_force: bool = False
 
     def __init__(
         self,
@@ -35,6 +49,10 @@ class GatedEquivariant(nn.Module):
         detach_time_head: bool = False,
         bounded: bool = False,
         x0_radius: float = 15.0,
+        weight_norm: bool = False,
+        output_gain: Optional[float] = None,
+        zero_net_force: bool = False,
+        normalized_products: bool = False,
     ):
         """
         Args:
@@ -64,6 +82,15 @@ class GatedEquivariant(nn.Module):
             x0_radius: bound on |E[x_0 | x_t]_i - (1 - alpha) (x_i - x_mean)|, the
                 network's share of the force: the radius of a denoised molecule (QM9:
                 7.4 A) plus what the skip term leaves at intermediate noise levels.
+            weight_norm: use normalized linear weights throughout the readout.
+            output_gain: optional learned scalar initialized to this value. A small
+                nonzero value starts near zero forces while allowing immediate
+                gradients into the trunk. Applied before the optional bounded head.
+            zero_net_force: subtract each molecule's mean predicted force. Use with
+                centered-noise targets. This is an orthogonal projection for the
+                molecule-uniform force weights, not a torque constraint.
+            normalized_products: feed smooth direction coordinates into each gate,
+                preventing multiplicative magnitude feedback through the readout.
         """
 
         super().__init__()
@@ -76,9 +103,18 @@ class GatedEquivariant(nn.Module):
             activation=activation,
             sactivation=activation,
         )
+        if normalized_products:
+            self.outnet = nn.Sequential(*(ProductNormalizedGate(block) for block in self.outnet))
 
         self.output_key = output_key
         self.model_outputs = [self.output_key]
+        if zero_net_force and n_out != 1:
+            raise ValueError("zero_net_force requires n_out=1")
+        self.zero_net_force = zero_net_force
+        if weight_norm:
+            normalize_linears(self.outnet)
+        if output_gain is not None:
+            self.output_gain = nn.Parameter(torch.tensor(float(output_gain)))
 
         self.bounded = bounded
         if bounded:
@@ -136,8 +172,16 @@ class GatedEquivariant(nn.Module):
         # predict equivariant output
         s, x = self.outnet((l0, l1))
         x = torch.squeeze(x, -1)
+        gain = getattr(self, "output_gain", None)
+        if gain is not None:
+            x = x * gain
         if self.bounded:
             x = self._bounded_forces(inputs, s, x)
+        if self.zero_net_force:
+            n = inputs[properties.n_atoms]
+            idx_m = inputs[properties.idx_m]
+            mean = snn.scatter_add(x, idx_m, dim_size=n.shape[0]) / n[:, None].to(x.dtype)
+            x = x - mean[idx_m]
         inputs[self.output_key] = x
 
         return inputs
