@@ -1,0 +1,69 @@
+[
+  {
+    "environment": {
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "torch": "2.14.1+cu130",
+      "cuda": "13.0",
+      "job": "5151122",
+      "node": "head078",
+      "threads": 4,
+      "matmul_precision": "high",
+      "deterministic": false,
+      "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src",
+      "args": {
+        "mode": "workload",
+        "batch": 512,
+        "width": 256,
+        "steps": 16,
+        "compile": true,
+        "train": true,
+        "serialize": true,
+        "deterministic": false,
+        "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/compiled-endpoint-8991e5f-5151122.json"
+      }
+    }
+  },
+  {
+    "test": "workload/train",
+    "median_ms": 29.306056909263134,
+    "samples_ms": [
+      29.12832610309124,
+      29.306056909263134,
+      29.3930321931839,
+      29.375901445746422,
+      29.310994781553745,
+      29.210329055786133,
+      29.224440455436707
+    ],
+    "first_call_ms": 12276.674017310143,
+    "peak_allocated_gib": 3.7794976234436035,
+    "batch": 512,
+    "width": 256,
+    "compiled": true
+  },
+  {
+    "test": "workload/sample",
+    "median_ms": 60.57206727564335,
+    "samples_ms": [
+      60.61137095093727,
+      60.57206727564335,
+      60.49296818673611,
+      60.71699224412441,
+      60.48568710684776
+    ],
+    "first_call_ms": 13102.10051573813,
+    "peak_allocated_gib": 0.41304588317871094,
+    "batch": 128,
+    "width": 256,
+    "steps": 16,
+    "compiled": true,
+    "serialize": true
+  },
+  {
+    "sample_check": {
+      "finite": true,
+      "nfe_mean": 16.0,
+      "nfe_max": 16
+    }
+  }
+]

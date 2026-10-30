@@ -1,0 +1,146 @@
+name, driver_version, uuid, power.limit [W]
+NVIDIA GeForce RTX 4070, 595.71.05, GPU-8bd8f313-809d-dcf1-9f07-a7a8e47ef87f, 200.00 W
+AUDIT_START increment-759d3d6 2026-10-29T12:47:17+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/759d3d6/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-759d3d6-5151132.json"}}}
+{"test": "workload/train", "median_ms": 65.22840075194836, "samples_ms": [65.88924024254084, 65.20177237689495, 65.29192253947258, 65.22840075194836, 65.18897134810686, 65.2488861232996, 65.22691249847412], "first_call_ms": 1381.6687315702438, "peak_allocated_gib": 2.9245758056640625, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 858.3551924675703, "samples_ms": [880.4760482162237, 858.3551924675703, 845.3400675207376, 879.1457209736109, 840.7375235110521], "first_call_ms": 1121.1430076509714, "peak_allocated_gib": 1.3780145645141602, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-759d3d6 2026-10-29T12:47:53+01:00
+AUDIT_START increment-ef74aa3 2026-10-29T12:47:53+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/ef74aa3/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-ef74aa3-5151132.json"}}}
+{"test": "workload/train", "median_ms": 65.32575841993093, "samples_ms": [66.99683610349894, 65.99922478199005, 65.37344679236412, 65.24507701396942, 65.2533620595932, 65.32575841993093, 65.20838383585215], "first_call_ms": 1390.655368566513, "peak_allocated_gib": 2.9245758056640625, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 844.3435486406088, "samples_ms": [863.403445109725, 844.3435486406088, 825.4334181547165, 857.8658942133188, 819.7809141129255], "first_call_ms": 1084.168056026101, "peak_allocated_gib": 1.3780708312988281, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-ef74aa3 2026-10-29T12:48:29+01:00
+AUDIT_START increment-b24eda8 2026-10-29T12:48:29+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/b24eda8/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-b24eda8-5151132.json"}}}
+{"test": "workload/train", "median_ms": 65.34380931407213, "samples_ms": [66.942417062819, 66.08033552765846, 65.46482723206282, 65.29506202787161, 65.34380931407213, 65.31339138746262, 65.29190763831139], "first_call_ms": 1387.5726647675037, "peak_allocated_gib": 2.9245758056640625, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 829.636299982667, "samples_ms": [860.9639927744865, 829.636299982667, 826.2919336557388, 882.8173708170652, 826.1863999068737], "first_call_ms": 1074.6164377778769, "peak_allocated_gib": 1.3780708312988281, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-b24eda8 2026-10-29T12:49:04+01:00
+AUDIT_START increment-93cca41 2026-10-29T12:49:04+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/93cca41/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-93cca41-5151132.json"}}}
+{"test": "workload/train", "median_ms": 65.22821635007858, "samples_ms": [66.4565684273839, 65.59677422046661, 65.22821635007858, 65.28040859848261, 65.212307497859, 65.22012781351805, 65.20773749798536], "first_call_ms": 1340.664315968752, "peak_allocated_gib": 2.9245758056640625, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 722.8881493210793, "samples_ms": [748.6743088811636, 714.2727058380842, 713.0509950220585, 745.2623806893826, 722.8881493210793], "first_call_ms": 1021.1851485073566, "peak_allocated_gib": 1.3780708312988281, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-93cca41 2026-10-29T12:49:39+01:00
+AUDIT_START increment-4839f63 2026-10-29T12:49:39+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/4839f63/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-4839f63-5151132.json"}}}
+{"test": "workload/train", "median_ms": 65.2412548661232, "samples_ms": [66.43061619251966, 65.505750477314, 65.18391706049442, 65.2412548661232, 65.24092610925436, 65.30176009982824, 65.22396579384804], "first_call_ms": 1408.3532113581896, "peak_allocated_gib": 2.9245758056640625, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 481.72225803136826, "samples_ms": [482.7794227749109, 480.9306524693966, 481.299651786685, 483.0749910324812, 481.72225803136826], "first_call_ms": 760.3867035359144, "peak_allocated_gib": 1.3780708312988281, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-4839f63 2026-10-29T12:50:12+01:00
+AUDIT_START increment-24a2ce2 2026-10-29T12:50:12+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/24a2ce2/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-24a2ce2-5151132.json"}}}
+{"test": "workload/train", "median_ms": 65.23229368031025, "samples_ms": [66.44569244235754, 65.4608840122819, 65.1690037921071, 65.18573127686977, 65.23229368031025, 65.27845375239849, 65.21532405167818], "first_call_ms": 1399.5096664875746, "peak_allocated_gib": 2.9245758056640625, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 481.49961419403553, "samples_ms": [482.21467062830925, 480.8888267725706, 481.49961419403553, 483.25340636074543, 481.32095485925674], "first_call_ms": 759.2761721462011, "peak_allocated_gib": 1.3780708312988281, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-24a2ce2 2026-10-29T12:50:45+01:00
+AUDIT_START increment-d464b76 2026-10-29T12:50:45+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/d464b76/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-d464b76-5151132.json"}}}
+{"test": "workload/train", "median_ms": 65.08156191557646, "samples_ms": [65.6752111390233, 65.28834998607635, 65.08156191557646, 65.06493501365185, 65.06870500743389, 65.15401042997837, 65.05555007606745], "first_call_ms": 1447.9515347629786, "peak_allocated_gib": 2.9245758056640625, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 480.8431938290596, "samples_ms": [482.16785304248333, 480.8431938290596, 479.48227636516094, 482.35307820141315, 480.2872762084007], "first_call_ms": 758.20492208004, "peak_allocated_gib": 1.3780708312988281, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-d464b76 2026-10-29T12:51:18+01:00
+AUDIT_START increment-38cb9db 2026-10-29T12:51:18+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/38cb9db/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-38cb9db-5151132.json"}}}
+{"test": "workload/train", "median_ms": 56.300836615264416, "samples_ms": [56.675984524190426, 56.351359002292156, 56.26027751713991, 56.26570526510477, 56.2959173694253, 56.336406618356705, 56.300836615264416], "first_call_ms": 1613.1287384778261, "peak_allocated_gib": 2.652151107788086, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 420.26058211922646, "samples_ms": [422.2267232835293, 419.5158742368221, 419.5451568812132, 422.2497269511223, 420.26058211922646], "first_call_ms": 659.6292983740568, "peak_allocated_gib": 1.1036133766174316, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-38cb9db 2026-10-29T12:51:51+01:00
+AUDIT_START increment-47efdc3 2026-10-29T12:51:51+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/47efdc3/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-47efdc3-5151132.json"}}}
+{"test": "workload/train", "median_ms": 56.29701167345047, "samples_ms": [57.78485722839832, 57.095191441476345, 56.54843244701624, 56.29701167345047, 56.27871584147215, 56.271908804774284, 56.28785490989685], "first_call_ms": 1597.5598003715277, "peak_allocated_gib": 2.652151107788086, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 421.35647870600224, "samples_ms": [421.35647870600224, 419.49838772416115, 420.65039835870266, 421.86131328344345, 421.4575011283159], "first_call_ms": 667.6509324461222, "peak_allocated_gib": 1.1036133766174316, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-47efdc3 2026-10-29T12:52:23+01:00
+AUDIT_START increment-3c78267 2026-10-29T12:52:23+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/3c78267/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-3c78267-5151132.json"}}}
+{"test": "workload/train", "median_ms": 56.3022093847394, "samples_ms": [56.80140666663647, 56.45456537604332, 56.28152471035719, 56.28855898976326, 56.28551822155714, 56.3022093847394, 56.33581895381212], "first_call_ms": 1601.831728592515, "peak_allocated_gib": 2.652151107788086, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 421.88758216798306, "samples_ms": [422.2524110227823, 421.28919437527657, 421.27348855137825, 422.631511464715, 421.88758216798306], "first_call_ms": 663.6130400002003, "peak_allocated_gib": 1.1036138534545898, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-3c78267 2026-10-29T12:52:56+01:00
+AUDIT_START increment-831b100 2026-10-29T12:52:56+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/831b100/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-831b100-5151132.json"}}}
+{"test": "workload/train", "median_ms": 56.29751365631819, "samples_ms": [56.7442299798131, 56.362368166446686, 56.32936581969261, 56.27418868243694, 56.29751365631819, 56.279366835951805, 56.267667561769485], "first_call_ms": 1617.9318726062775, "peak_allocated_gib": 2.652151107788086, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 421.59348726272583, "samples_ms": [423.14148135483265, 421.565406024456, 421.3108643889427, 422.7459952235222, 421.59348726272583], "first_call_ms": 698.9824529737234, "peak_allocated_gib": 1.103614330291748, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-831b100 2026-10-29T12:53:28+01:00
+AUDIT_START increment-a0e6c9b 2026-10-29T12:53:28+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/a0e6c9b/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-a0e6c9b-5151132.json"}}}
+{"test": "workload/train", "median_ms": 56.30423408001661, "samples_ms": [57.83732235431671, 57.13546182960272, 56.529940105974674, 56.29705637693405, 56.250742636621, 56.30423408001661, 56.273289024829865], "first_call_ms": 1620.2881913632154, "peak_allocated_gib": 2.65230131149292, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 409.96393747627735, "samples_ms": [410.476116463542, 409.3670193105936, 408.87350030243397, 409.96393747627735, 414.7314913570881], "first_call_ms": 683.7378013879061, "peak_allocated_gib": 1.103614330291748, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-a0e6c9b 2026-10-29T12:54:01+01:00
+AUDIT_START increment-697f0f6 2026-10-29T12:54:01+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/697f0f6/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-697f0f6-5151132.json"}}}
+{"test": "workload/train", "median_ms": 56.28239270299673, "samples_ms": [56.75059277564287, 56.3536062836647, 56.28239270299673, 56.289056316018105, 56.25991430133581, 56.256433948874474, 56.27693422138691], "first_call_ms": 1602.7134601026773, "peak_allocated_gib": 2.65230131149292, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 397.22103625535965, "samples_ms": [396.9666864722967, 397.10990339517593, 397.22103625535965, 398.0668690055609, 402.787446975708], "first_call_ms": 661.1773930490017, "peak_allocated_gib": 1.103614330291748, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-697f0f6 2026-10-29T12:54:33+01:00
+AUDIT_START increment-3b17abc 2026-10-29T12:54:33+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/3b17abc/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-3b17abc-5151132.json"}}}
+{"test": "workload/train", "median_ms": 56.298268027603626, "samples_ms": [57.80884809792042, 57.08255618810654, 56.50529731065035, 56.29010125994682, 56.298268027603626, 56.29006214439869, 56.26688990741968], "first_call_ms": 1612.299833446741, "peak_allocated_gib": 2.65230131149292, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 398.43040704727173, "samples_ms": [398.6800704151392, 397.61808142066, 397.8754747658968, 398.43040704727173, 398.5945899039507], "first_call_ms": 668.2177372276783, "peak_allocated_gib": 1.103614330291748, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-3b17abc 2026-10-29T12:55:06+01:00
+AUDIT_START increment-ea093f3 2026-10-29T12:55:06+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/ea093f3/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-ea093f3-5151132.json"}}}
+{"test": "workload/train", "median_ms": 56.28845747560263, "samples_ms": [56.78866803646088, 56.375822983682156, 56.28156755119562, 56.30526319146156, 56.28845747560263, 56.28294963389635, 56.266900151968], "first_call_ms": 1619.154866784811, "peak_allocated_gib": 2.65230131149292, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 397.12526090443134, "samples_ms": [398.5334672033787, 397.12526090443134, 396.90880849957466, 397.53009006381035, 397.06619270145893], "first_call_ms": 670.0692977756262, "peak_allocated_gib": 1.103614330291748, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-ea093f3 2026-10-29T12:55:38+01:00
+AUDIT_START increment-428dc6a 2026-10-29T12:55:38+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/428dc6a/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-428dc6a-5151132.json"}}}
+{"test": "workload/train", "median_ms": 56.288049556314945, "samples_ms": [57.03279189765453, 56.451836600899696, 56.28790520131588, 56.32379837334156, 56.27801176160574, 56.288049556314945, 56.28268513828516], "first_call_ms": 1628.4949574619532, "peak_allocated_gib": 2.65230131149292, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 397.4912706762552, "samples_ms": [397.4912706762552, 396.7873863875866, 396.71250618994236, 398.2466869056225, 397.7047111839056], "first_call_ms": 669.2498121410608, "peak_allocated_gib": 1.103614330291748, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-428dc6a 2026-10-29T12:56:10+01:00
+AUDIT_START increment-632660a 2026-10-29T12:56:10+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/632660a/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-632660a-5151132.json"}}}
+{"test": "workload/train", "median_ms": 56.290995329618454, "samples_ms": [57.664732448756695, 56.7843783646822, 56.35454040020704, 56.266168132424355, 56.25262018293142, 56.290995329618454, 56.24708998948336], "first_call_ms": 1596.099128946662, "peak_allocated_gib": 2.65230131149292, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 398.1149662286043, "samples_ms": [398.76548759639263, 397.07845635712147, 398.1149662286043, 398.20503257215023, 397.785784676671], "first_call_ms": 673.8534197211266, "peak_allocated_gib": 1.103614330291748, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-632660a 2026-10-29T12:56:43+01:00
+AUDIT_START increment-8991e5f 2026-10-29T12:56:43+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151132", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-8991e5f-5151132.json"}}}
+{"test": "workload/train", "median_ms": 56.334368884563446, "samples_ms": [57.17417970299721, 56.59682955592871, 56.35399650782347, 56.332564912736416, 56.334368884563446, 56.31158035248518, 56.276844814419746], "first_call_ms": 1636.735711246729, "peak_allocated_gib": 2.65230131149292, "batch": 128, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 382.28450901806355, "samples_ms": [382.4105653911829, 381.25076703727245, 382.19310715794563, 382.28450901806355, 392.44391210377216], "first_call_ms": 660.7596687972546, "peak_allocated_gib": 1.103614330291748, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE increment-8991e5f 2026-10-29T12:57:15+01:00

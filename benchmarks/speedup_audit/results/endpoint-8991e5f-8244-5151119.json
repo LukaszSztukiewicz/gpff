@@ -1,0 +1,67 @@
+[
+  {
+    "environment": {
+      "gpu": "NVIDIA H200 NVL",
+      "torch": "2.14.1+cu130",
+      "cuda": "13.0",
+      "job": "5151119",
+      "node": "head056",
+      "threads": 4,
+      "matmul_precision": "high",
+      "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src",
+      "args": {
+        "mode": "workload",
+        "batch": 512,
+        "width": 256,
+        "steps": 16,
+        "compile": false,
+        "train": true,
+        "serialize": true,
+        "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/endpoint-8991e5f-8244-5151119.json"
+      }
+    }
+  },
+  {
+    "test": "workload/train",
+    "median_ms": 35.55511822924018,
+    "samples_ms": [
+      35.53810250014067,
+      35.55511822924018,
+      35.58419179171324,
+      35.513736307621,
+      35.53873859345913,
+      35.855403169989586,
+      35.63263453543186
+    ],
+    "first_call_ms": 894.1281521692872,
+    "peak_allocated_gib": 10.326848983764648,
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "test": "workload/sample",
+    "median_ms": 74.91274550557137,
+    "samples_ms": [
+      75.11219661682844,
+      74.70873091369867,
+      74.62272234261036,
+      74.91274550557137,
+      76.08460355550051
+    ],
+    "first_call_ms": 235.95238849520683,
+    "peak_allocated_gib": 1.1551027297973633,
+    "batch": 128,
+    "width": 256,
+    "steps": 16,
+    "compiled": false,
+    "serialize": true
+  },
+  {
+    "sample_check": {
+      "finite": true,
+      "nfe_mean": 16.0,
+      "nfe_max": 16
+    }
+  }
+]

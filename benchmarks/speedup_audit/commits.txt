@@ -1,0 +1,17 @@
+ef74aa3 perf(sample): compute the molecule layout once per denoising run
+b24eda8 perf(alignment): batch the per-molecule Cholesky in batch_apply_covariances
+93cca41 perf(neighbors): build the fully connected neighbor list for the batch at once
+4839f63 perf(results): serialise each batch key once, without the model features
+24a2ce2 perf(shape_predictor): draw once per molecule size, batch the fit variances
+d464b76 perf(callbacks): update the EMA with multi-tensor kernels
+38cb9db perf(painn): fold the cutoff into the filter matmul, filter half the pairs
+47efdc3 perf(priors): center ScaffoldGaussianPrior on the scaffolds without a loop
+3c78267 perf(sample): run the model on the unconverged molecules only
+831b100 perf(sample): one host sync and one copy less per step
+a0e6c9b perf(painn): remember the pair check of the last neighbor list
+697f0f6 perf(results): build a batch's Atoms in one pass, record lighter snapshots
+3b17abc perf(alignment): skip align_numbers when the atom types already match
+ea093f3 perf(painn): keep the half-pair filters under torch.compile
+428dc6a feat(generate): optional torch.compile of the model
+632660a perf(generate): write and check each batch while the next one denoises
+8991e5f perf(results): copy a batch to the CPU once in clone_batch

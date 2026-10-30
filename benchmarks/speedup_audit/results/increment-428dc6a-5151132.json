@@ -1,0 +1,69 @@
+[
+  {
+    "environment": {
+      "gpu": "NVIDIA GeForce RTX 4070",
+      "torch": "2.14.1+cu130",
+      "cuda": "13.0",
+      "job": "5151132",
+      "node": "head058",
+      "threads": 4,
+      "matmul_precision": "high",
+      "deterministic": false,
+      "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/428dc6a/src",
+      "args": {
+        "mode": "workload",
+        "batch": 128,
+        "width": 256,
+        "steps": 16,
+        "compile": false,
+        "train": true,
+        "serialize": true,
+        "deterministic": false,
+        "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/increment-428dc6a-5151132.json"
+      }
+    }
+  },
+  {
+    "test": "workload/train",
+    "median_ms": 56.288049556314945,
+    "samples_ms": [
+      57.03279189765453,
+      56.451836600899696,
+      56.28790520131588,
+      56.32379837334156,
+      56.27801176160574,
+      56.288049556314945,
+      56.28268513828516
+    ],
+    "first_call_ms": 1628.4949574619532,
+    "peak_allocated_gib": 2.65230131149292,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "test": "workload/sample",
+    "median_ms": 397.4912706762552,
+    "samples_ms": [
+      397.4912706762552,
+      396.7873863875866,
+      396.71250618994236,
+      398.2466869056225,
+      397.7047111839056
+    ],
+    "first_call_ms": 669.2498121410608,
+    "peak_allocated_gib": 1.103614330291748,
+    "batch": 128,
+    "width": 256,
+    "steps": 16,
+    "compiled": false,
+    "serialize": true
+  },
+  {
+    "sample_check": {
+      "finite": true,
+      "nfe_mean": 16.0,
+      "nfe_max": 16
+    }
+  }
+]

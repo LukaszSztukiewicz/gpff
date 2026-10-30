@@ -1,0 +1,145 @@
+name, driver_version, uuid, power.limit [W]
+NVIDIA GeForce RTX 4070, 595.71.05, GPU-8bd8f313-809d-dcf1-9f07-a7a8e47ef87f, 200.00 W
+AUDIT_START extra 2026-10-29T12:40:18+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151164", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src", "args": {"mode": "extra", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": false, "serialize": false, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/extra-5151164.json"}}}
+{"test": "831b100/full_DD16", "before_ms": 377.63766944408417, "after_ms": 377.54547968506813, "speedup": 1.0011098259567202, "paired_speedup_ci95": [0.9980447293090989, 1.0031909925417295], "before_samples_ms": [377.6469733566046, 377.228818833828, 377.27691046893597, 377.14093178510666, 379.5071169734001, 378.37050668895245, 377.63766944408417], "after_samples_ms": [377.1776333451271, 377.8649363666773, 378.0160341411829, 376.7228350043297, 377.54547968506813, 377.16696970164776, 384.99416410923004]}
+{"correctness": "b24eda8/precision", "geometry": "real", "precision": "high", "old_new_maxabs": 0.09212324768304825, "old_reference_maxabs": 9.754300117492676e-05, "new_reference_maxabs": 0.09211361408233643, "old_new_relative_l2": 0.0016421518521383405}
+{"correctness": "b24eda8/precision", "geometry": "real", "precision": "highest", "old_new_maxabs": 0.00015284866094589233, "old_reference_maxabs": 5.245208740234375e-05, "new_reference_maxabs": 0.00010039657354354858, "old_new_relative_l2": 2.432111386951874e-06}
+{"correctness": "b24eda8/precision", "geometry": "random", "precision": "high", "old_new_maxabs": 0.0014989376068115234, "old_reference_maxabs": 4.76837158203125e-07, "new_reference_maxabs": 0.0014992952346801758, "old_new_relative_l2": 0.0003096034633927047}
+{"correctness": "b24eda8/precision", "geometry": "random", "precision": "highest", "old_new_maxabs": 1.0728836059570312e-06, "old_reference_maxabs": 7.152557373046875e-07, "new_reference_maxabs": 5.960464477539062e-07, "old_new_relative_l2": 1.1575519209827689e-07}
+AUDIT_DONE extra 2026-10-29T12:40:53+01:00
+AUDIT_START deferred16 2026-10-29T12:40:53+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151164", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src", "args": {"mode": "deferred", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": false, "serialize": false, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/deferred16-5151164.json"}}}
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+------------------------------------------------------------
+| n_samples: 128 --- avg nfe: 16.0 --- batch validity: 1.0 |
+------------------------------------------------------------
+{"test": "632660a/3_batch_pipeline", "before_ms": 3013.5774835944176, "after_ms": 2609.9901646375656, "speedup": 1.1546317393931236, "paired_speedup_ci95": [1.1515544188257105, 1.1851535629116543], "before_samples_ms": [3013.5774835944176, 2998.784314841032, 3019.8708325624466, 3019.599372521043, 3013.0628533661366], "after_samples_ms": [2609.9901646375656, 2530.2917771041393, 2601.2342516332865, 2622.1942473202944, 2611.9670160114765], "batch": 128, "width": 256, "steps": 16, "batches": 3, "rdkit": "real QM9 geometries"}
+AUDIT_DONE deferred16 2026-10-29T12:41:54+01:00
+AUDIT_START real-adaptive 2026-10-29T12:41:54+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151164", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src", "args": {"mode": "adaptive", "batch": 128, "width": 256, "steps": 16, "compile": false, "train": false, "serialize": false, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/real-adaptive-5151164.json"}}}
+{"test": "3c78267/real_adaptive_ancestral", "before_ms": 1825.8217554539442, "after_ms": 1051.4547545462847, "speedup": 1.7422057094158485, "paired_speedup_ci95": [1.7235158496802367, 1.7631843399724871], "before_samples_ms": [1831.8504765629768, 1818.0759400129318, 1831.5583299845457, 1814.1942732036114, 1825.8217554539442], "after_samples_ms": [1051.4547545462847, 1035.6938280165195, 1051.6963247209787, 1052.6124686002731, 1035.5251654982567], "checkpoint": "/home/lsztuk/gpff/runs/default/26-10-26/seeded-monkey-1e4-basis-512/frozen/best_model", "batch": 128, "width": 512, "max_steps": 128, "target_steps": 16}
+{"correctness": "3c78267/real_adaptive", "positions_maxabs": 1.3775198459625244, "nfe_equal": false, "nfe_mean_before": 17.0234375, "nfe_mean_after": 17.046875, "active_counts_before": [128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 122, 110, 88, 61, 40, 24, 17, 10, 8, 6, 5, 5, 3, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0], "active_counts_after": [128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 122, 110, 88, 60, 41, 25, 18, 11, 8, 6, 5, 5, 3, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]}
+AUDIT_DONE real-adaptive 2026-10-29T12:42:39+01:00
+.............................                                            [100%]
+=============================== warnings summary ===============================
+../../../../../../opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491
+  /opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+../../../../../../opt/conda/envs/gpff/lib/python3.13/site-packages/_pytest/cacheprovider.py:469
+  /opt/conda/envs/gpff/lib/python3.13/site-packages/_pytest/cacheprovider.py:469: PytestCacheWarning: could not create cache path /home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/.pytest_cache/v/cache/nodeids: [Errno 13] Permission denied: '/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/pytest-cache-files-uiqew8up'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+29 passed, 2 warnings in 25.11s

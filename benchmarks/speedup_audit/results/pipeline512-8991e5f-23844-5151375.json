@@ -1,0 +1,40 @@
+[
+  {
+    "environment": {
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "torch": "2.14.1+cu130",
+      "cuda": "13.0",
+      "job": "5151375",
+      "node": "head079",
+      "threads": 4,
+      "matmul_precision": "high",
+      "deterministic": false,
+      "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src",
+      "args": {
+        "batch": 512,
+        "width": 256,
+        "workers": 12,
+        "compile": false,
+        "deterministic": false,
+        "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/pipeline512-8991e5f-23844-5151375.json"
+      }
+    }
+  },
+  {
+    "test": "lightning/train_pipeline",
+    "samples_ms": [
+      229.69388253986835,
+      225.8133415132761,
+      225.4931664094329,
+      76.44973639398813,
+      236.5215051919222,
+      140.27039129287004
+    ],
+    "median_ms": 225.4931640625,
+    "batch": 512,
+    "width": 256,
+    "workers": 12,
+    "compiled": false,
+    "skipped": 0
+  }
+]

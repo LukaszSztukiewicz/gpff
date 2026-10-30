@@ -1,0 +1,2362 @@
+[
+  {
+    "file": "adaptive-precision-5151410.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151410",
+    "test": "3c78267/real_adaptive_ancestral",
+    "before_ms": 1825.456090271473,
+    "after_ms": 1046.514479443431,
+    "speedup": 1.7443199555559972,
+    "time_reduction_pct": 42.671068067827456,
+    "ci95": [
+      1.7279543963692128,
+      1.7600178956130799
+    ],
+    "batch": 128,
+    "width": 512,
+    "compiled": false
+  },
+  {
+    "file": "compiled-endpoint-759d3d6-5151122.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151122",
+    "test": "workload/train",
+    "median_ms": 38.381461054086685,
+    "mean_ms": 38.385513371654916,
+    "first_call_ms": 32088.497135788202,
+    "batch": 512,
+    "width": 256,
+    "compiled": true
+  },
+  {
+    "file": "compiled-endpoint-759d3d6-5151122.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151122",
+    "test": "workload/sample",
+    "median_ms": 293.94625686109066,
+    "mean_ms": 294.6948863565922,
+    "first_call_ms": 10374.06993471086,
+    "batch": 128,
+    "width": 256,
+    "compiled": true
+  },
+  {
+    "file": "compiled-endpoint-8991e5f-5151122.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151122",
+    "test": "workload/train",
+    "median_ms": 29.306056909263134,
+    "mean_ms": 29.278440134865896,
+    "first_call_ms": 12276.674017310143,
+    "batch": 512,
+    "width": 256,
+    "compiled": true
+  },
+  {
+    "file": "compiled-endpoint-8991e5f-5151122.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151122",
+    "test": "workload/sample",
+    "median_ms": 60.57206727564335,
+    "mean_ms": 60.57581715285778,
+    "first_call_ms": 13102.10051573813,
+    "batch": 128,
+    "width": 256,
+    "compiled": true
+  },
+  {
+    "file": "compiled128-5151122.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151122",
+    "test": "ea093f3/forward_reused",
+    "before_ms": 3.4447144716978073,
+    "after_ms": 2.7855088313420615,
+    "speedup": 1.2366553761878183,
+    "time_reduction_pct": 19.136728044424565,
+    "ci95": [
+      1.2227313087704919,
+      1.2443636021590698
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": true
+  },
+  {
+    "file": "compiled128-5151122.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151122",
+    "test": "ea093f3/forward_fresh",
+    "before_ms": 3.3980136116345725,
+    "after_ms": 3.396815930803617,
+    "speedup": 1.00035258926458,
+    "time_reduction_pct": 0.03524649892086007,
+    "ci95": [
+      0.9949248348780056,
+      1.0121156944153455
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": true
+  },
+  {
+    "file": "compiled128-5151122.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151122",
+    "test": "ea093f3/train_fresh",
+    "before_ms": 9.705817326903343,
+    "after_ms": 9.479903616011143,
+    "speedup": 1.023830802510549,
+    "time_reduction_pct": 2.327611403379648,
+    "ci95": [
+      1.018021587370639,
+      1.0442967137068335
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": true
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "ef74aa3/std_per_step",
+    "before_ms": 1.4151766896247864,
+    "after_ms": 0.4912818782031536,
+    "speedup": 2.880579871581557,
+    "time_reduction_pct": 65.28476749193702,
+    "ci95": [
+      2.8093453544687774,
+      2.9253202044672144
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "b24eda8/covariance_cpu",
+    "before_ms": 71.01696822792292,
+    "after_ms": 2.654070034623146,
+    "speedup": 26.757759705465602,
+    "time_reduction_pct": 96.26276634887435,
+    "ci95": [
+      26.63330046103054,
+      27.014314377928574
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "b24eda8/covariance_cuda",
+    "before_ms": 160.90698074549437,
+    "after_ms": 3.0112899839878082,
+    "speedup": 53.434568441132846,
+    "time_reduction_pct": 98.1285523039235,
+    "ci95": [
+      52.00019113607213,
+      53.688119119549
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "93cca41/neighbors_cpu",
+    "before_ms": 53.38962096720934,
+    "after_ms": 1.8838774412870407,
+    "speedup": 28.34028360716196,
+    "time_reduction_pct": 96.47145380102235,
+    "ci95": [
+      27.74426761342579,
+      29.44552562928081
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "93cca41/neighbors_cuda",
+    "before_ms": 118.25419869273901,
+    "after_ms": 1.3959184288978577,
+    "speedup": 84.71426141003539,
+    "time_reduction_pct": 98.81956121276939,
+    "ci95": [
+      83.26214709051547,
+      87.37043838007601
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "4839f63/serialize_CPU",
+    "before_ms": 366.78645201027393,
+    "after_ms": 27.330312877893448,
+    "speedup": 13.420499562116426,
+    "time_reduction_pct": 92.54871254701416,
+    "ci95": [
+      13.314456529676178,
+      14.773647558590481
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "697f0f6/atoms_CPU",
+    "before_ms": 20.78791769842307,
+    "after_ms": 3.374749173720678,
+    "speedup": 6.159840814333554,
+    "time_reduction_pct": 83.76581424518204,
+    "ci95": [
+      6.126054202466227,
+      6.9831054267439425
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "697f0f6/record_GPU",
+    "before_ms": 3.4406762570142746,
+    "after_ms": 1.110402246316274,
+    "speedup": 3.0985854616456465,
+    "time_reduction_pct": 67.72720932251119,
+    "ci95": [
+      3.0873061430094335,
+      3.105879405546825
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "8991e5f/clone_cpu",
+    "before_ms": 1.020074263215065,
+    "after_ms": 1.0359089821577072,
+    "speedup": 0.9847141793194418,
+    "time_reduction_pct": -1.5523104065712223,
+    "ci95": [
+      0.9771830628848512,
+      1.0178916033372774
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "8991e5f/clone_cuda",
+    "before_ms": 13.876162096858025,
+    "after_ms": 4.834916815161705,
+    "speedup": 2.8699898317472776,
+    "time_reduction_pct": 65.15667097708182,
+    "ci95": [
+      2.8699898317472776,
+      3.968788094724339
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "24a2ce2/GMM_draw_cpu",
+    "before_ms": 157.49128628522158,
+    "after_ms": 20.12647967785597,
+    "speedup": 7.825078642963099,
+    "time_reduction_pct": 87.2205757203568,
+    "ci95": [
+      7.722978977755909,
+      7.991636620900174
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "24a2ce2/GMM_draw_cuda",
+    "before_ms": 174.01658184826374,
+    "after_ms": 20.135111175477505,
+    "speedup": 8.642444550303653,
+    "time_reduction_pct": 88.42919969946622,
+    "ci95": [
+      8.637734546433496,
+      8.685311691773144
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "24a2ce2/GMM_fit_512_CPU",
+    "before_ms": 435.13681553304195,
+    "after_ms": 190.87590090930462,
+    "speedup": 2.2796844099234863,
+    "time_reduction_pct": 56.134279128857,
+    "ci95": [
+      1.90498821077425,
+      2.3193270220690128
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "47efdc3/scaffold_prior_cpu",
+    "before_ms": 17.879024147987366,
+    "after_ms": 1.3573551550507545,
+    "speedup": 13.171957303480259,
+    "time_reduction_pct": 92.40811386675402,
+    "ci95": [
+      12.923515635150427,
+      13.199589761638315
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "47efdc3/scaffold_prior_cuda",
+    "before_ms": 48.7227076664567,
+    "after_ms": 1.7826100811362267,
+    "speedup": 27.33222939892783,
+    "time_reduction_pct": 96.34131564826093,
+    "ci95": [
+      27.262915979595686,
+      27.420767656690945
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "3b17abc/align_64_CPU",
+    "before_ms": 32.24226925522089,
+    "after_ms": 25.051831267774105,
+    "speedup": 1.2870224499993477,
+    "time_reduction_pct": 22.301277650556383,
+    "ci95": [
+      1.2694709976786234,
+      1.2934425296455854
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "831b100/bookkeeping_step",
+    "before_ms": 0.2756458396712939,
+    "after_ms": 0.3353578969836235,
+    "speedup": 0.8219452774203033,
+    "time_reduction_pct": -21.662600597758285,
+    "ci95": [
+      0.8159845510361882,
+      0.8259243069792053
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "d464b76/EMA_GPU",
+    "before_ms": 2.936768811196089,
+    "after_ms": 0.658021867275238,
+    "speedup": 4.463026165614789,
+    "time_reduction_pct": 77.59367830499268,
+    "ci95": [
+      4.449366341298733,
+      4.503897061754974
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "ef74aa3/std_per_step",
+    "before_ms": 0.5375821143388748,
+    "after_ms": 0.14246255159378052,
+    "speedup": 3.773497725014382,
+    "time_reduction_pct": 73.49938775976898,
+    "ci95": [
+      3.7465206034088685,
+      3.7942811568432613
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "b24eda8/covariance_cpu",
+    "before_ms": 20.00599354505539,
+    "after_ms": 1.2291427701711655,
+    "speedup": 16.27637897774026,
+    "time_reduction_pct": 93.85612732802787,
+    "ci95": [
+      15.816866963958317,
+      17.317665134285022
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "b24eda8/covariance_cuda",
+    "before_ms": 72.91638012975454,
+    "after_ms": 1.5724757686257362,
+    "speedup": 46.37043163690831,
+    "time_reduction_pct": 97.84345332855592,
+    "ci95": [
+      45.916160776185144,
+      51.90270831786506
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "93cca41/neighbors_cpu",
+    "before_ms": 17.733749002218246,
+    "after_ms": 0.9653940796852112,
+    "speedup": 18.3694403926744,
+    "time_reduction_pct": 94.55617602592406,
+    "ci95": [
+      17.663228671262168,
+      20.0298149743942
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "93cca41/neighbors_cuda",
+    "before_ms": 55.96510041505098,
+    "after_ms": 0.7578898221254349,
+    "speedup": 73.84331967686519,
+    "time_reduction_pct": 98.64578135926723,
+    "ci95": [
+      70.19830037266993,
+      86.15478288987964
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "4839f63/serialize_CPU",
+    "before_ms": 141.97884313762188,
+    "after_ms": 8.706700056791306,
+    "speedup": 16.306849002668592,
+    "time_reduction_pct": 93.86760740939987,
+    "ci95": [
+      14.329337582833414,
+      17.957059350186494
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "697f0f6/atoms_CPU",
+    "before_ms": 7.236773148179054,
+    "after_ms": 2.134424944718679,
+    "speedup": 3.390502517357374,
+    "time_reduction_pct": 70.5058469981783,
+    "ci95": [
+      3.1089008830371947,
+      3.4684322861509624
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "697f0f6/record_GPU",
+    "before_ms": 1.0812468826770782,
+    "after_ms": 0.40748901665210724,
+    "speedup": 2.6534381013763375,
+    "time_reduction_pct": 62.31304587503661,
+    "ci95": [
+      2.621755146721496,
+      2.669744705625278
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "8991e5f/clone_cpu",
+    "before_ms": 0.42991526424884796,
+    "after_ms": 0.4207175225019455,
+    "speedup": 1.0218620362950535,
+    "time_reduction_pct": 2.139431304671835,
+    "ci95": [
+      0.9679797673734137,
+      1.0637253291736988
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "8991e5f/clone_cuda",
+    "before_ms": 9.32726040482521,
+    "after_ms": 2.1721303462982178,
+    "speedup": 4.294061091094689,
+    "time_reduction_pct": 76.71202205124965,
+    "ci95": [
+      4.260488769744453,
+      8.70487550979117
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "24a2ce2/GMM_draw_cpu",
+    "before_ms": 53.57426404953003,
+    "after_ms": 7.255086675286293,
+    "speedup": 7.384372709429544,
+    "time_reduction_pct": 86.45788830887368,
+    "ci95": [
+      7.312092030926699,
+      7.490531480774376
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "24a2ce2/GMM_draw_cuda",
+    "before_ms": 65.3526820242405,
+    "after_ms": 7.478275336325169,
+    "speedup": 8.739004527794622,
+    "time_reduction_pct": 88.55704906869569,
+    "ci95": [
+      8.65962371717838,
+      8.84258874913606
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "24a2ce2/GMM_fit_512_CPU",
+    "before_ms": 391.222620382905,
+    "after_ms": 361.98671348392963,
+    "speedup": 1.0807651380836476,
+    "time_reduction_pct": 7.472959224689268,
+    "ci95": [
+      1.0526131033504462,
+      1.1097532197755329
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "47efdc3/scaffold_prior_cpu",
+    "before_ms": 7.241039536893368,
+    "after_ms": 0.6345286965370178,
+    "speedup": 11.411681735454705,
+    "time_reduction_pct": 91.23704969011604,
+    "ci95": [
+      11.202108470708865,
+      11.657116629264888
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "47efdc3/scaffold_prior_cuda",
+    "before_ms": 19.64226458221674,
+    "after_ms": 0.9353999048471451,
+    "speedup": 20.99878830480158,
+    "time_reduction_pct": 95.23782046142472,
+    "ci95": [
+      20.49044016573239,
+      23.452477499752746
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "3b17abc/align_64_CPU",
+    "before_ms": 6.999297998845577,
+    "after_ms": 5.2734315395355225,
+    "speedup": 1.3272757873826626,
+    "time_reduction_pct": 24.65770795292198,
+    "ci95": [
+      1.3179068658399316,
+      1.3421147219465694
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "831b100/bookkeeping_step",
+    "before_ms": 0.08970250686009724,
+    "after_ms": 0.10251899560292561,
+    "speedup": 0.8749842537233888,
+    "time_reduction_pct": -14.287770979262993,
+    "ci95": [
+      0.8544150693393735,
+      0.8953065561744924
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "components-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "d464b76/EMA_GPU",
+    "before_ms": 0.9070206433534622,
+    "after_ms": 0.17427457496523857,
+    "speedup": 5.204549450396765,
+    "time_reduction_pct": 80.78604095261761,
+    "ci95": [
+      5.1113601150370105,
+      5.383551496926547
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "converged128-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "3c78267/predict_converged_0.0",
+    "before_ms": 22.237510109941166,
+    "after_ms": 22.72452476123969,
+    "speedup": 0.9785687640812976,
+    "time_reduction_pct": -2.1900592687344345,
+    "ci95": [
+      0.9778883336836777,
+      0.98417364680269
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "converged128-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "3c78267/predict_converged_0.25",
+    "before_ms": 22.533197576800983,
+    "after_ms": 17.984474077820778,
+    "speedup": 1.252925021843696,
+    "time_reduction_pct": 20.18676436611614,
+    "ci95": [
+      1.2363631012588086,
+      1.2760258073800541
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "converged128-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "3c78267/predict_converged_0.5",
+    "before_ms": 22.54469816883405,
+    "after_ms": 12.63632190724214,
+    "speedup": 1.7841186964312148,
+    "time_reduction_pct": 43.949917569929234,
+    "ci95": [
+      1.7593134089708289,
+      1.8283318433907643
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "converged128-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "3c78267/predict_converged_0.75",
+    "before_ms": 22.540555025140446,
+    "after_ms": 10.269315913319588,
+    "speedup": 2.1949422157618814,
+    "time_reduction_pct": 54.44071407351869,
+    "ci95": [
+      2.1624332473735897,
+      2.261305431951728
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "converged128-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "3c78267/predict_converged_0.9",
+    "before_ms": 22.551591818531353,
+    "after_ms": 10.186275467276573,
+    "speedup": 2.2139192967025463,
+    "time_reduction_pct": 54.83123519952065,
+    "ci95": [
+      2.1771163634088624,
+      2.2757989308965874
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "converged128-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "3c78267/predict_converged_0.0",
+    "before_ms": 8.103167017300924,
+    "after_ms": 8.277817318836847,
+    "speedup": 0.9789014066378957,
+    "time_reduction_pct": -2.1553338486425266,
+    "ci95": [
+      0.9778405675897978,
+      0.9806300482261566
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "converged128-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "3c78267/predict_converged_0.25",
+    "before_ms": 8.266256501277288,
+    "after_ms": 6.894771630565326,
+    "speedup": 1.1989166493393357,
+    "time_reduction_pct": 16.59136600104344,
+    "ci95": [
+      1.1727779056957306,
+      1.2346346057879374
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "converged128-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "3c78267/predict_converged_0.5",
+    "before_ms": 8.255818237860998,
+    "after_ms": 5.103673165043195,
+    "speedup": 1.61762283180826,
+    "time_reduction_pct": 38.18089233556689,
+    "ci95": [
+      1.5829819761457615,
+      1.6891749979609643
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "converged128-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "3c78267/predict_converged_0.75",
+    "before_ms": 8.253464475274086,
+    "after_ms": 4.048100983103116,
+    "speedup": 2.0388484649281904,
+    "time_reduction_pct": 50.95270603962121,
+    "ci95": [
+      1.9929098634184148,
+      2.1810772385580943
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "converged128-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "3c78267/predict_converged_0.9",
+    "before_ms": 8.262300242980322,
+    "after_ms": 3.951460123062134,
+    "speedup": 2.090948658385437,
+    "time_reduction_pct": 52.17481806692626,
+    "ci95": [
+      2.0251885563875196,
+      2.1935785250264566
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "deferred-compiled-5151376.json",
+    "gpu": "NVIDIA A100-PCIE-40GB",
+    "job": "5151376",
+    "test": "632660a/3_batch_pipeline",
+    "before_ms": 1596.1704012006521,
+    "after_ms": 1503.5765636712313,
+    "speedup": 1.0615823894616565,
+    "time_reduction_pct": 5.800999533619411,
+    "ci95": [
+      1.0420839445368049,
+      1.0615823894616565
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": true
+  },
+  {
+    "file": "deferred16-5151164.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151164",
+    "test": "632660a/3_batch_pipeline",
+    "before_ms": 3013.5774835944176,
+    "after_ms": 2609.9901646375656,
+    "speedup": 1.1546317393931236,
+    "time_reduction_pct": 13.392299390141337,
+    "ci95": [
+      1.1515544188257105,
+      1.1851535629116543
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "deferred16-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "632660a/3_batch_pipeline",
+    "before_ms": 1627.4321265518665,
+    "after_ms": 1551.1177722364664,
+    "speedup": 1.049199587343627,
+    "time_reduction_pct": 4.689249589602973,
+    "ci95": [
+      1.0239801952517744,
+      1.0836707926545033
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "deterministic-endpoint-759d3d6-5151188.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151188",
+    "test": "workload/train",
+    "median_ms": 68.54865420609713,
+    "mean_ms": 68.82919517478773,
+    "first_call_ms": 1431.7453131079674,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "deterministic-endpoint-759d3d6-5151188.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151188",
+    "test": "workload/sample",
+    "median_ms": 940.1098154485226,
+    "mean_ms": 933.8851239532232,
+    "first_call_ms": 1134.934613481164,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "deterministic-endpoint-8991e5f-5151188.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151188",
+    "test": "workload/train",
+    "median_ms": 59.85961388796568,
+    "mean_ms": 60.04606506654194,
+    "first_call_ms": 1646.746687591076,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "deterministic-endpoint-8991e5f-5151188.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151188",
+    "test": "workload/sample",
+    "median_ms": 411.0496547073126,
+    "mean_ms": 411.36526986956596,
+    "first_call_ms": 654.5229367911816,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "deterministic-neural128-5151188.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151188",
+    "test": "38cb9db/forward_reused",
+    "before_ms": 28.512756029764812,
+    "after_ms": 24.91922366122405,
+    "speedup": 1.144207236043735,
+    "time_reduction_pct": 12.603244543562997,
+    "ci95": [
+      1.1419758191770686,
+      1.1452260170799118
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "deterministic-neural128-5151188.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151188",
+    "test": "38cb9db/forward_fresh",
+    "before_ms": 28.535009051362675,
+    "after_ms": 24.94358892242114,
+    "speedup": 1.1439816916527719,
+    "time_reduction_pct": 12.586013631455394,
+    "ci95": [
+      1.1434532718603265,
+      1.1442053909769843
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "deterministic-neural128-5151188.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151188",
+    "test": "38cb9db/train_fresh",
+    "before_ms": 68.2001318782568,
+    "after_ms": 59.401907958090305,
+    "speedup": 1.1481134903339112,
+    "time_reduction_pct": 12.900596637953853,
+    "ci95": [
+      1.1469466811521378,
+      1.1485172978274145
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "deterministic-neural128-5151188.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151188",
+    "test": "a0e6c9b/forward_reused",
+    "before_ms": 24.84573485950629,
+    "after_ms": 23.793496191501617,
+    "speedup": 1.0442237937432879,
+    "time_reduction_pct": 4.235087728154174,
+    "ci95": [
+      1.04386842948381,
+      1.0444363864326043
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "deterministic-neural128-5151188.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151188",
+    "test": "a0e6c9b/forward_fresh",
+    "before_ms": 24.881896873315174,
+    "after_ms": 24.88012673954169,
+    "speedup": 1.0000711464934249,
+    "time_reduction_pct": 0.0071141431961407875,
+    "ci95": [
+      0.9998730679986235,
+      1.0006422723807
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "deterministic-neural128-5151188.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151188",
+    "test": "a0e6c9b/train_fresh",
+    "before_ms": 59.43374149501324,
+    "after_ms": 59.44526381790638,
+    "speedup": 0.9998061692025048,
+    "time_reduction_pct": -0.01938683751570025,
+    "ci95": [
+      0.9997324885811008,
+      1.0000558339918189
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "endpoint-759d3d6-10991-5151119.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151119",
+    "test": "workload/train",
+    "median_ms": 40.78531777486205,
+    "mean_ms": 40.79076108921851,
+    "first_call_ms": 794.7418438270688,
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "endpoint-759d3d6-10991-5151119.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151119",
+    "test": "workload/sample",
+    "median_ms": 218.22969056665897,
+    "mean_ms": 219.94231585413218,
+    "first_call_ms": 377.70570907741785,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "endpoint-759d3d6-12820-5151119.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151119",
+    "test": "workload/train",
+    "median_ms": 40.74058122932911,
+    "mean_ms": 40.74875351839832,
+    "first_call_ms": 607.7464921399951,
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "endpoint-759d3d6-12820-5151119.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151119",
+    "test": "workload/sample",
+    "median_ms": 208.51696282625198,
+    "mean_ms": 219.52065229415894,
+    "first_call_ms": 330.0926787778735,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "endpoint-8991e5f-8244-5151119.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151119",
+    "test": "workload/train",
+    "median_ms": 35.55511822924018,
+    "mean_ms": 35.602560732513666,
+    "first_call_ms": 894.1281521692872,
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "endpoint-8991e5f-8244-5151119.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151119",
+    "test": "workload/sample",
+    "median_ms": 74.91274550557137,
+    "mean_ms": 75.08819978684187,
+    "first_call_ms": 235.95238849520683,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "endpoint-8991e5f-925-5151119.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151119",
+    "test": "workload/train",
+    "median_ms": 35.53877351805568,
+    "mean_ms": 35.57525382244161,
+    "first_call_ms": 886.6121731698513,
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "endpoint-8991e5f-925-5151119.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151119",
+    "test": "workload/sample",
+    "median_ms": 75.9689686819911,
+    "mean_ms": 76.14476066082716,
+    "first_call_ms": 237.648731097579,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "extra-5151164.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151164",
+    "test": "831b100/full_DD16",
+    "before_ms": 377.63766944408417,
+    "after_ms": 377.54547968506813,
+    "speedup": 1.0002441818641106,
+    "time_reduction_pct": 0.02441222538835941,
+    "ci95": [
+      0.9980447293090989,
+      1.0031909925417295
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-24a2ce2-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 65.23229368031025,
+    "mean_ms": 65.42676900114331,
+    "first_call_ms": 1399.5096664875746,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-24a2ce2-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 481.49961419403553,
+    "mean_ms": 481.8354945629835,
+    "first_call_ms": 759.2761721462011,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-38cb9db-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 56.300836615264416,
+    "mean_ms": 56.35521241596767,
+    "first_call_ms": 1613.1287384778261,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-38cb9db-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 420.26058211922646,
+    "mean_ms": 420.75961269438267,
+    "first_call_ms": 659.6292983740568,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-3b17abc-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 56.298268027603626,
+    "mean_ms": 56.64886041943516,
+    "first_call_ms": 1612.299833446741,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-3b17abc-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 398.43040704727173,
+    "mean_ms": 398.2397247105837,
+    "first_call_ms": 668.2177372276783,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-3c78267-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 56.3022093847394,
+    "mean_ms": 56.392800328986986,
+    "first_call_ms": 1601.831728592515,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-3c78267-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 421.88758216798306,
+    "mean_ms": 421.86683751642704,
+    "first_call_ms": 663.6130400002003,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-428dc6a-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 56.288049556314945,
+    "mean_ms": 56.4207255042025,
+    "first_call_ms": 1628.4949574619532,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-428dc6a-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 397.4912706762552,
+    "mean_ms": 397.38851226866245,
+    "first_call_ms": 669.2498121410608,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-47efdc3-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 56.29701167345047,
+    "mean_ms": 56.65199604949781,
+    "first_call_ms": 1597.5598003715277,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-47efdc3-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 421.35647870600224,
+    "mean_ms": 420.9648158401251,
+    "first_call_ms": 667.6509324461222,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-4839f63-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 65.2412548661232,
+    "mean_ms": 65.44688437134027,
+    "first_call_ms": 1408.3532113581896,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-4839f63-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 481.72225803136826,
+    "mean_ms": 481.9613952189684,
+    "first_call_ms": 760.3867035359144,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-632660a-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 56.290995329618454,
+    "mean_ms": 56.55150354972908,
+    "first_call_ms": 1596.099128946662,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-632660a-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 398.1149662286043,
+    "mean_ms": 397.98994548618793,
+    "first_call_ms": 673.8534197211266,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-697f0f6-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 56.28239270299673,
+    "mean_ms": 56.35270436427423,
+    "first_call_ms": 1602.7134601026773,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-697f0f6-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 397.22103625535965,
+    "mean_ms": 398.43038842082024,
+    "first_call_ms": 661.1773930490017,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-759d3d6-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 65.22840075194836,
+    "mean_ms": 65.32515798296247,
+    "first_call_ms": 1381.6687315702438,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-759d3d6-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 858.3551924675703,
+    "mean_ms": 860.8109105378389,
+    "first_call_ms": 1121.1430076509714,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-831b100-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 56.29751365631819,
+    "mean_ms": 56.36495724320412,
+    "first_call_ms": 1617.9318726062775,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-831b100-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 421.59348726272583,
+    "mean_ms": 422.0714468508959,
+    "first_call_ms": 698.9824529737234,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-8991e5f-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 56.334368884563446,
+    "mean_ms": 56.48290924727917,
+    "first_call_ms": 1636.735711246729,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-8991e5f-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 382.28450901806355,
+    "mean_ms": 384.11657214164734,
+    "first_call_ms": 660.7596687972546,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-93cca41-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 65.22821635007858,
+    "mean_ms": 65.4574486293963,
+    "first_call_ms": 1340.664315968752,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-93cca41-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 722.8881493210793,
+    "mean_ms": 728.8297079503536,
+    "first_call_ms": 1021.1851485073566,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-a0e6c9b-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 56.30423408001661,
+    "mean_ms": 56.661149486899376,
+    "first_call_ms": 1620.2881913632154,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-a0e6c9b-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 409.96393747627735,
+    "mean_ms": 410.682412981987,
+    "first_call_ms": 683.7378013879061,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-b24eda8-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 65.34380931407213,
+    "mean_ms": 65.67596431289401,
+    "first_call_ms": 1387.5726647675037,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-b24eda8-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 829.636299982667,
+    "mean_ms": 845.1791994273663,
+    "first_call_ms": 1074.6164377778769,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-d464b76-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 65.08156191557646,
+    "mean_ms": 65.19833193825824,
+    "first_call_ms": 1447.9515347629786,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-d464b76-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 480.8431938290596,
+    "mean_ms": 481.02673552930355,
+    "first_call_ms": 758.20492208004,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-ea093f3-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 56.28845747560263,
+    "mean_ms": 56.36994700346674,
+    "first_call_ms": 1619.154866784811,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-ea093f3-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 397.12526090443134,
+    "mean_ms": 397.4327638745308,
+    "first_call_ms": 670.0692977756262,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-ef74aa3-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/train",
+    "median_ms": 65.32575841993093,
+    "mean_ms": 65.62886985817126,
+    "first_call_ms": 1390.655368566513,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "increment-ef74aa3-5151132.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151132",
+    "test": "workload/sample",
+    "median_ms": 844.3435486406088,
+    "mean_ms": 842.1654440462589,
+    "first_call_ms": 1084.168056026101,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "long-759d3d6-5151335.json",
+    "gpu": "NVIDIA H100 PCIe",
+    "job": "5151335",
+    "test": "workload/sample",
+    "median_ms": 2209.713488817215,
+    "mean_ms": 2208.9576356112957,
+    "first_call_ms": 3381.3175316900015,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "long-8991e5f-5151335.json",
+    "gpu": "NVIDIA H100 PCIe",
+    "job": "5151335",
+    "test": "workload/sample",
+    "median_ms": 1619.1309113055468,
+    "mean_ms": 1618.1705404073,
+    "first_call_ms": 2964.5156525075436,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural128-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "38cb9db/forward_reused",
+    "before_ms": 26.84568924208482,
+    "after_ms": 23.331947003801663,
+    "speedup": 1.1505979007114424,
+    "time_reduction_pct": 13.088664651510673,
+    "ci95": [
+      1.1477070332970474,
+      1.1510429264542876
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural128-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "38cb9db/forward_fresh",
+    "before_ms": 26.87554806470871,
+    "after_ms": 23.372710992892582,
+    "speedup": 1.149868668332112,
+    "time_reduction_pct": 13.033546565756671,
+    "ci95": [
+      1.1494660675941655,
+      1.1503313915896127
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural128-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "38cb9db/train_fresh",
+    "before_ms": 64.88401163369417,
+    "after_ms": 56.30346667021513,
+    "speedup": 1.1523981642860048,
+    "time_reduction_pct": 13.224436571402098,
+    "ci95": [
+      1.1512781310607683,
+      1.1547729429090892
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural128-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "a0e6c9b/forward_reused",
+    "before_ms": 23.34335322181384,
+    "after_ms": 22.192709147930145,
+    "speedup": 1.05184784183913,
+    "time_reduction_pct": 4.929215023008959,
+    "ci95": [
+      1.0515357696048473,
+      1.052652117855728
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural128-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "a0e6c9b/forward_fresh",
+    "before_ms": 23.367904126644135,
+    "after_ms": 23.36947371562322,
+    "speedup": 0.9999328359295471,
+    "time_reduction_pct": -0.0067168581768362046,
+    "ci95": [
+      0.9993036524092478,
+      1.0001104168816466
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural128-5151118.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151118",
+    "test": "a0e6c9b/train_fresh",
+    "before_ms": 56.35055527091026,
+    "after_ms": 56.331051513552666,
+    "speedup": 1.0003462345692749,
+    "time_reduction_pct": 0.03461147323895464,
+    "ci95": [
+      0.9988009605201276,
+      1.0012218459634195
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural128-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "38cb9db/forward_reused",
+    "before_ms": 9.651204571127892,
+    "after_ms": 8.725009858608246,
+    "speedup": 1.106154001832542,
+    "time_reduction_pct": 9.59667475384791,
+    "ci95": [
+      1.0997126829256179,
+      1.114026901961715
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural128-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "38cb9db/forward_fresh",
+    "before_ms": 9.659400209784508,
+    "after_ms": 8.71052344640096,
+    "speedup": 1.1089345283578345,
+    "time_reduction_pct": 9.823350754453475,
+    "ci95": [
+      1.1025976228575547,
+      1.1126392105699252
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural128-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "38cb9db/train_fresh",
+    "before_ms": 22.803926840424538,
+    "after_ms": 20.54988592863083,
+    "speedup": 1.1096862979980486,
+    "time_reduction_pct": 9.88444195408471,
+    "ci95": [
+      1.105593285331719,
+      1.1138002805973874
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural128-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "a0e6c9b/forward_reused",
+    "before_ms": 8.666198079784712,
+    "after_ms": 8.098776762684187,
+    "speedup": 1.0700625950964555,
+    "time_reduction_pct": 6.5475230530920525,
+    "ci95": [
+      1.0686367280325892,
+      1.0723644770657506
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural128-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "a0e6c9b/forward_fresh",
+    "before_ms": 8.661554505427679,
+    "after_ms": 8.671318491299948,
+    "speedup": 0.9988739906299066,
+    "time_reduction_pct": -0.11272786964684478,
+    "ci95": [
+      0.9980917370920186,
+      1.0009014221203052
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural128-5151278.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151278",
+    "test": "a0e6c9b/train_fresh",
+    "before_ms": 20.438333973288536,
+    "after_ms": 20.443220622837543,
+    "speedup": 0.999760964789298,
+    "time_reduction_pct": -0.023909236219510355,
+    "ci95": [
+      0.9990952013875067,
+      1.0003796845529345
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural128w512-5151123.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151123",
+    "test": "38cb9db/forward_reused",
+    "before_ms": 8.324248095353445,
+    "after_ms": 7.64353418101867,
+    "speedup": 1.0890574828624702,
+    "time_reduction_pct": 8.177482296746375,
+    "ci95": [
+      1.0847236055248113,
+      1.0897991096985091
+    ],
+    "batch": 128,
+    "width": 512,
+    "compiled": false
+  },
+  {
+    "file": "neural128w512-5151123.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151123",
+    "test": "38cb9db/forward_fresh",
+    "before_ms": 8.321624249219894,
+    "after_ms": 7.637869566679001,
+    "speedup": 1.0895216495348186,
+    "time_reduction_pct": 8.216601255518018,
+    "ci95": [
+      1.0885111832557617,
+      1.0904854731167415
+    ],
+    "batch": 128,
+    "width": 512,
+    "compiled": false
+  },
+  {
+    "file": "neural128w512-5151123.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151123",
+    "test": "38cb9db/train_fresh",
+    "before_ms": 22.09888631477952,
+    "after_ms": 20.128878764808178,
+    "speedup": 1.0978697111244744,
+    "time_reduction_pct": 8.914510540985143,
+    "ci95": [
+      1.0884398896160985,
+      1.1012161806986585
+    ],
+    "batch": 128,
+    "width": 512,
+    "compiled": false
+  },
+  {
+    "file": "neural128w512-5151123.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151123",
+    "test": "a0e6c9b/forward_reused",
+    "before_ms": 7.6265158131718636,
+    "after_ms": 7.2072405988971395,
+    "speedup": 1.0581741664540631,
+    "time_reduction_pct": 5.497598438733819,
+    "ci95": [
+      1.057550520197421,
+      1.0601575632677864
+    ],
+    "batch": 128,
+    "width": 512,
+    "compiled": false
+  },
+  {
+    "file": "neural128w512-5151123.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151123",
+    "test": "a0e6c9b/forward_fresh",
+    "before_ms": 7.634440747400125,
+    "after_ms": 7.645333496232827,
+    "speedup": 0.9985752421607155,
+    "time_reduction_pct": -0.14267906704772404,
+    "ci95": [
+      0.9980459130471491,
+      1.0025009342430489
+    ],
+    "batch": 128,
+    "width": 512,
+    "compiled": false
+  },
+  {
+    "file": "neural128w512-5151123.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151123",
+    "test": "a0e6c9b/train_fresh",
+    "before_ms": 20.141758024692535,
+    "after_ms": 20.12553857639432,
+    "speedup": 1.0008059137516567,
+    "time_reduction_pct": 0.0805264777698711,
+    "ci95": [
+      1.0005950880929566,
+      1.0099796008553539
+    ],
+    "batch": 128,
+    "width": 512,
+    "compiled": false
+  },
+  {
+    "file": "neural512-5151123.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151123",
+    "test": "38cb9db/forward_reused",
+    "before_ms": 16.02057522783677,
+    "after_ms": 13.878013317783674,
+    "speedup": 1.154385347599253,
+    "time_reduction_pct": 13.3738138586326,
+    "ci95": [
+      1.1530212996839653,
+      1.1551049370311104
+    ],
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural512-5151123.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151123",
+    "test": "38cb9db/forward_fresh",
+    "before_ms": 16.02788579960664,
+    "after_ms": 13.881919284661612,
+    "speedup": 1.1545871626927082,
+    "time_reduction_pct": 13.388955610088605,
+    "ci95": [
+      1.1341420501361303,
+      1.1552766668533532
+    ],
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural512-5151123.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151123",
+    "test": "38cb9db/train_fresh",
+    "before_ms": 40.31520802527666,
+    "after_ms": 35.445873625576496,
+    "speedup": 1.137373801281812,
+    "time_reduction_pct": 12.07815769336279,
+    "ci95": [
+      1.1303390219997551,
+      1.1386742367970073
+    ],
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural512-5151123.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151123",
+    "test": "a0e6c9b/forward_reused",
+    "before_ms": 13.898804473380247,
+    "after_ms": 13.41476912299792,
+    "speedup": 1.0360822721542415,
+    "time_reduction_pct": 3.4825682403790803,
+    "ci95": [
+      1.0296173993695785,
+      1.0375634580730777
+    ],
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural512-5151123.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151123",
+    "test": "a0e6c9b/forward_fresh",
+    "before_ms": 13.821662403643131,
+    "after_ms": 13.825728558003902,
+    "speedup": 0.9997058994508888,
+    "time_reduction_pct": -0.029418706968997732,
+    "ci95": [
+      0.9981087069829938,
+      1.0012332932395585
+    ],
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "neural512-5151123.json",
+    "gpu": "NVIDIA H200 NVL",
+    "job": "5151123",
+    "test": "a0e6c9b/train_fresh",
+    "before_ms": 35.31449707224965,
+    "after_ms": 35.30146228149533,
+    "speedup": 1.0003692422328112,
+    "time_reduction_pct": 0.03691059433085231,
+    "ci95": [
+      0.9966321998550743,
+      1.0027711898668703
+    ],
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "pipeline-759d3d6-20536-5151165.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151165",
+    "test": "lightning/train_pipeline",
+    "median_ms": 143.83153328672051,
+    "mean_ms": 143.61915367965898,
+    "first_call_ms": null,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "pipeline-759d3d6-4860-5151165.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151165",
+    "test": "lightning/train_pipeline",
+    "median_ms": 141.10062373802066,
+    "mean_ms": 141.62534133841595,
+    "first_call_ms": null,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "pipeline-8991e5f-12565-5151165.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151165",
+    "test": "lightning/train_pipeline",
+    "median_ms": 139.83494518324733,
+    "mean_ms": 140.88873090222478,
+    "first_call_ms": null,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "pipeline-8991e5f-28195-5151165.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151165",
+    "test": "lightning/train_pipeline",
+    "median_ms": 140.59464987367392,
+    "mean_ms": 139.94977756713828,
+    "first_call_ms": null,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "pipeline512-759d3d6-14026-5151375.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151375",
+    "test": "lightning/train_pipeline",
+    "median_ms": 230.43445590883493,
+    "mean_ms": 192.57096350193024,
+    "first_call_ms": null,
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "pipeline512-759d3d6-26853-5151375.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151375",
+    "test": "lightning/train_pipeline",
+    "median_ms": 229.53282073140144,
+    "mean_ms": 192.134400177747,
+    "first_call_ms": null,
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "pipeline512-8991e5f-23844-5151375.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151375",
+    "test": "lightning/train_pipeline",
+    "median_ms": 225.6532539613545,
+    "mean_ms": 189.04033722355962,
+    "first_call_ms": null,
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "pipeline512-8991e5f-30718-5151375.json",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "5151375",
+    "test": "lightning/train_pipeline",
+    "median_ms": 229.12070816382766,
+    "mean_ms": 189.56720056012273,
+    "first_call_ms": null,
+    "batch": 512,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "real-adaptive-5151164.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151164",
+    "test": "3c78267/real_adaptive_ancestral",
+    "before_ms": 1825.8217554539442,
+    "after_ms": 1051.4547545462847,
+    "speedup": 1.736472014187437,
+    "time_reduction_pct": 42.41197140928649,
+    "ci95": [
+      1.7235158496802367,
+      1.7631843399724871
+    ],
+    "batch": 128,
+    "width": 512,
+    "compiled": false
+  },
+  {
+    "file": "test-compiled-head-5151127.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151127",
+    "test": "workload/train",
+    "median_ms": 21.981380879878998,
+    "mean_ms": 22.23311737179756,
+    "first_call_ms": 22958.70765671134,
+    "batch": 128,
+    "width": 256,
+    "compiled": true
+  },
+  {
+    "file": "test-compiled-head-5151127.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151127",
+    "test": "workload/sample",
+    "median_ms": 126.95644609630108,
+    "mean_ms": 127.17690169811249,
+    "first_call_ms": 18251.06042250991,
+    "batch": 128,
+    "width": 256,
+    "compiled": true
+  },
+  {
+    "file": "test-compiled128-5151127.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151127",
+    "test": "ea093f3/forward_reused",
+    "before_ms": 8.773849035302797,
+    "after_ms": 6.136396278937657,
+    "speedup": 1.4298048294921624,
+    "time_reduction_pct": 30.060384510298533,
+    "ci95": [
+      1.4263140118975757,
+      1.4314464325779954
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": true
+  },
+  {
+    "file": "test-compiled128-5151127.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151127",
+    "test": "ea093f3/forward_fresh",
+    "before_ms": 8.798345302542051,
+    "after_ms": 7.204738135139148,
+    "speedup": 1.2211887701553674,
+    "time_reduction_pct": 18.11257813378241,
+    "ci95": [
+      1.219924210897874,
+      1.2215099363916466
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": true
+  },
+  {
+    "file": "test-compiled128-5151127.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151127",
+    "test": "ea093f3/train_fresh",
+    "before_ms": 25.11495165526867,
+    "after_ms": 21.78056538105011,
+    "speedup": 1.153089977963547,
+    "time_reduction_pct": 13.276498875995502,
+    "ci95": [
+      1.150872490651352,
+      1.15469930410627
+    ],
+    "batch": 128,
+    "width": 256,
+    "compiled": true
+  },
+  {
+    "file": "test-endpoint-759d3d6-14605-5151126.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151126",
+    "test": "workload/train",
+    "median_ms": 65.38151018321514,
+    "mean_ms": 65.69745271865811,
+    "first_call_ms": 1372.491916641593,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "test-endpoint-759d3d6-14605-5151126.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151126",
+    "test": "workload/sample",
+    "median_ms": 865.4429614543915,
+    "mean_ms": 873.9386562258005,
+    "first_call_ms": 1102.5679241865873,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "test-endpoint-759d3d6-23858-5151126.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151126",
+    "test": "workload/train",
+    "median_ms": 65.25533646345139,
+    "mean_ms": 65.60274865478277,
+    "first_call_ms": 1389.3511481583118,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "test-endpoint-759d3d6-23858-5151126.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151126",
+    "test": "workload/sample",
+    "median_ms": 846.2031483650208,
+    "mean_ms": 861.0701873898506,
+    "first_call_ms": 1099.1919841617346,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "test-endpoint-8991e5f-165-5151126.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151126",
+    "test": "workload/train",
+    "median_ms": 56.3646350055933,
+    "mean_ms": 56.67361563869885,
+    "first_call_ms": 1611.0593974590302,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "test-endpoint-8991e5f-165-5151126.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151126",
+    "test": "workload/sample",
+    "median_ms": 381.28554821014404,
+    "mean_ms": 381.1591748148203,
+    "first_call_ms": 658.3532392978668,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "test-endpoint-8991e5f-21907-5151126.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151126",
+    "test": "workload/train",
+    "median_ms": 56.33151438087225,
+    "mean_ms": 56.523132271000314,
+    "first_call_ms": 1614.6984975785017,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  },
+  {
+    "file": "test-endpoint-8991e5f-21907-5151126.json",
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "job": "5151126",
+    "test": "workload/sample",
+    "median_ms": 381.98957964777946,
+    "mean_ms": 382.27087147533894,
+    "first_call_ms": 661.1865293234587,
+    "batch": 128,
+    "width": 256,
+    "compiled": false
+  }
+]

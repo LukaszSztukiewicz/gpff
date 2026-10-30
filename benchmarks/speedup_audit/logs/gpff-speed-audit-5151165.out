@@ -1,0 +1,54 @@
+name, driver_version, uuid, power.limit [W]
+NVIDIA GeForce RTX 4070, 595.71.05, GPU-8bd8f313-809d-dcf1-9f07-a7a8e47ef87f, 200.00 W
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151165", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/759d3d6/src", "args": {"batch": 128, "width": 256, "workers": 4, "compile": false, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/pipeline-759d3d6-20536-5151165.json"}}}
+[rank: 0] Seed set to 999
+/opt/conda/envs/gpff/lib/python3.13/site-packages/pytorch_lightning/utilities/parsing.py:213: Attribute 'model' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['model'])`.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+/opt/conda/envs/gpff/lib/python3.13/site-packages/pytorch_lightning/trainer/configuration_validator.py:70: You defined a `validation_step` but have no `val_dataloader`. Skipping val loop.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+/opt/conda/envs/gpff/lib/python3.13/site-packages/pytorch_lightning/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+`Trainer.fit` stopped: `max_steps=80` reached.
+{"test": "lightning/train_pipeline", "samples_ms": [156.85163978487253, 132.30583127588034, 152.0610360428691, 132.83334840089083, 149.4152795523405, 138.24778702110052], "median_ms": 138.24778747558594, "batch": 128, "width": 256, "workers": 4, "compiled": false, "skipped": 0}
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151165", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src", "args": {"batch": 128, "width": 256, "workers": 4, "compile": false, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/pipeline-8991e5f-12565-5151165.json"}}}
+[rank: 0] Seed set to 999
+/opt/conda/envs/gpff/lib/python3.13/site-packages/pytorch_lightning/utilities/parsing.py:213: Attribute 'model' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['model'])`.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+/opt/conda/envs/gpff/lib/python3.13/site-packages/pytorch_lightning/trainer/configuration_validator.py:70: You defined a `validation_step` but have no `val_dataloader`. Skipping val loop.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+/opt/conda/envs/gpff/lib/python3.13/site-packages/pytorch_lightning/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+`Trainer.fit` stopped: `max_steps=80` reached.
+{"test": "lightning/train_pipeline", "samples_ms": [157.66935758292675, 127.30656545609236, 150.3365958109498, 127.7204180136323, 152.9661539942026, 129.33329455554485], "median_ms": 129.3332977294922, "batch": 128, "width": 256, "workers": 4, "compiled": false, "skipped": 0}
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151165", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src", "args": {"batch": 128, "width": 256, "workers": 4, "compile": false, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/pipeline-8991e5f-28195-5151165.json"}}}
+[rank: 0] Seed set to 999
+/opt/conda/envs/gpff/lib/python3.13/site-packages/pytorch_lightning/utilities/parsing.py:213: Attribute 'model' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['model'])`.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+/opt/conda/envs/gpff/lib/python3.13/site-packages/pytorch_lightning/trainer/configuration_validator.py:70: You defined a `validation_step` but have no `val_dataloader`. Skipping val loop.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+/opt/conda/envs/gpff/lib/python3.13/site-packages/pytorch_lightning/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+`Trainer.fit` stopped: `max_steps=80` reached.
+{"test": "lightning/train_pipeline", "samples_ms": [154.20144814997911, 125.80837942659855, 153.5823155194521, 127.60698422789574, 154.9602124840021, 123.53932559490204], "median_ms": 127.60698699951172, "batch": 128, "width": 256, "workers": 4, "compiled": false, "skipped": 0}
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA GeForce RTX 4070", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151165", "node": "head058", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/759d3d6/src", "args": {"batch": 128, "width": 256, "workers": 4, "compile": false, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/pipeline-759d3d6-4860-5151165.json"}}}
+[rank: 0] Seed set to 999
+/opt/conda/envs/gpff/lib/python3.13/site-packages/pytorch_lightning/utilities/parsing.py:213: Attribute 'model' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['model'])`.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+/opt/conda/envs/gpff/lib/python3.13/site-packages/pytorch_lightning/trainer/configuration_validator.py:70: You defined a `validation_step` but have no `val_dataloader`. Skipping val loop.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+/opt/conda/envs/gpff/lib/python3.13/site-packages/pytorch_lightning/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+`Trainer.fit` stopped: `max_steps=80` reached.
+{"test": "lightning/train_pipeline", "samples_ms": [155.35680148750544, 128.7838550284505, 151.20257940143347, 130.99866807460785, 153.7392096593976, 129.6709343791008], "median_ms": 130.99867248535156, "batch": 128, "width": 256, "workers": 4, "compiled": false, "skipped": 0}

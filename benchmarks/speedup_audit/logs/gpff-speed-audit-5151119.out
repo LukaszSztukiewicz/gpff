@@ -1,0 +1,34 @@
+name, driver_version, uuid, power.limit [W]
+NVIDIA H200 NVL, 610.43.02, GPU-8e2f455b-1ac8-5fc1-b0e0-0fd85bc028a2, 600.00 W
+AUDIT_START endpoint-759d3d6-12820 2026-10-29T12:33:23+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA H200 NVL", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151119", "node": "head056", "threads": 4, "matmul_precision": "high", "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/759d3d6/src", "args": {"mode": "workload", "batch": 512, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/endpoint-759d3d6-12820-5151119.json"}}}
+{"test": "workload/train", "median_ms": 40.74058122932911, "samples_ms": [40.708372835069895, 40.74058122932911, 40.72167305275798, 40.744812693446875, 40.8133203163743, 40.81589402630925, 40.69662047550082], "first_call_ms": 607.7464921399951, "peak_allocated_gib": 11.422627449035645, "batch": 512, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 208.51696282625198, "samples_ms": [204.9399819225073, 208.51696282625198, 196.83452136814594, 239.29594177752733, 248.01585357636213], "first_call_ms": 330.0926787778735, "peak_allocated_gib": 1.4294862747192383, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE endpoint-759d3d6-12820 2026-10-29T12:33:40+01:00
+AUDIT_START endpoint-8991e5f-8244 2026-10-29T12:33:40+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA H200 NVL", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151119", "node": "head056", "threads": 4, "matmul_precision": "high", "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src", "args": {"mode": "workload", "batch": 512, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/endpoint-8991e5f-8244-5151119.json"}}}
+{"test": "workload/train", "median_ms": 35.55511822924018, "samples_ms": [35.53810250014067, 35.55511822924018, 35.58419179171324, 35.513736307621, 35.53873859345913, 35.855403169989586, 35.63263453543186], "first_call_ms": 894.1281521692872, "peak_allocated_gib": 10.326848983764648, "batch": 512, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 74.91274550557137, "samples_ms": [75.11219661682844, 74.70873091369867, 74.62272234261036, 74.91274550557137, 76.08460355550051], "first_call_ms": 235.95238849520683, "peak_allocated_gib": 1.1551027297973633, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE endpoint-8991e5f-8244 2026-10-29T12:33:56+01:00
+AUDIT_START endpoint-8991e5f-925 2026-10-29T12:33:56+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA H200 NVL", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151119", "node": "head056", "threads": 4, "matmul_precision": "high", "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src", "args": {"mode": "workload", "batch": 512, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/endpoint-8991e5f-925-5151119.json"}}}
+{"test": "workload/train", "median_ms": 35.53877351805568, "samples_ms": [35.64185323193669, 35.53877351805568, 35.52397061139345, 35.51230859011412, 35.52677575498819, 35.64698528498411, 35.63610976561904], "first_call_ms": 886.6121731698513, "peak_allocated_gib": 10.326848983764648, "batch": 512, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 75.9689686819911, "samples_ms": [77.39849202334881, 76.06962975114584, 75.6166111677885, 75.9689686819911, 75.67010167986155], "first_call_ms": 237.648731097579, "peak_allocated_gib": 1.1551027297973633, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE endpoint-8991e5f-925 2026-10-29T12:34:11+01:00
+AUDIT_START endpoint-759d3d6-10991 2026-10-29T12:34:11+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA H200 NVL", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151119", "node": "head056", "threads": 4, "matmul_precision": "high", "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/759d3d6/src", "args": {"mode": "workload", "batch": 512, "width": 256, "steps": 16, "compile": false, "train": true, "serialize": true, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/endpoint-759d3d6-10991-5151119.json"}}}
+{"test": "workload/train", "median_ms": 40.78531777486205, "samples_ms": [40.78531777486205, 40.80312931910157, 40.941011626273394, 40.79023562371731, 40.75237829238176, 40.73460213840008, 40.728652849793434], "first_call_ms": 794.7418438270688, "peak_allocated_gib": 11.422627449035645, "batch": 512, "width": 256, "compiled": false}
+{"test": "workload/sample", "median_ms": 218.22969056665897, "samples_ms": [216.86605643481016, 229.84907776117325, 209.42005515098572, 218.22969056665897, 225.34669935703278], "first_call_ms": 377.70570907741785, "peak_allocated_gib": 1.4294862747192383, "batch": 128, "width": 256, "steps": 16, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 16.0, "nfe_max": 16}}
+AUDIT_DONE endpoint-759d3d6-10991 2026-10-29T12:34:29+01:00

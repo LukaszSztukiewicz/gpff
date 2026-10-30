@@ -1,0 +1,56 @@
+[
+  {
+    "environment": {
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "torch": "2.14.1+cu130",
+      "cuda": "13.0",
+      "job": "5151278",
+      "node": "head078",
+      "threads": 4,
+      "matmul_precision": "high",
+      "deterministic": false,
+      "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src",
+      "args": {
+        "mode": "deferred",
+        "batch": 128,
+        "width": 256,
+        "steps": 16,
+        "compile": false,
+        "train": false,
+        "serialize": false,
+        "deterministic": false,
+        "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/deferred16-5151278.json"
+      }
+    }
+  },
+  {
+    "test": "632660a/3_batch_pipeline",
+    "before_ms": 1627.4321265518665,
+    "after_ms": 1551.1177722364664,
+    "speedup": 1.058465770327163,
+    "paired_speedup_ci95": [
+      1.0239801952517744,
+      1.0836707926545033
+    ],
+    "before_samples_ms": [
+      1641.8050676584244,
+      1623.4720051288605,
+      1627.4321265518665,
+      1683.6456768214703,
+      1624.8394157737494
+    ],
+    "after_samples_ms": [
+      1551.1177722364664,
+      1585.4525435715914,
+      1542.8724847733974,
+      1576.3853285461664,
+      1499.3847087025642
+    ],
+    "batch": 128,
+    "width": 256,
+    "steps": 16,
+    "batches": 3,
+    "compiled": false,
+    "rdkit": "real QM9 geometries"
+  }
+]

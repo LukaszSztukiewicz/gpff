@@ -1,0 +1,90 @@
+[
+  {
+    "environment": {
+      "gpu": "NVIDIA GeForce RTX 4070",
+      "torch": "2.14.1+cu130",
+      "cuda": "13.0",
+      "job": "5151164",
+      "node": "head058",
+      "threads": 4,
+      "matmul_precision": "high",
+      "deterministic": false,
+      "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src",
+      "args": {
+        "mode": "extra",
+        "batch": 128,
+        "width": 256,
+        "steps": 16,
+        "compile": false,
+        "train": false,
+        "serialize": false,
+        "deterministic": false,
+        "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/extra-5151164.json"
+      }
+    }
+  },
+  {
+    "test": "831b100/full_DD16",
+    "before_ms": 377.63766944408417,
+    "after_ms": 377.54547968506813,
+    "speedup": 1.0011098259567202,
+    "paired_speedup_ci95": [
+      0.9980447293090989,
+      1.0031909925417295
+    ],
+    "before_samples_ms": [
+      377.6469733566046,
+      377.228818833828,
+      377.27691046893597,
+      377.14093178510666,
+      379.5071169734001,
+      378.37050668895245,
+      377.63766944408417
+    ],
+    "after_samples_ms": [
+      377.1776333451271,
+      377.8649363666773,
+      378.0160341411829,
+      376.7228350043297,
+      377.54547968506813,
+      377.16696970164776,
+      384.99416410923004
+    ]
+  },
+  {
+    "correctness": "b24eda8/precision",
+    "geometry": "real",
+    "precision": "high",
+    "old_new_maxabs": 0.09212324768304825,
+    "old_reference_maxabs": 9.754300117492676e-05,
+    "new_reference_maxabs": 0.09211361408233643,
+    "old_new_relative_l2": 0.0016421518521383405
+  },
+  {
+    "correctness": "b24eda8/precision",
+    "geometry": "real",
+    "precision": "highest",
+    "old_new_maxabs": 0.00015284866094589233,
+    "old_reference_maxabs": 5.245208740234375e-05,
+    "new_reference_maxabs": 0.00010039657354354858,
+    "old_new_relative_l2": 2.432111386951874e-06
+  },
+  {
+    "correctness": "b24eda8/precision",
+    "geometry": "random",
+    "precision": "high",
+    "old_new_maxabs": 0.0014989376068115234,
+    "old_reference_maxabs": 4.76837158203125e-07,
+    "new_reference_maxabs": 0.0014992952346801758,
+    "old_new_relative_l2": 0.0003096034633927047
+  },
+  {
+    "correctness": "b24eda8/precision",
+    "geometry": "random",
+    "precision": "highest",
+    "old_new_maxabs": 1.0728836059570312e-06,
+    "old_reference_maxabs": 7.152557373046875e-07,
+    "new_reference_maxabs": 5.960464477539062e-07,
+    "old_new_relative_l2": 1.1575519209827689e-07
+  }
+]

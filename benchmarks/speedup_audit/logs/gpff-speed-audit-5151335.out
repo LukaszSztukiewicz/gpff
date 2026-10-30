@@ -1,0 +1,16 @@
+name, driver_version, uuid, power.limit [W]
+NVIDIA H100 PCIe, 595.71.05, GPU-dabf5020-46a2-53a9-d701-fa935daa77ab, 350.00 W
+AUDIT_START long-759d3d6 2026-10-29T12:42:19+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA H100 PCIe", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151335", "node": "head073", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/759d3d6/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 256, "compile": false, "train": false, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/long-759d3d6-5151335.json"}}}
+{"test": "workload/sample", "median_ms": 2209.713488817215, "samples_ms": [2213.6263009160757, 2209.713488817215, 2214.6607786417007, 2200.872752815485, 2205.914856866002], "first_call_ms": 3381.3175316900015, "peak_allocated_gib": 1.3155488967895508, "batch": 128, "width": 256, "steps": 256, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 256.0, "nfe_max": 256}}
+AUDIT_DONE long-759d3d6 2026-10-29T12:42:56+01:00
+AUDIT_START long-8991e5f 2026-10-29T12:42:56+01:00
+/opt/conda/envs/gpff/lib/python3.13/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+{"environment": {"gpu": "NVIDIA H100 PCIe", "torch": "2.14.1+cu130", "cuda": "13.0", "job": "5151335", "node": "head073", "threads": 4, "matmul_precision": "high", "deterministic": false, "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src", "args": {"mode": "workload", "batch": 128, "width": 256, "steps": 256, "compile": false, "train": false, "serialize": true, "deterministic": false, "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/long-8991e5f-5151335.json"}}}
+{"test": "workload/sample", "median_ms": 1619.1309113055468, "samples_ms": [1614.9852201342583, 1619.8671516031027, 1623.3433168381453, 1619.1309113055468, 1613.526102155447], "first_call_ms": 2964.5156525075436, "peak_allocated_gib": 1.041907787322998, "batch": 128, "width": 256, "steps": 256, "compiled": false, "serialize": true}
+{"sample_check": {"finite": true, "nfe_mean": 256.0, "nfe_max": 256}}
+AUDIT_DONE long-8991e5f 2026-10-29T12:43:29+01:00

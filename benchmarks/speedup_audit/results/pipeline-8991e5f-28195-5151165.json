@@ -1,0 +1,40 @@
+[
+  {
+    "environment": {
+      "gpu": "NVIDIA GeForce RTX 4070",
+      "torch": "2.14.1+cu130",
+      "cuda": "13.0",
+      "job": "5151165",
+      "node": "head058",
+      "threads": 4,
+      "matmul_precision": "high",
+      "deterministic": false,
+      "pythonpath": "/home/lsztuk/gpff/frozen_code/speedup-audit-20261029/8991e5f/src",
+      "args": {
+        "batch": 128,
+        "width": 256,
+        "workers": 4,
+        "compile": false,
+        "deterministic": false,
+        "out": "/home/lsztuk/gpff/scratch/speedup-audit-20261029/results/pipeline-8991e5f-28195-5151165.json"
+      }
+    }
+  },
+  {
+    "test": "lightning/train_pipeline",
+    "samples_ms": [
+      154.20144814997911,
+      125.80837942659855,
+      153.5823155194521,
+      127.60698422789574,
+      154.9602124840021,
+      123.53932559490204
+    ],
+    "median_ms": 127.60698699951172,
+    "batch": 128,
+    "width": 256,
+    "workers": 4,
+    "compiled": false,
+    "skipped": 0
+  }
+]
