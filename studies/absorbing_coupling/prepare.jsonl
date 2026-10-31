@@ -1,0 +1,1 @@
+{"name":"Prepare immutable pilot matrix","entrypoint":"python","args":["$SNAPSHOT/studies/absorbing_coupling/prepare_tasks.py"]}

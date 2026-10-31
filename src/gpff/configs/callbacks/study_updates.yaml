@@ -1,0 +1,8 @@
+study_updates:
+  _target_: gpff.study_callbacks.UpdateCheckpoint
+  updates: [100, 500, 1000, 2000]
+  dirpath: updates
+input_audit:
+  _target_: gpff.study_callbacks.InputAudit
+  steps: [0, 1, 2, 99, 499, 999, 1999]
+  path: input_audit.jsonl

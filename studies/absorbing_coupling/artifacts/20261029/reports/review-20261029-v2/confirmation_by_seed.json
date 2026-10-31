@@ -1,0 +1,53 @@
+[
+  {
+    "setting": "abs256",
+    "n_generation_seeds": 3,
+    "attempts_per_seed": [
+      10000,
+      10000,
+      10000
+    ],
+    "seeds": [
+      42069,
+      42070,
+      42071
+    ],
+    "note": "Per-seed metrics; this does not measure training-seed variability or pooled uniqueness.",
+    "validity": {
+      "mean": 0.8985333333333334,
+      "std_across_generation_seeds": 0.002107921567168341
+    },
+    "vun": {
+      "mean": 0.4618333333333333,
+      "std_across_generation_seeds": 0.006169548875998411
+    },
+    "uniqueness": {
+      "mean": 0.9040619275243076,
+      "std_across_generation_seeds": 0.0025793181064565607
+    },
+    "element_tv": {
+      "mean": 0.022914636037760224,
+      "std_across_generation_seeds": 0.00039276384644309467
+    },
+    "atom_N": {
+      "mean": 0.03978850023384584,
+      "std_across_generation_seeds": 0.0004554776643842582
+    },
+    "atom_O": {
+      "mean": 0.07159144973705954,
+      "std_across_generation_seeds": 0.00011122774683069658
+    },
+    "mean_nfe": {
+      "mean": 255.92443333333333,
+      "std_across_generation_seeds": 0.049953011253920473
+    },
+    "bond_w1": {
+      "mean": 0.005746729389401804,
+      "std_across_generation_seeds": 2.0767077642796495e-05
+    },
+    "angle_w1": {
+      "mean": 1.2056912733281664,
+      "std_across_generation_seeds": 0.0045167590724652
+    }
+  }
+]

@@ -1,0 +1,1 @@
+{"name":"E1 training-only joint formula table","module":"gpff.cli.absorbing_study","args":["formula","--dataset","$DATASET","--split","$SOURCE/frozen/split.npz","--output","$STUDY/formula_prior.json"]}

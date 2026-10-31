@@ -1,0 +1,22 @@
+commit 4406a0da7107403a6ddb02b44101e5689cbc965b
+Author:     Lukasz Sztukiewicz <sztukiewicz.lukasz@gmail.com>
+AuthorDate: Wed Oct 28 15:59:55 2026 +0100
+Commit:     Lukasz Sztukiewicz <sztukiewicz.lukasz@gmail.com>
+CommitDate: Wed Oct 28 15:59:55 2026 +0100
+
+    feat(types): add absorbing diffusion and configurable type readout
+
+ src/gpff/configs/experiment/gpff_absorbing.yaml | 117 +++++++
+ src/gpff/configs/prior/absorbing.yaml           |   5 +
+ src/gpff/configs/sampler/absorbing.yaml         |  32 ++
+ src/gpff/configs/sampler/typed_readout.yaml     |  27 ++
+ src/gpff/data/transform/absorbing_types.py      | 133 ++++++++
+ src/gpff/keys.py                                |   5 +
+ src/gpff/model/type_heads.py                    |  87 +++++
+ src/gpff/sample/absorbing.py                    | 343 ++++++++++++++++++++
+ src/gpff/sample/base.py                         |   3 +
+ src/gpff/sample/type_readout.py                 | 186 +++++++++++
+ src/gpff/vocab.py                               | 157 +++++++++
+ tests/test_absorbing_types.py                   | 403 ++++++++++++++++++++++++
+ tests/test_type_readout.py                      | 180 +++++++++++
+ 13 files changed, 1678 insertions(+)

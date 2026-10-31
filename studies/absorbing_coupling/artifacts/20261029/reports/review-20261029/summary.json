@@ -1,0 +1,740 @@
+[
+  {
+    "name": "confirmation5000/abs256/seed42069",
+    "partition": "test",
+    "seed": 42069,
+    "n": 10000,
+    "validity": 0.8997,
+    "vun": 0.4674,
+    "uniqueness": 0.9059686562187396,
+    "element_tv": 0.022461346022196262,
+    "atom_N": 0.040298118459943105,
+    "atom_O": 0.07153512152652622,
+    "mol_N": 0.4839,
+    "mol_O": 0.8172,
+    "cooccurrence": 0.3639,
+    "mean_nfe": 255.8748,
+    "bond_w1": 0.0057444579287827015,
+    "angle_w1": 1.2093198899557331,
+    "wall_seconds": 433.10332095995545,
+    "failures": {
+      "radical": 616,
+      "bond_orders": 382,
+      "nonfinite_geometry": 5
+    },
+    "bootstrap": {
+      "validity": [
+        0.8935,
+        0.906305
+      ],
+      "all_element_tv": [
+        0.021113129636182452,
+        0.02368068620228337
+      ],
+      "valid_element_tv": [
+        0.02179827774078412,
+        0.024658525587123642
+      ]
+    }
+  },
+  {
+    "name": "pilots/abs256lin",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.796875,
+    "vun": 0.4609375,
+    "uniqueness": 1.0,
+    "element_tv": 0.022559886798171974,
+    "atom_N": 0.038478355924792304,
+    "atom_O": 0.07389593353738522,
+    "mol_N": 0.4609375,
+    "mol_O": 0.8671875,
+    "cooccurrence": 0.3828125,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.006902693390246911,
+    "angle_w1": 1.1865952117218712,
+    "wall_seconds": 9.31011593799849,
+    "failures": {
+      "bond_orders": 7,
+      "radical": 19
+    },
+    "bootstrap": {
+      "validity": [
+        0.71875,
+        0.859375
+      ],
+      "all_element_tv": [
+        0.014127446137015354,
+        0.03484507828326957
+      ],
+      "valid_element_tv": [
+        0.014861915345649523,
+        0.037884641692075005
+      ]
+    }
+  },
+  {
+    "name": "pilots/legacy-confidence",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.9609375,
+    "vun": 0.4921875,
+    "uniqueness": 0.991869918699187,
+    "element_tv": 0.041361810715968235,
+    "atom_N": 0.03716659379099257,
+    "atom_O": 0.05640577175338872,
+    "mol_N": 0.3828125,
+    "mol_O": 0.6875,
+    "cooccurrence": 0.1953125,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.007252884652734553,
+    "angle_w1": 1.4591616178175657,
+    "wall_seconds": 9.265975262998836,
+    "failures": {
+      "bond_orders": 5
+    },
+    "bootstrap": {
+      "validity": [
+        0.9294921875,
+        0.9921875
+      ],
+      "all_element_tv": [
+        0.030238839456106264,
+        0.052110951724787885
+      ],
+      "valid_element_tv": [
+        0.028958105277594636,
+        0.05183207295701096
+      ]
+    }
+  },
+  {
+    "name": "pilots/legacy-random",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.9609375,
+    "vun": 0.421875,
+    "uniqueness": 0.983739837398374,
+    "element_tv": 0.0509813996971663,
+    "atom_N": 0.02929602098819414,
+    "atom_O": 0.05465675557498907,
+    "mol_N": 0.34375,
+    "mol_O": 0.6875,
+    "cooccurrence": 0.2578125,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.006412933139981331,
+    "angle_w1": 1.4902822721972373,
+    "wall_seconds": 8.26588810235262,
+    "failures": {
+      "radical": 4,
+      "bond_orders": 1
+    },
+    "bootstrap": {
+      "validity": [
+        0.921875,
+        0.9921875
+      ],
+      "all_element_tv": [
+        0.03597957913000325,
+        0.06427910415981154
+      ],
+      "valid_element_tv": [
+        0.033348583341694604,
+        0.06216636900421114
+      ]
+    }
+  },
+  {
+    "name": "pilots/t1-nfe",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.78125,
+    "vun": 0.4609375,
+    "uniqueness": 1.0,
+    "element_tv": 0.01487905330411796,
+    "atom_N": 0.04241364232619152,
+    "atom_O": 0.07783121993878443,
+    "mol_N": 0.4453125,
+    "mol_O": 0.8515625,
+    "cooccurrence": 0.34375,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.007387137927808745,
+    "angle_w1": 1.5993206957333967,
+    "wall_seconds": 7.529126808047295,
+    "failures": {
+      "radical": 21,
+      "bond_orders": 7
+    },
+    "bootstrap": {
+      "validity": [
+        0.7029296875,
+        0.8515625
+      ],
+      "all_element_tv": [
+        0.009643654641083825,
+        0.030058859895843216
+      ],
+      "valid_element_tv": [
+        0.0126394974583881,
+        0.03381598374177913
+      ]
+    }
+  },
+  {
+    "name": "pilots5/abs256",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.8046875,
+    "vun": 0.46875,
+    "uniqueness": 1.0,
+    "element_tv": 0.023023405613190988,
+    "atom_N": 0.04197638828159161,
+    "atom_O": 0.069960647135986,
+    "mol_N": 0.515625,
+    "mol_O": 0.796875,
+    "cooccurrence": 0.3828125,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.006773250708090029,
+    "angle_w1": 1.3346795101372586,
+    "wall_seconds": 9.688641638997069,
+    "failures": {
+      "bond_orders": 9,
+      "radical": 16
+    },
+    "bootstrap": {
+      "validity": [
+        0.734375,
+        0.8671875
+      ],
+      "all_element_tv": [
+        0.012848816923405334,
+        0.036692596643848434
+      ],
+      "valid_element_tv": [
+        0.016087183451362008,
+        0.041190615039284006
+      ]
+    }
+  },
+  {
+    "name": "pilots5/abs256lin",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.7734375,
+    "vun": 0.4609375,
+    "uniqueness": 1.0,
+    "element_tv": 0.012529308542793088,
+    "atom_N": 0.04634892872759073,
+    "atom_O": 0.0765194578049847,
+    "mol_N": 0.53125,
+    "mol_O": 0.8671875,
+    "cooccurrence": 0.46875,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.006410987737929688,
+    "angle_w1": 1.108710969012321,
+    "wall_seconds": 8.852922117337584,
+    "failures": {
+      "radical": 21,
+      "bond_orders": 8
+    },
+    "bootstrap": {
+      "validity": [
+        0.6951171875,
+        0.8359375
+      ],
+      "all_element_tv": [
+        0.005710601545403749,
+        0.02575165571744823
+      ],
+      "valid_element_tv": [
+        0.0047426835687727755,
+        0.026108395719348556
+      ]
+    }
+  },
+  {
+    "name": "pilots5/legacy-confidence",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.984375,
+    "vun": 0.4453125,
+    "uniqueness": 1.0,
+    "element_tv": 0.03349123791316981,
+    "atom_N": 0.034105815478793176,
+    "atom_O": 0.06733712286838653,
+    "mol_N": 0.40625,
+    "mol_O": 0.828125,
+    "cooccurrence": 0.296875,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.006729292595798112,
+    "angle_w1": 1.0895029548961368,
+    "wall_seconds": 8.930806545999076,
+    "failures": {
+      "radical": 1,
+      "bond_orders": 1
+    },
+    "bootstrap": {
+      "validity": [
+        0.953125,
+        1.0
+      ],
+      "all_element_tv": [
+        0.02187080281314452,
+        0.045943287238008154
+      ],
+      "valid_element_tv": [
+        0.02069553989671316,
+        0.045526272036595934
+      ]
+    }
+  },
+  {
+    "name": "pilots5/legacy-random",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.9375,
+    "vun": 0.4765625,
+    "uniqueness": 0.9916666666666667,
+    "element_tv": 0.0400500485821685,
+    "atom_N": 0.031045037166593792,
+    "atom_O": 0.06383909051158723,
+    "mol_N": 0.421875,
+    "mol_O": 0.75,
+    "cooccurrence": 0.3125,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.006090368812968817,
+    "angle_w1": 1.174594685027841,
+    "wall_seconds": 8.971753750927746,
+    "failures": {
+      "bond_orders": 3,
+      "radical": 5
+    },
+    "bootstrap": {
+      "validity": [
+        0.8984375,
+        0.9765625
+      ],
+      "all_element_tv": [
+        0.028263619707387194,
+        0.05432404484705069
+      ],
+      "valid_element_tv": [
+        0.031029297355470612,
+        0.05752179713070707
+      ]
+    }
+  },
+  {
+    "name": "pilots5/remdm-confidence",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.8125,
+    "vun": 0.390625,
+    "uniqueness": 1.0,
+    "element_tv": 0.04835787542956682,
+    "atom_N": 0.027984258854394404,
+    "atom_O": 0.05859204197638828,
+    "mol_N": 0.3359375,
+    "mol_O": 0.7265625,
+    "cooccurrence": 0.21875,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.00694333366347759,
+    "angle_w1": 1.6842564551423953,
+    "wall_seconds": 8.845730653003557,
+    "failures": {
+      "radical": 14,
+      "bond_orders": 10
+    },
+    "bootstrap": {
+      "validity": [
+        0.75,
+        0.875
+      ],
+      "all_element_tv": [
+        0.03572409848388272,
+        0.061941005139597265
+      ],
+      "valid_element_tv": [
+        0.02992732911650075,
+        0.05788291283641166
+      ]
+    }
+  },
+  {
+    "name": "pilots5/remdm-random",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.9609375,
+    "vun": 0.4921875,
+    "uniqueness": 1.0,
+    "element_tv": 0.02474615702117153,
+    "atom_N": 0.04022737210319195,
+    "atom_O": 0.069960647135986,
+    "mol_N": 0.421875,
+    "mol_O": 0.8203125,
+    "cooccurrence": 0.34375,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.006130902667557625,
+    "angle_w1": 1.0274506151708989,
+    "wall_seconds": 8.994631918998493,
+    "failures": {
+      "bond_orders": 4,
+      "radical": 1
+    },
+    "bootstrap": {
+      "validity": [
+        0.9296875,
+        0.9921875
+      ],
+      "all_element_tv": [
+        0.009734348221269987,
+        0.041864454556373006
+      ],
+      "valid_element_tv": [
+        0.016148751312898602,
+        0.04268112585392694
+      ]
+    }
+  },
+  {
+    "name": "pilots5/t1-early",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.6484375,
+    "vun": 0.3828125,
+    "uniqueness": 1.0,
+    "element_tv": 0.011818274991918568,
+    "atom_N": 0.045474420638390904,
+    "atom_O": 0.07783121993878443,
+    "mol_N": 0.5078125,
+    "mol_O": 0.8828125,
+    "cooccurrence": 0.4296875,
+    "mean_nfe": 295.25,
+    "bond_w1": 0.006444652659309817,
+    "angle_w1": 1.144266912478725,
+    "wall_seconds": 9.913800176997029,
+    "failures": {
+      "bond_orders": 21,
+      "radical": 24
+    },
+    "bootstrap": {
+      "validity": [
+        0.5546875,
+        0.7347656250000001
+      ],
+      "all_element_tv": [
+        0.005114485760344849,
+        0.025849399584343662
+      ],
+      "valid_element_tv": [
+        0.006275842137870206,
+        0.029689886917067358
+      ]
+    }
+  },
+  {
+    "name": "pilots5/t1-nfe",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.8359375,
+    "vun": 0.5,
+    "uniqueness": 1.0,
+    "element_tv": 0.022122632753572055,
+    "atom_N": 0.036729339746392656,
+    "atom_O": 0.07608220376038478,
+    "mol_N": 0.484375,
+    "mol_O": 0.796875,
+    "cooccurrence": 0.3359375,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.006614858305587937,
+    "angle_w1": 1.329850260745662,
+    "wall_seconds": 8.1531443710046,
+    "failures": {
+      "bond_orders": 10,
+      "radical": 11
+    },
+    "bootstrap": {
+      "validity": [
+        0.765625,
+        0.890625
+      ],
+      "all_element_tv": [
+        0.013179404135290283,
+        0.0358515453733338
+      ],
+      "valid_element_tv": [
+        0.011220125636005955,
+        0.03450959912461469
+      ]
+    }
+  },
+  {
+    "name": "pilots5/t1-steps",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.8203125,
+    "vun": 0.4296875,
+    "uniqueness": 1.0,
+    "element_tv": 0.01949910848597257,
+    "atom_N": 0.041539134236991695,
+    "atom_O": 0.07389593353738522,
+    "mol_N": 0.4609375,
+    "mol_O": 0.8046875,
+    "cooccurrence": 0.328125,
+    "mean_nfe": 512.0,
+    "bond_w1": 0.006110219558971276,
+    "angle_w1": 0.9981763018602852,
+    "wall_seconds": 14.386900431476533,
+    "failures": {
+      "radical": 15,
+      "bond_orders": 8
+    },
+    "bootstrap": {
+      "validity": [
+        0.75,
+        0.8830078125
+      ],
+      "all_element_tv": [
+        0.009155409127315347,
+        0.03364689655986554
+      ],
+      "valid_element_tv": [
+        0.009727653358973527,
+        0.03773582355828142
+      ]
+    }
+  },
+  {
+    "name": "pilots5/types-given",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.984375,
+    "vun": 0.59375,
+    "uniqueness": 1.0,
+    "element_tv": 0.008922404413021699,
+    "atom_N": 0.05859204197638828,
+    "atom_O": 0.08526453869698294,
+    "mol_N": 0.578125,
+    "mol_O": 0.84375,
+    "cooccurrence": 0.4609375,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.006840264713955272,
+    "angle_w1": 0.9548995083206339,
+    "wall_seconds": 7.521425103768706,
+    "failures": {
+      "bond_orders": 2
+    },
+    "bootstrap": {
+      "validity": [
+        0.9609375,
+        1.0
+      ],
+      "all_element_tv": [
+        0.004551063111382386,
+        0.02837555526718912
+      ],
+      "valid_element_tv": [
+        0.0035551451057705924,
+        0.027578672659199138
+      ]
+    }
+  },
+  {
+    "name": "pilots5/unconditioned-schedule",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.5390625,
+    "vun": 0.3046875,
+    "uniqueness": 1.0,
+    "element_tv": 0.00892240441302174,
+    "atom_N": 0.0660253607345868,
+    "atom_O": 0.07783121993878443,
+    "mol_N": 0.640625,
+    "mol_O": 0.8359375,
+    "cooccurrence": 0.5234375,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.0065278304207152275,
+    "angle_w1": 1.035569767161654,
+    "wall_seconds": 9.231388664804399,
+    "failures": {
+      "bond_orders": 29,
+      "radical": 30
+    },
+    "bootstrap": {
+      "validity": [
+        0.4529296875,
+        0.6328125
+      ],
+      "all_element_tv": [
+        0.004933822156780419,
+        0.0260878661115264
+      ],
+      "valid_element_tv": [
+        0.005349963476439233,
+        0.031480971321829844
+      ]
+    }
+  },
+  {
+    "name": "pilots7/abs256",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.78125,
+    "vun": 0.3984375,
+    "uniqueness": 1.0,
+    "element_tv": 0.016628069482517615,
+    "atom_N": 0.040664626147791864,
+    "atom_O": 0.07783121993878443,
+    "mol_N": 0.4921875,
+    "mol_O": 0.8515625,
+    "cooccurrence": 0.3984375,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.006890590740498581,
+    "angle_w1": 1.4601294669078881,
+    "wall_seconds": 9.525631999000325,
+    "failures": {
+      "radical": 21,
+      "bond_orders": 7
+    },
+    "bootstrap": {
+      "validity": [
+        0.71875,
+        0.84375
+      ],
+      "all_element_tv": [
+        0.011569424080638525,
+        0.03191730239781019
+      ],
+      "valid_element_tv": [
+        0.01272226639097864,
+        0.03515938268244588
+      ]
+    }
+  },
+  {
+    "name": "pilots7/e1-conditional",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.953125,
+    "vun": 0.6171875,
+    "uniqueness": 1.0,
+    "element_tv": 0.009671431373759472,
+    "atom_N": 0.05902929602098819,
+    "atom_O": 0.07477044162658504,
+    "mol_N": 0.5859375,
+    "mol_O": 0.7890625,
+    "cooccurrence": 0.4296875,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.006553749022586663,
+    "angle_w1": 1.4407684535581313,
+    "wall_seconds": 6.87102884054184,
+    "failures": {
+      "radical": 3,
+      "bond_orders": 3
+    },
+    "bootstrap": {
+      "validity": [
+        0.9140625,
+        0.984375
+      ],
+      "all_element_tv": [
+        0.0050606583419216715,
+        0.028570369866348914
+      ],
+      "valid_element_tv": [
+        0.004921310438314209,
+        0.02627215968130463
+      ]
+    }
+  },
+  {
+    "name": "pilots7/e1-joint",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.9921875,
+    "vun": 0.5546875,
+    "uniqueness": 1.0,
+    "element_tv": 0.0059508060545913075,
+    "atom_N": 0.05444250871080139,
+    "atom_O": 0.08275261324041812,
+    "mol_N": 0.609375,
+    "mol_O": 0.875,
+    "cooccurrence": 0.5234375,
+    "mean_nfe": 256.0,
+    "bond_w1": 0.006535374006224611,
+    "angle_w1": 1.2027575005163151,
+    "wall_seconds": 6.715964708477259,
+    "failures": {
+      "bond_orders": 1
+    },
+    "bootstrap": {
+      "validity": [
+        0.96875,
+        1.0
+      ],
+      "all_element_tv": [
+        0.0035935936439893085,
+        0.017848842959324773
+      ],
+      "valid_element_tv": [
+        0.004222769497725555,
+        0.017836490921222668
+      ]
+    }
+  },
+  {
+    "name": "pilots7/t1-steps",
+    "partition": "val",
+    "seed": 42069,
+    "n": 128,
+    "validity": 0.8046875,
+    "vun": 0.421875,
+    "uniqueness": 1.0,
+    "element_tv": 0.018187346352172857,
+    "atom_N": 0.04197638828159161,
+    "atom_O": 0.07477044162658504,
+    "mol_N": 0.4609375,
+    "mol_O": 0.828125,
+    "cooccurrence": 0.3515625,
+    "mean_nfe": 512.0,
+    "bond_w1": 0.00659486686451001,
+    "angle_w1": 1.2407481586194362,
+    "wall_seconds": 13.925805110993679,
+    "failures": {
+      "bond_orders": 9,
+      "radical": 16
+    },
+    "bootstrap": {
+      "validity": [
+        0.7421875,
+        0.8517578125
+      ],
+      "all_element_tv": [
+        0.007776593080791306,
+        0.03192389997421114
+      ],
+      "valid_element_tv": [
+        0.007188311245145933,
+        0.03276963973048789
+      ]
+    }
+  }
+]

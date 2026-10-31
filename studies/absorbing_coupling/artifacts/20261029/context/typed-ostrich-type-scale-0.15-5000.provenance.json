@@ -1,0 +1,586 @@
+{
+  "metadata": {
+    "bond_angles": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "samples_db_path": {
+          "md5": "649f19ec3c8b689d94527bb4f395f62c",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/repro/epoch_5000_model/sdd256/seed42069/samples.db"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:11"
+    },
+    "bond_lengths": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "samples_db_path": {
+          "md5": "649f19ec3c8b689d94527bb4f395f62c",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/repro/epoch_5000_model/sdd256/seed42069/samples.db"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:11"
+    },
+    "element_counts": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "samples_db_path": {
+          "md5": "649f19ec3c8b689d94527bb4f395f62c",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/repro/epoch_5000_model/sdd256/seed42069/samples.db"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:11"
+    },
+    "failure": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "samples_db_path": {
+          "md5": "649f19ec3c8b689d94527bb4f395f62c",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/repro/epoch_5000_model/sdd256/seed42069/samples.db"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:11"
+    },
+    "n_fragments": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "samples_db_path": {
+          "md5": "649f19ec3c8b689d94527bb4f395f62c",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/repro/epoch_5000_model/sdd256/seed42069/samples.db"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:11"
+    }
+  },
+  "results": {
+    "bond_angle_w1": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_bond_angles_path": {
+          "md5": "85acd5e42dedf81766bffd8007efef4d",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_angles.npz"
+        },
+        "reference_bond_lengths_path": {
+          "md5": "c39a0c984a9283835489f1094501c0bd",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_lengths.npz"
+        },
+        "reference_elongation_path": {
+          "md5": "d27f19c907e263fc77a8a2ba7729ab4e",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_elongation_values.npy"
+        },
+        "reference_smiles_path": {
+          "md5": "333a8ab4eb09a740ed33e2a82192db70",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_smiles_values.txt"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:39"
+    },
+    "bond_length_w1": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_bond_angles_path": {
+          "md5": "85acd5e42dedf81766bffd8007efef4d",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_angles.npz"
+        },
+        "reference_bond_lengths_path": {
+          "md5": "c39a0c984a9283835489f1094501c0bd",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_lengths.npz"
+        },
+        "reference_elongation_path": {
+          "md5": "d27f19c907e263fc77a8a2ba7729ab4e",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_elongation_values.npy"
+        },
+        "reference_smiles_path": {
+          "md5": "333a8ab4eb09a740ed33e2a82192db70",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_smiles_values.txt"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:39"
+    },
+    "element_fraction_C": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "element_fraction_F": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "element_fraction_H": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "element_fraction_N": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "element_fraction_O": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "element_tv": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "elongation_w1": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_bond_angles_path": {
+          "md5": "85acd5e42dedf81766bffd8007efef4d",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_angles.npz"
+        },
+        "reference_bond_lengths_path": {
+          "md5": "c39a0c984a9283835489f1094501c0bd",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_lengths.npz"
+        },
+        "reference_elongation_path": {
+          "md5": "d27f19c907e263fc77a8a2ba7729ab4e",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_elongation_values.npy"
+        },
+        "reference_smiles_path": {
+          "md5": "333a8ab4eb09a740ed33e2a82192db70",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_smiles_values.txt"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:39"
+    },
+    "failure_bond_orders": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_bond_angles_path": {
+          "md5": "85acd5e42dedf81766bffd8007efef4d",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_angles.npz"
+        },
+        "reference_bond_lengths_path": {
+          "md5": "c39a0c984a9283835489f1094501c0bd",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_lengths.npz"
+        },
+        "reference_elongation_path": {
+          "md5": "d27f19c907e263fc77a8a2ba7729ab4e",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_elongation_values.npy"
+        },
+        "reference_smiles_path": {
+          "md5": "333a8ab4eb09a740ed33e2a82192db70",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_smiles_values.txt"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:39"
+    },
+    "failure_error": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_bond_angles_path": {
+          "md5": "85acd5e42dedf81766bffd8007efef4d",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_angles.npz"
+        },
+        "reference_bond_lengths_path": {
+          "md5": "c39a0c984a9283835489f1094501c0bd",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_lengths.npz"
+        },
+        "reference_elongation_path": {
+          "md5": "d27f19c907e263fc77a8a2ba7729ab4e",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_elongation_values.npy"
+        },
+        "reference_smiles_path": {
+          "md5": "333a8ab4eb09a740ed33e2a82192db70",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_smiles_values.txt"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:39"
+    },
+    "failure_fragments": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_bond_angles_path": {
+          "md5": "85acd5e42dedf81766bffd8007efef4d",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_angles.npz"
+        },
+        "reference_bond_lengths_path": {
+          "md5": "c39a0c984a9283835489f1094501c0bd",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_lengths.npz"
+        },
+        "reference_elongation_path": {
+          "md5": "d27f19c907e263fc77a8a2ba7729ab4e",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_elongation_values.npy"
+        },
+        "reference_smiles_path": {
+          "md5": "333a8ab4eb09a740ed33e2a82192db70",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_smiles_values.txt"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:39"
+    },
+    "failure_nonfinite": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_bond_angles_path": {
+          "md5": "85acd5e42dedf81766bffd8007efef4d",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_angles.npz"
+        },
+        "reference_bond_lengths_path": {
+          "md5": "c39a0c984a9283835489f1094501c0bd",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_lengths.npz"
+        },
+        "reference_elongation_path": {
+          "md5": "d27f19c907e263fc77a8a2ba7729ab4e",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_elongation_values.npy"
+        },
+        "reference_smiles_path": {
+          "md5": "333a8ab4eb09a740ed33e2a82192db70",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_smiles_values.txt"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:39"
+    },
+    "failure_radical": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_bond_angles_path": {
+          "md5": "85acd5e42dedf81766bffd8007efef4d",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_angles.npz"
+        },
+        "reference_bond_lengths_path": {
+          "md5": "c39a0c984a9283835489f1094501c0bd",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_lengths.npz"
+        },
+        "reference_elongation_path": {
+          "md5": "d27f19c907e263fc77a8a2ba7729ab4e",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_elongation_values.npy"
+        },
+        "reference_smiles_path": {
+          "md5": "333a8ab4eb09a740ed33e2a82192db70",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_smiles_values.txt"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:39"
+    },
+    "failure_timeout": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_bond_angles_path": {
+          "md5": "85acd5e42dedf81766bffd8007efef4d",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_angles.npz"
+        },
+        "reference_bond_lengths_path": {
+          "md5": "c39a0c984a9283835489f1094501c0bd",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_lengths.npz"
+        },
+        "reference_elongation_path": {
+          "md5": "d27f19c907e263fc77a8a2ba7729ab4e",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_elongation_values.npy"
+        },
+        "reference_smiles_path": {
+          "md5": "333a8ab4eb09a740ed33e2a82192db70",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_smiles_values.txt"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:39"
+    },
+    "heteroatom_fraction": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "mean_n_atoms": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "molecule_fraction_C": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "molecule_fraction_F": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "molecule_fraction_H": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "molecule_fraction_N": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "molecule_fraction_O": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "n_molecules": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "size_w1": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_element_counts_path": {
+          "md5": "fa30a79d88525b0619fcfa755b20cac8",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_element_counts.npz"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:57:04"
+    },
+    "vun": {
+      "code": "/home/lsztuk/gpff/frozen_code/cf5d247-eval-tiers/src/gpff",
+      "inputs": {
+        "reference_bond_angles_path": {
+          "md5": "85acd5e42dedf81766bffd8007efef4d",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_angles.npz"
+        },
+        "reference_bond_lengths_path": {
+          "md5": "c39a0c984a9283835489f1094501c0bd",
+          "path": "/home/lsztuk/gpff/repro/assets_qm9_b36d9cd218f5998d/qm9_bond_lengths.npz"
+        },
+        "reference_elongation_path": {
+          "md5": "d27f19c907e263fc77a8a2ba7729ab4e",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_elongation_values.npy"
+        },
+        "reference_smiles_path": {
+          "md5": "333a8ab4eb09a740ed33e2a82192db70",
+          "path": "/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d/assets/qm9_smiles_values.txt"
+        },
+        "split_path": {
+          "md5": "0d919b864e813e02a2c467464d3de942",
+          "path": "/home/lsztuk/gpff/runs/default/26-10-24/typed-ostrich-type-scale-0.15/frozen/split.npz"
+        }
+      },
+      "posebusters": "0.2.12",
+      "rdkit": "2025.9.6",
+      "time": "2026-10-27T06:56:39"
+    }
+  }
+}

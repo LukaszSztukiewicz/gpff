@@ -1,0 +1,11 @@
+/home/lsztuk/gpff/scratch/absorbing-coupling/pilots-training/t2-ordinary-direct
+/home/lsztuk/gpff/scratch/absorbing-coupling/pilots-training/t2-rollout-direct
+/home/lsztuk/gpff/scratch/absorbing-coupling/pilots-training/t2-isotropic-direct
+/home/lsztuk/gpff/scratch/absorbing-coupling/pilots-training/t3-unconditioned-direct
+/home/lsztuk/gpff/scratch/absorbing-coupling/pilots-training/t3-sigma-scheduled
+/home/lsztuk/gpff/scratch/absorbing-coupling/pilots-training/t3-unconditioned-scheduled
+/home/lsztuk/gpff/scratch/absorbing-coupling/pilots-training/t2-ordinary-conditionals
+/home/lsztuk/gpff/scratch/absorbing-coupling/pilots-training/t2-rollout-conditionals
+/home/lsztuk/gpff/scratch/absorbing-coupling/pilots-training/t2-isotropic-conditionals
+/home/lsztuk/gpff/scratch/absorbing-coupling/pilots-training/t3-unconditioned-conditionals
+/home/lsztuk/gpff/scratch/absorbing-coupling/pilots-training/t3-sigma-conditionals

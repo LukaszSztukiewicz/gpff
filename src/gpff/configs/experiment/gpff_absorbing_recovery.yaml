@@ -1,0 +1,15 @@
+# @package _global_
+defaults:
+  - gpff_absorbing
+  - _self_
+task:
+  _target_: gpff.recovery_task.RecoveryTask
+  teacher_path: ${init_weights}
+  recovery:
+    _target_: gpff.model.recovery.RecoveryAugmentation
+    mode: rollout
+    probability: 0.5
+    step_size: 1.0
+    extra_noise_std: 0.0
+    seed: 12345
+    weight_generator: ${pseudo_pes.weight_generator}

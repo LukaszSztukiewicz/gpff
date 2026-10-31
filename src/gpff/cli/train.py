@@ -73,6 +73,12 @@ def train(config: DictConfig):
     # Init model
     log.info(f"Instantiating model <{config.model._target_}>")
     model = hydra.utils.instantiate(config.model)
+    if config.get("init_weights"):
+        if config.run.ckpt_path not in (None, ""):
+            raise ValueError("init_weights requires run.ckpt_path=null (fresh matched optimizer restart)")
+        from gpff.model.initialization import initialize_weights
+        log.info("Weights initialization: %s", initialize_weights(
+            model, config.init_weights, allow_sigma=bool(config.get("init_allow_sigma", False))))
     if config.get("compile") is not None:
         log.info(f"Compiling the model with <{config.compile}>")
         # in place, so state_dict keys and the pickled model keep their names
@@ -128,6 +134,9 @@ def train(config: DictConfig):
 
     # Train the model
     log.info("Starting training.")
+    if config.get("init_weights"):
+        # New module initialization must not change the matched data/RNG draws.
+        seed_everything(seed=config.seed, workers=True)
     trainer.fit(model=task, datamodule=datamodule, ckpt_path=config.run.ckpt_path, weights_only=False)
 
     # Evaluate model on test set after training

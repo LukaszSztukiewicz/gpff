@@ -1,0 +1,45 @@
+5145355 test pilot1
+5145360 test pilot2
+5145361 inference pilots snapshot=pilot2 afterok=5145360
+5145374 formula table snapshot=pilot2
+5145391 test pilot3
+5145392 CPU smoke pilot3
+5145393 formula table pilot3
+5147629 test pilot4
+5147630 prepare pilot4
+5147631 CPU smoke pilot4
+5147632 inference pilots snapshot=pilot4
+5147633 evaluate completed pilot2 with pilot4 report
+5147653 test pilot5
+5147654 prepare pilot5
+5147655 CPU smoke pilot5
+5147656 inference pilots snapshot=pilot5
+5147701 summary completed pilot2
+5147732 evaluate pilot5 aftercorr=5147656
+5147760 test pilot6
+5147761 CPU smoke pilot6
+5147762 100-update training pilots snapshot=pilot6 afterok=5147761
+5147831 test pilot7
+5147832 prepare pilot7
+5147833 E1 fix and D1 records pilot7
+5147834 evaluate pilot7
+5147762 moved to gpu-9m time=00:09:00 for 100-update pilots
+5147866 summary pilot5
+5147896 test pilot8 including real network neighbor cache parity
+5147904 training100 audit and main matrix preparation afterok=5147762
+5147905 paired inference tests
+5147906 confirmation matrix preparation
+5151347 final snapshot9 regression and shell checks
+5151348 five matched 2000-update main arms constraint=40gb
+5151349 epoch5000 18 confirmations n=10000
+5151350 test-reference evaluations aftercorr=5151349
+5151384 post-main six generation and five D2 comparisons afterok=5151348
+5151385 post-main evaluations aftercorr=5151384
+5151438 final report regression includes validation and test outputs
+5151460 current review summary
+5151461 automatic confirmation summary afterany=5151350
+5151462 automatic main summary afterany=5151385
+5151522 overlapping failure-count regression
+5151523 current v2 review summary
+5151524 confirmation v2 supplement afterany=5151350
+5151525 main v2 supplement afterany=5151385

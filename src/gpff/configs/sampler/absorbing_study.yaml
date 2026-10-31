@@ -1,0 +1,9 @@
+defaults:
+  - absorbing
+  - _self_
+_target_: gpff.sample.absorbing_study.CoupledAbsorbingSampler
+remask_kernel: legacy
+recompute_forces: false
+reveal_block_size: 0
+reveal_power: 1.0
+diagnostics: null

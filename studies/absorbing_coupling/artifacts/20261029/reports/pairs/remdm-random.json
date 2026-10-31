@@ -1,0 +1,15 @@
+{
+  "left": "/home/lsztuk/gpff/scratch/absorbing-coupling/pilots5/abs256",
+  "right": "/home/lsztuk/gpff/scratch/absorbing-coupling/pilots5/remdm-random",
+  "n_pairs": 128,
+  "left_only_valid": 5,
+  "right_only_valid": 25,
+  "validity_difference": 0.15625,
+  "paired_bootstrap_95pct": [
+    0.078125,
+    0.234375
+  ],
+  "mcnemar_exact_p": 0.0003249142318964005,
+  "pairing": "size source and initial position seed",
+  "noise_path_note": "Step counts and remasking draws may differ. This does not assert identical stochastic paths."
+}

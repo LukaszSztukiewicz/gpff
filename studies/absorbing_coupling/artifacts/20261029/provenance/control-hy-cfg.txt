@@ -1,0 +1,6 @@
+runs/default/26-10-27/absorbing-lw0.25
+  jobs:      5134193 
+  snapshot:  absorbing-v1
+  container: gpff-py313-torch214-gcc.sif
+  dataset:   data/qm9/b36d9cd218f5998d
+  overrides: experiment=gpff_absorbing +callbacks=milestones 'data.load_properties=[]' data.cache_in_memory=true data.persistent_workers=true callbacks.deterministic_data_seed.per_sample_train_noise=true 'compile={dynamic:true}' trainer.deterministic=true globals.type_loss_weight=0.25 

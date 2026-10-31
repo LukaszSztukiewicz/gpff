@@ -1,0 +1,17 @@
+{
+  "n_molecules": 10000.0,
+  "rdkit_validity": 0.9824,
+  "uniqueness": 0.9240635179153095,
+  "novelty": 0.5172027687296417,
+  "js_divergence_elongation": 0.06177599917289022,
+  "failure_nonfinite": 0.0,
+  "failure_timeout": 0.0,
+  "failure_bond_orders": 0.0165,
+  "failure_radical": 0.0011,
+  "failure_fragments": 0.0,
+  "failure_error": 0.0,
+  "vun": 0.4795,
+  "elongation_w1": 0.5079175087667394,
+  "bond_length_w1": 0.006581549173462025,
+  "bond_angle_w1": 0.9618251223176686
+}

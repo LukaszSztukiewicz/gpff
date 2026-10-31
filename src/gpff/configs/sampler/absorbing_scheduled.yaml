@@ -1,0 +1,11 @@
+defaults:
+  - absorbing_study
+  - _self_
+_target_: gpff.sample.absorbing_study.ScheduledAbsorbingSampler
+remask_kernel: random
+noise_schedule:
+  _target_: gpff.sample.schedules.EDMNoiseSchedule
+  n_steps: ${sampler.n_steps}
+  sigma_min: 0.01
+  sigma_max: 30.0
+  rho: 5.0

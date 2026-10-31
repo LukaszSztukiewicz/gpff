@@ -1,0 +1,15 @@
+{
+  "left": "/home/lsztuk/gpff/scratch/absorbing-coupling/pilots5/abs256",
+  "right": "/home/lsztuk/gpff/scratch/absorbing-coupling/pilots5/t1-nfe",
+  "n_pairs": 128,
+  "left_only_valid": 13,
+  "right_only_valid": 17,
+  "validity_difference": 0.03125,
+  "paired_bootstrap_95pct": [
+    -0.0546875,
+    0.109375
+  ],
+  "mcnemar_exact_p": 0.5846647117286922,
+  "pairing": "size source and initial position seed",
+  "noise_path_note": "Step counts and remasking draws may differ. This does not assert identical stochastic paths."
+}

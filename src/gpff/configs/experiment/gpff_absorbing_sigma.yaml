@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  - gpff_absorbing
+  - _self_
+model:
+  representation:
+    sigma_conditioning: true
+    sigma_floor: 1e-4

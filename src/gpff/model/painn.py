@@ -38,6 +38,8 @@ class PaiNN(nn.Module):
         nuclear_embedding: Optional[nn.Module] = None,
         electronic_embeddings: Optional[List] = None,
         embedding_key: str = properties.Z,
+        sigma_conditioning: bool = False,
+        sigma_floor: float = 1e-4,
     ):
         """
         Args:
@@ -74,6 +76,18 @@ class PaiNN(nn.Module):
             nuclear_embedding = nn.Embedding(100, n_atom_basis)
         self.embedding = nuclear_embedding
         self.embedding_key = embedding_key
+        if sigma_floor <= 0:
+            raise ValueError("sigma_floor must be positive")
+        self.sigma_floor = sigma_floor
+        # No new parameters or required inputs when disabled. The zero output
+        # initially preserves the pretrained representation when enabled.
+        if sigma_conditioning:
+            self.sigma_embedding = nn.Sequential(
+                nn.Linear(1, n_atom_basis), nn.SiLU(),
+                nn.Linear(n_atom_basis, n_atom_basis),
+            )
+            nn.init.zeros_(self.sigma_embedding[-1].weight)
+            nn.init.zeros_(self.sigma_embedding[-1].bias)
         if electronic_embeddings is None:
             electronic_embeddings = []
         electronic_embeddings = nn.ModuleList(electronic_embeddings)
@@ -144,6 +158,18 @@ class PaiNN(nn.Module):
         # compute initial embeddings
         # models pickled before embedding_key existed embed the atomic numbers
         q = self.embedding(inputs[getattr(self, "embedding_key", properties.Z)])
+        sigma_embedding = getattr(self, "sigma_embedding", None)
+        if sigma_embedding is not None:
+            from gpff import keys
+            # Training transforms store one sigma per molecule. Scheduled
+            # inference uses the same convention; per-atom storage is accepted
+            # for compatibility with the original calculator.
+            sigma = inputs[keys.sigma_curr].reshape(-1, 1)
+            if len(sigma) != n_atoms:
+                sigma = sigma[inputs[properties.idx_m]]
+            if not bool(torch.isfinite(sigma).all()) or bool((sigma < 0).any()):
+                raise ValueError("Declared sigma must be finite and nonnegative")
+            q = q + sigma_embedding(sigma.clamp_min(self.sigma_floor).log())
         for embedding in self.electronic_embeddings:
             q = q + embedding(q, inputs)
         q = q.unsqueeze(1)
