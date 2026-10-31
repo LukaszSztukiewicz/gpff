@@ -36,6 +36,8 @@ output_db: ${results_dir}/samples_${now:%Y-%m-%d_%H-%M-%S}.db
 
 # debug configuration
 store_trajectories: false
+# Store compact per-molecule summaries after the prior and every denoising step.
+store_diagnostics: false
 
 # hydra configuration
 hydra:

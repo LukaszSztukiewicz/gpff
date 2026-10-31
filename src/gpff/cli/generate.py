@@ -1,7 +1,9 @@
 """Sampling entry point (``gpff_generate``)."""
+import json
 import logging
 import os
 import socket
+from pathlib import Path
 from typing import Optional
 
 import hydra
@@ -10,6 +12,7 @@ import torch
 from ase.db import connect
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import seed_everything
+from schnetpack import properties
 
 from schnetpack.utils import load_model
 from schnetpack.utils.script import print_config
@@ -19,7 +22,7 @@ from gpff.analysis import get_rdkit_validity
 from gpff.cli import header
 from gpff.data.datasets.qm9 import QM9Valid
 from gpff.sample import Calculator, ConditionGenerator, Prior, Sampler
-from gpff.sample.observers import TrajectoryRecorder
+from gpff.sample.observers import TrajectoryDiagnosticsRecorder, TrajectoryRecorder
 from gpff.sample.results import batches_to_relaxed, batches_to_trajectories
 
 log = logging.getLogger(__name__)
@@ -39,6 +42,12 @@ def _get_trajectory_db_path(output_db: str) -> str:
     if extension == "":
         return f"{output_db}_trajectories.db"
     return f"{base}_trajectories{extension}"
+
+
+def _get_diagnostics_path(output_db: str) -> str:
+    """Derive the JSONL diagnostics path from the samples database path."""
+    base, _ = os.path.splitext(output_db)
+    return f"{base}_diagnostics.jsonl"
 
 
 @hydra.main(config_path="../configs", config_name="generate")
@@ -141,6 +150,10 @@ def sample_molecules(config: DictConfig):
     with connect(config.output_db) as db:
         db.metadata = run_metadata
 
+    diagnostics_path = _get_diagnostics_path(config.output_db)
+    if config.store_diagnostics:
+        Path(diagnostics_path).write_text("")
+
     trajectory_db_path = _get_trajectory_db_path(config.output_db)
     if config.store_trajectories:
         if os.path.exists(trajectory_db_path):
@@ -166,16 +179,40 @@ def sample_molecules(config: DictConfig):
 
         # denoise and process
         recorder = TrajectoryRecorder() if config.store_trajectories else None
+        remaining_samples = config.n_samples - n_samples_written
+        n_to_diagnose = min(batch[properties.n_atoms].shape[0], remaining_samples)
+        diagnostics_recorder = (
+            TrajectoryDiagnosticsRecorder(
+                sample_offset=n_samples_written,
+                max_molecules=n_to_diagnose,
+                run_metadata={
+                    "seed": int(config.seed),
+                    "sampler": str(OmegaConf.select(config, "sampler._target_", default="unknown")),
+                    "prior": str(OmegaConf.select(config, "prior._target_", default="unknown")),
+                },
+            )
+            if config.store_diagnostics
+            else None
+        )
+        observers = [
+            observer
+            for observer in (recorder, diagnostics_recorder)
+            if observer is not None
+        ]
         final_batch = sampler.denoise(
             batch,
             conditions=conditions,
-            observers=[recorder] if recorder is not None else None,
+            observers=observers or None,
         )
         relaxed_atoms = batches_to_relaxed([final_batch])
         if config.store_trajectories:
             atoms_trajectory = batches_to_trajectories(recorder.snapshots)
 
         n_to_store = min(len(relaxed_atoms), config.n_samples - n_samples_written)
+        if diagnostics_recorder is not None:
+            with open(diagnostics_path, "a") as diagnostics_file:
+                for record in diagnostics_recorder.records:
+                    diagnostics_file.write(json.dumps(record, allow_nan=False) + "\n")
         relaxed_atoms_to_store = [
             (atoms, {keys.nfe: int(data[keys.nfe])})
             for atoms, data in relaxed_atoms[:n_to_store]
@@ -223,3 +260,5 @@ def sample_molecules(config: DictConfig):
 
     # log final sample count
     print(f"+ final samples written: {n_samples_written} +")
+    if config.store_diagnostics:
+        print(f"+ trajectory diagnostics: {diagnostics_path} +")

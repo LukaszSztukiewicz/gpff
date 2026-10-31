@@ -386,6 +386,8 @@ class Sampler(ABC):
         try:
             for observer in active_observers:
                 observer.on_start(self, batch)
+            for observer in active_observers:
+                observer.on_conditions(conditions)
 
             # iterative denoising loop (count down from n_steps to 1)
             for step in range(self.n_steps, 0, -1):

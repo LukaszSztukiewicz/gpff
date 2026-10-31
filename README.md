@@ -55,6 +55,7 @@ After install the entry points are on `PATH`:
 | `gpff_generate`  | Sample molecules from a checkpoint. Wraps `gpff.cli.generate:sample_molecules()`. |
 | `gpff_prepare_metadata`  | Compute the per-sample arrays of a sampled DB into `evaluation/metadata/`. Wraps `gpff.cli.prepare_metadata:main()`. |
 | `gpff_calculate_metrics` | Reduce those arrays to `evaluation/results.json`. Wraps `gpff.cli.calculate_metrics:main()`. |
+| `gpff_diagnose` | Summarize and compare sampler trajectory diagnostics. Wraps `gpff.cli.diagnose:main()`. |
 
 `gpfftrain` still works as a deprecated alias for `gpff_train`.
 
@@ -145,6 +146,22 @@ gpff_calculate_metrics \
   --reference_bond_angles_path assets/qm9_bond_angles.npz \
   --reference_smiles_path assets/qm9_smiles_values.txt \
   --split_path /path/to/split.npz
+
+# Capture a compact per-molecule diagnostic at the prior and each denoising
+# step, then compare one or more runs. This is independent of storing full
+# coordinate trajectories and adds a JSONL sidecar next to the samples DB:
+gpff_generate \
+  sampler=heun \
+  model_path=/path/to/best_model split_path=/path/to/split.npz \
+  datapath=/path/to/qm9_filtered.db n_samples=1000 \
+  store_diagnostics=true
+gpff_diagnose \
+  --input /path/to/samples_run_a_diagnostics.jsonl /path/to/samples_run_b_diagnostics.jsonl \
+  --output_dir /path/to/diagnostic_report
+
+# The report contains per-step and per-sample CSV files, a sample triage CSV,
+# a multi-run trajectory plot, and a machine-readable summary.json. Large
+# motion values are surfaced for inspection; they are not automatically errors.
 
 # Just the structure metrics, no reference data or models needed:
 gpff_prepare_metadata --samples_db_path samples.db \
