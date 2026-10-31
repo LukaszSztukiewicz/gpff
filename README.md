@@ -58,6 +58,10 @@ After install the entry points are on `PATH`:
 
 `gpfftrain` still works as a deprecated alias for `gpff_train`.
 
+For post-hoc EMA tuning, add `+callbacks=posthoc_ema` when training and use
+`python -m gpff.cli.posthoc_ema` to reconstruct inference models afterward.
+See [the method, hydra workflow, and GPFF design notes](docs/posthoc_ema.md).
+
 Hydra configs live under `src/gpff/configs/`. Override with standard dotted
 overrides. Everything about model inference — the model itself, `device`,
 `dtype`, and whether the model predicts noise or forces — belongs to the
