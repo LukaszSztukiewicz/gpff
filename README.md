@@ -82,6 +82,10 @@ gpff_train experiment=gpff run.id=<run-name> run.path=runs/<project>/<date>
 gpff_train experiment=gpff +callbacks=milestones
 gpff_train experiment=gpff +callbacks=milestones 'callbacks.milestone_checkpoint.epochs=[50,100]'
 
+# Or compare after fixed numbers of training molecules, across epochs:
+gpff_train experiment=gpff +callbacks=sample_milestones \
+  'callbacks.sample_checkpoint.samples=[1000,1000000,10000000]'
+
 # Train faster (all off by default): skip the QM9 property columns gpff does
 # not use, serve the database from memory, keep the DataLoader workers between
 # epochs (needs per-sample training noise, a different but equally valid noise
@@ -151,6 +155,27 @@ gpff_prepare_metadata --samples_db_path samples.db \
 gpff_calculate_metrics --samples_db_path samples.db \
   --metrics rdkit_validity posebusters_validity uniqueness mean_tanimoto_similarity
 ```
+
+Sample milestones save the current model at the first completed optimizer update
+that reaches each target. With full batches this is step
+`ceil(target / (batch_size * accumulate_grad_batches * world_size))`; a target of
+1,000 molecules with batch size 512 saves at step 2, after 1,024 molecules.
+The callback counts actual molecules in each batch, including short final batches
+and repeat visits across epochs, rather than atoms or unique dataset entries.
+Validation/test batches are excluded; training batches skipped for NaNs still
+count as seen.
+
+Files are `sample_milestones/samples_<target>.ckpt` and
+`sample_milestones/samples_<target>_model`. The filename labels the requested
+target; the log and checkpoint callback state record the actual `samples_seen`,
+and Lightning records `global_step`. With EMA enabled, the inference model and
+checkpoint contain the current average, and the checkpoint also keeps the raw
+training weights for resume. Resuming restores the sample counter and saved
+targets. For older checkpoints without this counter, explicitly supply
+`callbacks.sample_checkpoint.initial_samples_seen=<known_count>`; the callback
+does not infer past exposure from the current batch size. Mid-epoch checkpoints
+use Lightning's usual DataLoader resume behavior; they do not save the shuffle
+iterator or guarantee the same future molecule order as an uninterrupted run.
 
 ## Citation
 

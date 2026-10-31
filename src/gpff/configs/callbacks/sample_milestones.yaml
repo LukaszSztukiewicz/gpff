@@ -1,0 +1,10 @@
+# Count molecule presentations, across epochs and ranks. Save at the first
+# optimizer step reaching each target (ceil(target / effective batch size)
+# for full batches). Opt in with +callbacks=sample_milestones, then override:
+#   'callbacks.sample_checkpoint.samples=[1000,1000000,10000000]'
+sample_checkpoint:
+    _target_: gpff.callbacks.SampleCheckpoint
+    samples: [1000000, 10000000, 100000000, 1000000000]
+    dirpath: "sample_milestones/"
+    # Needed only when resuming a checkpoint created without this callback.
+    initial_samples_seen: null

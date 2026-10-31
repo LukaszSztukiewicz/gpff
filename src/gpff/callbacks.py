@@ -1,10 +1,13 @@
 import os
+import logging
 import random
 import torch
 import numpy as np
 import time
+from contextlib import ExitStack
 from typing import Any, Dict, List, Optional
 from pytorch_lightning import Callback
+from pytorch_lightning.callbacks import Checkpoint
 from gpff.sample.base import Sampler
 from gpff.sample.priors import Prior
 from gpff.sample.results import batches_to_relaxed
@@ -21,11 +24,14 @@ import schnetpack.transform as trn
 from schnetpack import properties
 from gpff.utils.wandb import upload_artifact
 
+log = logging.getLogger(__name__)
+
 
 __all__ = [
     "SamplerCallback",
     "ModelCheckpoint",
     "MilestoneCheckpoint",
+    "SampleCheckpoint",
     "DeterministicDataSeed",
     "ExponentialMovingAverage",
 ]
@@ -411,3 +417,112 @@ class MilestoneCheckpoint(Callback):
         # save_checkpoint must run on every rank; save_model writes on rank 0
         trainer.save_checkpoint(f"{path}.ckpt")
         pl_module.save_model(f"{path}_model", do_postprocessing=True)
+
+
+class SampleCheckpoint(Checkpoint):
+    """Snapshot at cumulative training-molecule targets, across epochs/ranks.
+
+    Counts actual batch sizes, including repeat visits, sampler padding and
+    batches skipped for NaNs; validation/test molecules are excluded. A target
+    is rounded up to the first completed optimizer step reaching it, so gradient
+    accumulation never leaves unsaved gradients in the checkpoint. The actual
+    count is saved in callback state alongside Lightning's ``global_step``.
+
+    Like epoch milestones, saves ``samples_<target>.ckpt`` and an inference
+    model ``samples_<target>_model``. With schnetpack's EMA callback enabled,
+    both hold the current EMA weights, with raw weights kept in EMA state for
+    resume. Inheriting ``Checkpoint`` makes Lightning run this after EMA updates.
+    """
+
+    def __init__(
+        self,
+        samples: List[int],
+        dirpath: str = "sample_milestones",
+        initial_samples_seen: Optional[int] = None,
+    ) -> None:
+        super().__init__()
+        if not samples or any(type(n) is not int or n <= 0 for n in samples):
+            raise ValueError("samples must contain positive integer molecule counts")
+        if initial_samples_seen is not None and (
+            type(initial_samples_seen) is not int or initial_samples_seen < 0
+        ):
+            raise ValueError("initial_samples_seen must be a non-negative integer")
+        self.samples = sorted(set(samples))
+        self.dirpath = dirpath
+        self.initial_samples_seen = initial_samples_seen
+        self.samples_seen = initial_samples_seen or 0
+        self._saved_samples = {n for n in self.samples if n <= self.samples_seen}
+        self._state_loaded = False
+        self._last_global_step = 0
+
+    def state_dict(self) -> Dict[str, Any]:
+        return {
+            "samples_seen": self.samples_seen,
+            "saved_samples": sorted(self._saved_samples),
+        }
+
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
+        self.samples_seen = state_dict["samples_seen"]
+        self._saved_samples = set(state_dict["saved_samples"])
+        self._state_loaded = True
+
+    def on_train_start(self, trainer, pl_module) -> None:
+        if (
+            trainer.global_step > 0
+            and not self._state_loaded
+            and self.initial_samples_seen is None
+        ):
+            raise ValueError(
+                "The resumed checkpoint has no SampleCheckpoint counter. Set "
+                "callbacks.sample_checkpoint.initial_samples_seen to the known "
+                "number of training molecules already seen."
+            )
+        self._last_global_step = trainer.global_step
+        if trainer.global_step > 0:
+            # schnetpack's on_fit_start leaves EMA weights on the model. PL
+            # skips on_train_epoch_start when resuming inside an epoch, so the
+            # usual EMA restore hook would run only after the remaining batches.
+            for callback in trainer.callbacks:
+                if isinstance(callback, SPKExponentialMovingAverage):
+                    callback.ema.restore()
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx) -> None:
+        # n_atoms has one entry per molecule; positions/atomic numbers have one
+        # entry per atom and would silently measure a different training budget.
+        n_samples = batch[properties.n_atoms].numel()
+        if trainer.world_size > 1:
+            count = torch.tensor(n_samples, dtype=torch.long, device=pl_module.device)
+            n_samples = int(trainer.strategy.reduce(count, reduce_op="sum").item())
+        self.samples_seen += n_samples
+
+        # global_step advances only on optimizer steps, not accumulation batches.
+        if trainer.global_step == self._last_global_step:
+            return
+        self._last_global_step = trainer.global_step
+        due = [
+            n for n in self.samples
+            if n <= self.samples_seen and n not in self._saved_samples
+        ]
+        if not due:
+            return
+        # Include every target crossed by this update in each checkpoint's state,
+        # so restoring any of these files never emits the same targets again.
+        self._saved_samples.update(due)
+        os.makedirs(self.dirpath, exist_ok=True)
+        with ExitStack() as stack:
+            for callback in trainer.callbacks:
+                if isinstance(callback, SPKExponentialMovingAverage):
+                    ema = callback.ema
+                    # Keep the EMA callback's pre-existing restore buffer intact.
+                    stack.callback(setattr, ema, "collected_params", ema.collected_params)
+                    stack.enter_context(ema.average_parameters())
+            for target in due:
+                path = os.path.join(self.dirpath, f"samples_{target}")
+                if trainer.is_global_zero:
+                    log.info(
+                        "Saving sample target %d at %d molecules, optimizer step %d",
+                        target, self.samples_seen, trainer.global_step,
+                    )
+                trainer.save_checkpoint(f"{path}.ckpt")
+                if trainer.is_global_zero:
+                    pl_module.save_model(f"{path}_model", do_postprocessing=True)
