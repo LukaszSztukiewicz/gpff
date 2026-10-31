@@ -2,7 +2,7 @@
 import logging
 import os
 import socket
-from typing import List
+from typing import List, Optional
 
 import hydra
 import torch
@@ -17,6 +17,43 @@ from schnetpack.utils.script import log_hyperparameters, print_config
 from gpff.cli import header
 
 log = logging.getLogger(__name__)
+
+
+def init_model(model: torch.nn.Module, path: str, modules: Optional[List[str]] = None):
+    """
+    Start a new run from another model's weights, for fine-tuning. Unlike
+    run.ckpt_path, none of that run's training state comes along: optimizer,
+    scheduler, EMA and the epoch count start afresh.
+
+    Args:
+        model: the freshly instantiated model, changed in place.
+        path: an inference model, e.g. a run's best_model or a milestone's
+            epoch_N_model.
+        modules: the state_dict prefixes to take, e.g. ``[representation]`` to
+            put a direct force model's representation under the fresh energy
+            head of experiment=gpff_conservative. Every tensor under them has to
+            match; the rest of the model keeps its initialization. None takes
+            the whole model, which then needs the same architecture.
+    """
+    log.info(f"Initializing the weights from <{path}>")
+    state = torch.load(path, map_location="cpu", weights_only=False).state_dict()
+    if modules is None:
+        model.load_state_dict(state)
+        return
+
+    prefixes = tuple(f"{module}." for module in modules)
+    state = {key: value for key, value in state.items() if key.startswith(prefixes)}
+    if not state:
+        raise ValueError(f"{path} holds no weights under {list(modules)}.")
+    missing, unexpected = model.load_state_dict(state, strict=False)
+    missing_taken = [key for key in missing if key.startswith(prefixes)]
+    if unexpected or missing_taken:
+        raise ValueError(
+            f"{list(modules)} of {path} do not match the model: it lacks {unexpected} "
+            f"and {path} lacks {missing_taken}."
+        )
+    fresh = sorted({key.split(".")[0] for key in missing})
+    log.info(f"Took {len(state)} tensors under {list(modules)}; left as initialized: {fresh}")
 
 
 @hydra.main(config_path="../configs", config_name="train")
@@ -73,6 +110,8 @@ def train(config: DictConfig):
     # Init model
     log.info(f"Instantiating model <{config.model._target_}>")
     model = hydra.utils.instantiate(config.model)
+    if config.get("init_model_path") is not None:
+        init_model(model, config.init_model_path, config.get("init_model_modules"))
     if config.get("compile") is not None:
         log.info(f"Compiling the model with <{config.compile}>")
         # in place, so state_dict keys and the pickled model keep their names
