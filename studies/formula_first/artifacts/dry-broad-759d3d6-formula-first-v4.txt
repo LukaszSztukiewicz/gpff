@@ -1,0 +1,222 @@
+APPTAINERENV_PYTHONPATH=/home/lsztuk/gpff/frozen_code/759d3d6-formula-first-v4/src SIF=/home/lsztuk/gpff/containers/gpff-py313-torch214-gcc.sif DATA_FAMILY=qm9 DATASET=b36d9cd218f5998d sbatch --constraint=40gb --time=2-00:00:00 slurm/train.sbatch experiment=gpff seed=999 trainer.max_epochs=100000 globals.lr=1e-4 data.batch_size=512 data.load_properties=[] data.cache_in_memory=true data.persistent_workers=true callbacks.deterministic_data_seed.per_sample_train_noise=true compile={dynamic:true} trainer.deterministic=true +callbacks=milestones callbacks.milestone_checkpoint.epochs=[100,200,500,1000,2000,5000,10000,12000,12560,15000,20000,30000,40000,50000] +data.split_file=/home/lsztuk/gpff/runs/default/26-10-28/proven-ox-999/frozen/split.npz run.id=formula-broad run.path=/home/lsztuk/gpff/scratch/formula-first-20261030/training pseudo_pes.geometry_sampler.sigma_mean=-0.2 run.data_dir=/home/lsztuk/gpff/data/qm9/b36d9cd218f5998d run.git_hash=759d3d6-formula-first-v4
+print_config: true
+seed: 999
+matmul_precision: high
+compile:
+  dynamic: true
+project: default
+run:
+  work_dir: ${hydra:runtime.cwd}
+  data_dir: /home/lsztuk/gpff/data/qm9/b36d9cd218f5998d
+  path: /home/lsztuk/gpff/scratch/formula-first-20261030/training
+  experiment: gpff
+  id: formula-broad
+  ckpt_path: last
+  git_hash: 759d3d6-formula-first-v4
+  tags:
+  - gpff
+trainer:
+  _target_: pytorch_lightning.Trainer
+  devices: 1
+  min_epochs: null
+  max_epochs: 100000
+  enable_model_summary: true
+  profiler: null
+  gradient_clip_val: null
+  accumulate_grad_batches: 1
+  val_check_interval: 1.0
+  check_val_every_n_epoch: 1
+  num_sanity_val_steps: 0
+  fast_dev_run: false
+  overfit_batches: 0
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+  limit_test_batches: 1.0
+  detect_anomaly: false
+  precision: 32
+  accelerator: auto
+  num_nodes: 1
+  deterministic: true
+  inference_mode: false
+callbacks:
+  model_checkpoint:
+    _target_: gpff.callbacks.ModelCheckpoint
+    monitor: val/loss
+    save_top_k: 1
+    save_last: true
+    mode: min
+    verbose: false
+    dirpath: checkpoints/
+    filename: '{epoch:02d}'
+    model_path: ${globals.model_path}
+    wandb_upload_id: ${run.id}
+  deterministic_data_seed:
+    _target_: gpff.callbacks.DeterministicDataSeed
+    base_seed: ${seed}
+    val_noise_seed: 0
+    per_sample_train_noise: true
+  early_stopping:
+    _target_: pytorch_lightning.callbacks.EarlyStopping
+    monitor: val/loss
+    patience: 500
+    mode: min
+    min_delta: 0.0
+    check_on_train_epoch_end: false
+  lr_monitor:
+    _target_: pytorch_lightning.callbacks.LearningRateMonitor
+    logging_interval: epoch
+  ema:
+    _target_: schnetpack.train.callbacks.ExponentialMovingAverage
+    decay: 0.995
+  progress_bar:
+    _target_: pytorch_lightning.callbacks.TQDMProgressBar
+    refresh_rate: 100
+  milestone_checkpoint:
+    _target_: gpff.callbacks.MilestoneCheckpoint
+    epochs:
+    - 100
+    - 200
+    - 500
+    - 1000
+    - 2000
+    - 5000
+    - 10000
+    - 12000
+    - 12560
+    - 15000
+    - 20000
+    - 30000
+    - 40000
+    - 50000
+    dirpath: milestones/
+task:
+  _target_: gpff.task.AtomisticTask
+  outputs:
+  - _target_: gpff.task.ModelOutput
+    name: ${key:forces}
+    metrics:
+      mae:
+        _target_: torchmetrics.regression.MeanAbsoluteError
+      mse:
+        _target_: torchmetrics.regression.MeanSquaredError
+        squared: true
+    loss_weight: 1.0
+    scale_loss: ${globals.scale_loss}
+    weights_key: ${globals.weights_key}
+    warmup_steps: 0
+  warmup_steps: 0
+  skip_exploding_batches: true
+  optimizer_cls: torch.optim.AdamW
+  optimizer_args:
+    lr: ${globals.lr}
+    weight_decay: 0.0
+  scheduler_cls: schnetpack.train.ReduceLROnPlateau
+  scheduler_monitor: val/loss
+  scheduler_args:
+    mode: min
+    factor: 0.5
+    patience: 250
+    threshold: 0.0
+    threshold_mode: rel
+    cooldown: 10
+    min_lr: 0.0
+    smoothing_factor: 0.0
+logger:
+  wandb:
+    _target_: pytorch_lightning.loggers.WandbLogger
+    project: ${project}
+    entity: null
+    name: ${run.experiment}-${run.id}
+    id: ${run.id}
+    resume: allow
+    group: ${run.experiment}
+    tags: ${oc.select:run.tags,null}
+    notes: null
+model:
+  representation:
+    radial_basis:
+      _target_: schnetpack.nn.radial.GaussianRBF
+      n_rbf: ${globals.n_rbf}
+      cutoff: ${globals.cutoff}
+      trainable: false
+    _target_: gpff.model.PaiNN
+    n_atom_basis: ${globals.n_atom_basis}
+    n_interactions: ${globals.n_interactions}
+    shared_interactions: false
+    shared_filters: false
+    return_vector_representation: true
+    cutoff_fn:
+      _target_: schnetpack.nn.cutoff.CosineCutoff
+      cutoff: ${globals.cutoff}
+  _target_: schnetpack.model.NeuralNetworkPotential
+  input_modules:
+  - _target_: schnetpack.atomistic.PairwiseDistances
+  output_modules:
+  - _target_: gpff.model.heads.GatedEquivariant
+    n_in: ${globals.n_atom_basis}
+    n_hidden: null
+    n_layers: 3
+    output_key: ${key:forces}
+data:
+  _target_: gpff.data.datasets.QM9Valid
+  datapath: ${run.data_dir}/qm9_filtered.db
+  data_workdir: /tmp/gpff-DRY
+  batch_size: 512
+  num_train: 0.8
+  num_val: 0.1
+  num_test: null
+  num_workers: 12
+  num_val_workers: null
+  num_test_workers: null
+  train_sampler_cls: null
+  splitting:
+    _target_: gpff.data.SeededRandomSplit
+    seed: 999
+  pin_memory: true
+  persistent_workers: true
+  cache_in_memory: true
+  load_properties: []
+  n_atoms_allowed: null
+  indices_path: ${run.data_dir}/n_atoms_indices.pkl
+  transforms:
+  - ${generative_transform}
+  - _target_: gpff.utils.neighbors.AllToAllNeighborList
+  - _target_: schnetpack.transform.CastTo32
+  split_file: /home/lsztuk/gpff/runs/default/26-10-28/proven-ox-999/frozen/split.npz
+prior:
+  _target_: gpff.sample.priors.GaussianPrior
+  sigma: ${globals.sigma_max}
+pseudo_pes:
+  geometry_sampler:
+    _target_: gpff.pseudo_pes.geometries.VarianceExplodingGeometries
+    sigma_max: ${globals.sigma_max}
+    sigma_mean: -0.2
+    sigma_std: 1.2
+    destroy_signal: false
+    mean_free_noise: true
+    sample_uniformly: false
+  energy_function:
+    _target_: gpff.pseudo_pes.labels.VEPseudoCalculator
+  weight_generator:
+    _target_: gpff.pseudo_pes.weights.SigmaWeights
+    min_clipping: 0.0
+    max_clipping: 1.0
+generative_transform:
+  _target_: gpff.data.transform.PseudoPESTransform
+  align_permutation: ${globals.align_permutation}
+  align_rotation: ${globals.align_rotation}
+  geometry_sampler: ${pseudo_pes.geometry_sampler}
+  energy_function: ${pseudo_pes.energy_function}
+  weight_generator: ${pseudo_pes.weight_generator}
+globals:
+  sigma_max: 30
+  cutoff: ${mul:${globals.sigma_max}, 5}
+  n_atom_basis: 256
+  n_interactions: 4
+  n_rbf: ${mul:${globals.cutoff}, 4}
+  align_permutation: true
+  align_rotation: false
+  weights_key: ${key:forces_weight}
+  scale_loss: null
+  lr: 0.0001
+  model_path: best_model

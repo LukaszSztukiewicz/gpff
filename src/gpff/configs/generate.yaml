@@ -81,6 +81,8 @@ hydra:
         
         Available prior options:
         - prior=gaussian (default)
+        - prior=formula - sample training-only joint element counts and size;
+          requires prior.formula_path, uses the existing geometry sampler
         - prior=shape - prescribed principal variances per molecule; needs
           condition_generator=shape
         - prior=scaffold - scaffold atoms keep their original positions, free atoms

@@ -1,0 +1,6 @@
+# Fit the table from this model's training split; joint mode generates size too.
+_target_: gpff.sample.formula.FormulaPrior
+formula_path: ???
+sigma: 30.0
+mode: joint
+seed: ${seed}
