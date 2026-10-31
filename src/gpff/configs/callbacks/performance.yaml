@@ -1,0 +1,2 @@
+performance_metrics:
+  _target_: gpff.performance.PerformanceMetrics

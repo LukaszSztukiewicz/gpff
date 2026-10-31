@@ -11,6 +11,7 @@ defaults:
       - lrmonitor
       - ema
       - progress_bar
+      - performance
   - task: default_task
   - logger: wandb
   
