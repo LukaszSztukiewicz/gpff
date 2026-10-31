@@ -11,6 +11,7 @@ from schnetpack.task import ModelOutput as SPKModelOutput
 from schnetpack.task import AtomisticTask as SPKAtomisticTask
 from schnetpack.task import UnsupervisedModelOutput
 from schnetpack.model.base import AtomisticModel
+from schnetpack import properties
 
 
 log = logging.getLogger(__name__)
@@ -19,7 +20,8 @@ log = logging.getLogger(__name__)
 __all__ = ["ModelOutput", "AtomisticTask"]
 
 
-def loss_fn(pred, target, weights=None, scale_loss: Optional[str] = None, epsilon: float = 1e-8):
+def elementwise_loss(pred, target, weights=None, scale_loss: Optional[str] = None):
+    """The weighted squared error of each element, which loss_fn averages."""
     # todo: do we need to normalize with sum(weights)?
     if weights is None:
         weights = torch.ones_like(target)
@@ -35,7 +37,11 @@ def loss_fn(pred, target, weights=None, scale_loss: Optional[str] = None, epsilo
     else:
         raise ValueError(f"Invalid scale_loss: {scale_loss}")
 
-    return torch.mean(weighted_diff)
+    return weighted_diff
+
+
+def loss_fn(pred, target, weights=None, scale_loss: Optional[str] = None, epsilon: float = 1e-8):
+    return torch.mean(elementwise_loss(pred, target, weights, scale_loss))
 
 
 class ModelOutput(SPKModelOutput):
@@ -85,8 +91,7 @@ class ModelOutput(SPKModelOutput):
         self.warmup_steps = warmup_steps
         self.global_step = 0
 
-    def calculate_loss(self, pred, target):
-        # calculate weighted loss
+    def _weights(self, target):
         weights = None
         if self.weights_key is not None:
             weights = target[self.weights_key]
@@ -94,12 +99,23 @@ class ModelOutput(SPKModelOutput):
             if self.global_step < self.warmup_steps:
                 dampening = self.global_step / self.warmup_steps
                 weights = (1-dampening) * torch.ones_like(weights) + dampening * weights
+        return weights
 
+    def calculate_loss(self, pred, target):
+        # calculate weighted loss
         loss = self.loss_weight * loss_fn(
-            pred[self.name], target[self.target_property], weights, self.scale_loss
+            pred[self.name], target[self.target_property], self._weights(target), self.scale_loss
         )
 
         return loss
+
+    def calculate_row_losses(self, pred, target):
+        """The loss of each row (atom or molecule) of the output; their mean is
+        calculate_loss, since every row has the same number of elements."""
+        loss = elementwise_loss(
+            pred[self.name], target[self.target_property], self._weights(target), self.scale_loss
+        )
+        return self.loss_weight * loss.reshape(loss.shape[0], -1).mean(dim=1)
 
 
 class AtomisticTask(SPKAtomisticTask):
@@ -122,6 +138,7 @@ class AtomisticTask(SPKAtomisticTask):
         debug_folder: Optional[str] = None,
         exit_after_n_skipped_train_batches: Optional[int] = None,
         loss_threshold: float = 1e3,
+        skip_exploding_molecules: bool = False,
     ):
         """
         Args:
@@ -138,6 +155,11 @@ class AtomisticTask(SPKAtomisticTask):
             debug_folder: folder to save skipped batches and model weights (if not None)
             exit_after_n_skipped_train_batches: number of skipped batches after which the training should exit
             loss_threshold: threshold for skipping exploding batches
+            skip_exploding_molecules: in a train batch over loss_threshold, leave out
+              the molecules whose own loss is over it and train on the others; the
+              batch is still skipped if one of them is not finite (its gradients
+              would be NaN) or if none is left. E.g. for fine-tuning a model that
+              explodes on a few molecules of the new data.
         """
         super().__init__(
             model=model,
@@ -155,6 +177,9 @@ class AtomisticTask(SPKAtomisticTask):
         self.n_skipped_val_batches = 0
         self.exit_after_n_skipped_train_batches = exit_after_n_skipped_train_batches
         self.loss_threshold = loss_threshold
+        self.skip_exploding_molecules = skip_exploding_molecules
+        self.n_skipped_train_molecules = 0
+        self._epoch_skipped_molecules = [0, 0]  # molecules, batches
 
     def setup(self, stage=None):
         """
@@ -218,6 +243,42 @@ class AtomisticTask(SPKAtomisticTask):
                     prog_bar=False,
                 )
 
+    def _loss_without_exploding_molecules(self, pred, targets, batch):
+        """The loss of a batch without the molecules whose own loss is over
+        loss_threshold, and how many these are. The loss is None if the batch
+        has to be skipped anyway: a left-out molecule is not finite, or none is
+        left."""
+        idx_m = batch[properties.idx_m]
+        n_molecules = batch[properties.n_atoms].shape[0]
+        row_losses, molecule_loss = [], 0.0
+        for output in self.outputs:
+            row_loss = output.calculate_row_losses(pred, targets)
+            # per-atom outputs have a row per atom, per-molecule ones a row per molecule
+            if row_loss.shape[0] == idx_m.shape[0]:
+                row_molecule = idx_m
+            else:
+                row_molecule = torch.arange(n_molecules, device=idx_m.device)
+            total = row_loss.new_zeros(n_molecules).index_add_(0, row_molecule, row_loss.detach())
+            count = row_loss.new_zeros(n_molecules).index_add_(0, row_molecule, torch.ones_like(row_loss))
+            molecule_loss = molecule_loss + total / count
+            row_losses.append((row_loss, row_molecule))
+
+        exploding = ~torch.isfinite(molecule_loss) | (molecule_loss > self.loss_threshold)
+        n_exploding = int(exploding.sum())
+        if not torch.isfinite(molecule_loss).all() or n_exploding == n_molecules:
+            return None, n_exploding
+        loss = sum(row_loss[~exploding[row_molecule]].mean() for row_loss, row_molecule in row_losses)
+        return loss, n_exploding
+
+    def on_train_epoch_end(self):
+        n_molecules, n_batches = self._epoch_skipped_molecules
+        if n_batches:
+            log.info(
+                f"Epoch {self.current_epoch}: left out {n_molecules} exploding molecules "
+                f"of {n_batches} train batches"
+            )
+        self._epoch_skipped_molecules = [0, 0]
+
     def training_step(self, batch, batch_idx):
 
         targets = self._filter_targets(batch)
@@ -226,6 +287,17 @@ class AtomisticTask(SPKAtomisticTask):
         pred, targets = self.apply_constraints(pred, targets)
 
         loss = self.loss_fn(pred, targets)
+
+        if self.skip_exploding_batches and self.skip_exploding_molecules and (
+            torch.isnan(loss) or torch.isinf(loss) or loss > self.loss_threshold
+        ):
+            kept_loss, n_left_out = self._loss_without_exploding_molecules(pred, targets, batch)
+            if kept_loss is not None:
+                # the mean of molecule losses that are each at most loss_threshold
+                loss = kept_loss
+                self.n_skipped_train_molecules += n_left_out
+                self._epoch_skipped_molecules[0] += n_left_out
+                self._epoch_skipped_molecules[1] += 1
 
         # skip exploding batches in backward pass
         if self.skip_exploding_batches and (
@@ -288,6 +360,14 @@ class AtomisticTask(SPKAtomisticTask):
             on_epoch=False,
             prog_bar=False,
         )
+        if self.skip_exploding_molecules:
+            self.log(
+                "train/skipped_molecules",
+                self.n_skipped_train_molecules,
+                on_step=True,
+                on_epoch=False,
+                prog_bar=False,
+            )
 
         return loss
 

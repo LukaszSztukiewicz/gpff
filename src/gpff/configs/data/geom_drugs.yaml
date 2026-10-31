@@ -4,13 +4,16 @@ defaults:
 _target_: gpff.data.datasets.PreparedAtomsData
 
 # a folder written by `gpff_prepare_dataset geom_drugs`: one conformer per row,
-# hydrogens included, ~47 atoms each (about 7 times QM9's edges per molecule)
+# hydrogens included, ~47 atoms each (about 7 times QM9's edges per molecule);
+# a --heavy_atoms build keeps only the heavy atoms, as crossdocked_ligand does
 datapath: ${run.data_dir}/geom_drugs.db
 # the source's split by molecule; the split file fixes the partitions, so their
 # sizes are not set here
 split_file: ${run.data_dir}/split.npz
 num_train: null
 num_val: null
+# keep only the molecules with at most this many atoms, in every split
+max_n_atoms: null
 batch_size: 64
 num_workers: 16
 pin_memory: true

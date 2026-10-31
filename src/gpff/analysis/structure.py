@@ -21,10 +21,48 @@ __all__ = [
 ]
 
 
+class _RDKitTimeout(Exception):
+    pass
+
+
+def _raise_timeout(signum, frame):
+    raise _RDKitTimeout()
+
+
+def _invalid_analysis() -> Dict[str, Any]:
+    return {
+        "rdkit_valid": False,
+        "ring_counts": np.array([np.nan, np.nan, np.nan, np.nan]),
+        "smiles": "",
+        "canonical_smiles": "",
+        "elongation": np.nan
+    }
+
+
 def analyze_with_rdkit(
     atoms: Atoms,
     timeout: int = 5,
     remove_hs: bool = False,
+) -> Dict[str, Any]:
+    """
+    Check if an ASE Atoms object is chemically valid and compute ring statistics.
+
+    A molecule whose analysis takes longer than ``timeout`` seconds is invalid.
+    See ``_analyze_with_rdkit`` for the returned dictionary.
+    """
+    try:
+        return _analyze_with_rdkit(atoms, timeout, remove_hs)
+    except _RDKitTimeout:
+        # the alarm can also go off just after the analysis, e.g. while an
+        # RDKit error is being handled, where _analyze_with_rdkit cannot catch it
+        signal.alarm(0)
+        return _invalid_analysis()
+
+
+def _analyze_with_rdkit(
+    atoms: Atoms,
+    timeout: int,
+    remove_hs: bool,
 ) -> Dict[str, Any]:
     """
     Check if an ASE Atoms object is chemically valid and compute ring statistics.
@@ -45,15 +83,9 @@ def analyze_with_rdkit(
         - elongation: Maximum pairwise distance in Angstroms (np.nan if invalid)
     """
 
-    class TimeoutException(Exception):
-        pass
-
-    def handler(signum, frame):
-        raise TimeoutException()
-
     # Set up timeout if specified
     if timeout > 0:
-        old_handler = signal.signal(signal.SIGALRM, handler)
+        old_handler = signal.signal(signal.SIGALRM, _raise_timeout)
         signal.alarm(timeout)
 
     # analyze molecule
@@ -125,13 +157,7 @@ def analyze_with_rdkit(
 
     except Exception:
         # Any other exception, return invalid
-        return {
-            "rdkit_valid": False,
-            "ring_counts": np.array([np.nan, np.nan, np.nan, np.nan]),
-            "smiles": "",
-            "canonical_smiles": "",
-            "elongation": np.nan
-        }
+        return _invalid_analysis()
 
     finally:
         # Clean up timeout

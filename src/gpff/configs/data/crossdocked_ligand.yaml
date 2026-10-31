@@ -11,6 +11,8 @@ datapath: ${run.data_dir}/crossdocked_ligand.db
 split_file: ${run.data_dir}/split.npz
 num_train: null
 num_val: null
+# keep only the ligands with at most this many (heavy) atoms, in every split
+max_n_atoms: null
 batch_size: 128
 num_workers: 16
 pin_memory: true

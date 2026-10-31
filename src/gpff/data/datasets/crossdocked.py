@@ -26,8 +26,10 @@ N_LIGAND_ATOMS = "n_ligand_atoms"
 
 def _heavy_atoms(mol: Chem.Mol, path: str) -> Atoms:
     """The heavy atoms of a molecule read from ``path``, in file order."""
-    if mol is None or mol.GetNumConformers() == 0:
+    if mol is None:
         raise ValueError(f"RDKit cannot read {path}.")
+    if mol.GetNumAtoms() == 0 or mol.GetNumConformers() == 0:
+        raise ValueError(f"{path} has no atoms.")
     keep = [atom.GetIdx() for atom in mol.GetAtoms() if atom.GetAtomicNum() > 1]
     if not keep:
         raise ValueError(f"{path} has no heavy atoms.")
@@ -94,7 +96,9 @@ def build_crossdocked(
     its source files as the key-value pairs "pocket_file" and "ligand_file".
     The validation split is made of whole pocket directories of the train split,
     so no validation pocket is trained on; the test split is the official one.
-    A file that cannot be read stops the build, so no split row goes missing.
+    A train pair with a file that cannot be read (e.g. an empty pocket) is
+    skipped and listed in the metadata of both databases; a test pair stops the
+    build, so the test split is always complete.
 
     Args:
         root: directory the paths in the split file are relative to.
@@ -106,7 +110,8 @@ def build_crossdocked(
         progress: show a progress bar.
 
     Returns:
-        Row counts and element counts of the written databases.
+        Row counts and element counts of the written databases, and the skipped
+        train pairs.
     """
     split = torch.load(split_path, weights_only=True)
     pairs = [("train", *pair) for pair in split["train"]] + [
@@ -121,16 +126,26 @@ def build_crossdocked(
             raise FileExistsError(f"There already is a database at {path}.")
 
     partitions = {"train": [], "val": [], "test": []}
-    pocket_ids = []
+    pocket_ids, skipped = [], []
+    n_rows = 0
     ligand_elements, pocket_elements = Counter(), Counter()
     with connect(ligand_path, use_lock_file=False) as ligand_db, connect(
         complex_path, use_lock_file=False
     ) as complex_db:
-        for index, (population, pocket_file, ligand_file) in enumerate(
-            tqdm(pairs, desc="Reading CrossDocked pairs", disable=not progress)
+        for population, pocket_file, ligand_file in tqdm(
+            pairs, desc="Reading CrossDocked pairs", disable=not progress
         ):
-            ligand = read_ligand(os.path.join(root, ligand_file))
-            pocket = read_pocket(os.path.join(root, pocket_file))
+            try:
+                ligand = read_ligand(os.path.join(root, ligand_file))
+                pocket = read_pocket(os.path.join(root, pocket_file))
+            except ValueError as error:
+                if population == "test":
+                    raise
+                skipped.append(
+                    {"pocket_file": pocket_file, "ligand_file": ligand_file, "reason": str(error)}
+                )
+                continue
+            index, n_rows = n_rows, n_rows + 1
             ligand_elements.update(ligand.numbers.tolist())
             pocket_elements.update(pocket.numbers.tolist())
 
@@ -161,6 +176,7 @@ def build_crossdocked(
             "hydrogens": "removed",
             "validation_pockets": sorted(val_pockets),
             "validation_seed": seed,
+            "skipped_train_pairs": skipped,
             "_distance_unit": "Ang",
         }
         ligand_db.metadata = {**metadata, "_property_unit_dict": {}}
@@ -174,9 +190,11 @@ def build_crossdocked(
         json.dump({"molecules": pocket_ids}, file)
 
     return {
-        "n_rows": len(pairs),
+        "n_rows": n_rows,
+        "n_skipped_train_pairs": len(skipped),
         **{f"n_{name}": len(rows) for name, rows in partitions.items()},
         "n_val_pockets": len(val_pockets),
         "ligand_elements": {int(z): n for z, n in sorted(ligand_elements.items())},
         "pocket_elements": {int(z): n for z, n in sorted(pocket_elements.items())},
+        "skipped_train_pairs": skipped,
     }
