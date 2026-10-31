@@ -58,6 +58,16 @@ After install the entry points are on `PATH`:
 
 `gpfftrain` still works as a deprecated alias for `gpff_train`.
 
+Training logs performance metrics by default through the configured logger
+(including W&B): epoch/train/validation seconds, molecules per second, examples
+seen, CUDA allocated/reserved peaks in GiB, and batch-loss extrema/finite counts.
+The optional learned output gain is also recorded. Metrics use `perf/`, `train/`,
+and `model/` prefixes. Epoch timing includes validation and preceding callback
+overhead; train timing subtracts validation, including repeated validation passes.
+The first epoch includes compilation; compare later epochs for steady throughput.
+Counts resume from checkpoints, and metrics are per device. Disable with
+`~callbacks.performance_metrics`.
+
 Hydra configs live under `src/gpff/configs/`. Override with standard dotted
 overrides. Everything about model inference — the model itself, `device`,
 `dtype`, and whether the model predicts noise or forces — belongs to the
