@@ -1,0 +1,15 @@
+# Add to the existing validation EMA. With the milestones, both groups go in
+# one override: '+callbacks=[milestones,posthoc_ema]'.
+posthoc_ema:
+    _target_: gpff.posthoc_ema.PostHocEMA
+    sigma_rels: [0.05, 0.10]
+    # EDM2 saved every 4096 updates. On QM9 (773 updates per epoch at batch
+    # size 128), 16384 gives reconstruction profile errors <= 0.3% for widths
+    # 0.015-0.25 by epoch 5000, at a quarter of the disk.
+    every_n_steps: 16384
+    # also save at the end of these completed epochs: the milestone epochs
+    # when the milestones callback is on, so both can be compared there
+    epochs: ${oc.select:callbacks.milestone_checkpoint.epochs,[]}
+    dirpath: posthoc_ema
+    # EDM2 stores float16; retain float32 for GPFF by default.
+    snapshot_dtype: float32

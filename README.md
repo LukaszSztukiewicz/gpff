@@ -68,6 +68,11 @@ The first epoch includes compilation; compare later epochs for steady throughput
 Counts resume from checkpoints, and metrics are per device. Disable with
 `~callbacks.performance_metrics`.
 
+For post-hoc EMA tuning, train with `'+callbacks=[milestones,posthoc_ema]'` (one
+override for both; Hydra rejects two `+callbacks=` options) and use
+`python -m gpff.cli.posthoc_ema` to reconstruct inference models afterward.
+See [the method, hydra workflow, and GPFF design notes](docs/posthoc_ema.md).
+
 Hydra configs live under `src/gpff/configs/`. Override with standard dotted
 overrides. Everything about model inference — the model itself, `device`,
 `dtype`, and whether the model predicts noise or forces — belongs to the
