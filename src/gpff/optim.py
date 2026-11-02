@@ -85,9 +85,20 @@ def normalized(update: Tensor, norm: str) -> Tensor:
 
 
 def accumulate_grams(state: dict, grad: Tensor, beta: float) -> None:
-    """Average ``grad @ grad.T`` and ``grad.T @ grad`` into the Gram matrices of the state of a SOAP matrix."""
-    state["gram_left"].lerp_(grad @ grad.T, 1 - beta)
-    state["gram_right"].lerp_(grad.T @ grad, 1 - beta)
+    """Average ``grad @ grad.T`` and ``grad.T @ grad`` into the Gram matrices of the state of a SOAP matrix (those
+    of the sides it preconditions)."""
+    if "gram_left" in state:
+        state["gram_left"].lerp_(grad @ grad.T, 1 - beta)
+    if "gram_right" in state:
+        state["gram_right"].lerp_(grad.T @ grad, 1 - beta)
+
+
+def soap_sides(rows: int, columns: int, one_sided: bool):
+    """Whether SOAP rotates the left and the right side of a ``rows`` x ``columns`` matrix: both, or with
+    ``one_sided`` only the smaller one (the right one if they are equal)."""
+    if not one_sided:
+        return True, True
+    return rows < columns, columns <= rows
 
 
 def eigenbasis(gram: Tensor) -> Tensor:
@@ -167,31 +178,59 @@ def _update_muon(params, grads, buffers, lr, *, momentum, weight_decay, roles) -
     _apply(params, updates, lr, weight_decay)
 
 
+def _rotate(x: Tensor, left: Optional[Tensor], right: Optional[Tensor]) -> Tensor:
+    """``left.T @ x @ right`` into the bases of SOAP; a side without a basis is not rotated."""
+    if left is not None:
+        x = left.mT @ x
+    if right is not None:
+        x = x @ right
+    return x
+
+
+def _rotate_back(x: Tensor, left: Optional[Tensor], right: Optional[Tensor]) -> Tensor:
+    """``left @ x @ right.T`` out of the bases of SOAP."""
+    if left is not None:
+        x = left @ x
+    if right is not None:
+        x = x @ right.mT
+    return x
+
+
 def _update_soap(
     params, grads, exp_avgs, exp_avg_sqs, gram_lefts, gram_rights, basis_lefts, basis_rights, lr, bc1, bc2,
-    *, betas, eps, gram_beta, weight_decay, refresh,
+    *, betas, eps, gram_beta, weight_decay, refresh, one_sided,
 ) -> None:
+    # the lists of a side that is not rotated (``one_sided``) hold None
     beta1, beta2 = betas
     torch._foreach_lerp_(exp_avgs, grads, 1 - beta1)
     updates = [None] * len(params)
     for indices in _by_shape(params):
+        rows, columns = params[indices[0]].shape
+        use_left, use_right = soap_sides(rows, columns, one_sided)
         grad, first = torch.stack([grads[i] for i in indices]), torch.stack([exp_avgs[i] for i in indices])
-        left, right = [torch.stack([bases[i] for i in indices]) for bases in (basis_lefts, basis_rights)]
+        left = torch.stack([basis_lefts[i] for i in indices]) if use_left else None
+        right = torch.stack([basis_rights[i] for i in indices]) if use_right else None
         second = [exp_avg_sqs[i] for i in indices]
-        rotated = (left.mT @ grad @ right).unbind(0)
+        rotated = _rotate(grad, left, right).unbind(0)
         torch._foreach_mul_(second, beta2)
         torch._foreach_addcmul_(second, rotated, rotated, value=1 - beta2)
         denominator = (torch.stack(second) / bc2).sqrt_().add_(eps)
-        update = left @ ((left.mT @ first @ right) / bc1 / denominator) @ right.mT
+        update = _rotate_back(_rotate(first, left, right) / bc1 / denominator, left, right)
         # the gradient joins the preconditioner after its step: it did not rotate itself
-        grams = [[gram[i] for i in indices] for gram in (gram_lefts, gram_rights)]
-        torch._foreach_lerp_(grams[0], (grad @ grad.mT).unbind(0), 1 - gram_beta)
-        torch._foreach_lerp_(grams[1], (grad.mT @ grad).unbind(0), 1 - gram_beta)
+        grams_left = [gram_lefts[i] for i in indices] if use_left else None
+        grams_right = [gram_rights[i] for i in indices] if use_right else None
+        if use_left:
+            torch._foreach_lerp_(grams_left, (grad @ grad.mT).unbind(0), 1 - gram_beta)
+        if use_right:
+            torch._foreach_lerp_(grams_right, (grad.mT @ grad).unbind(0), 1 - gram_beta)
         if refresh:
-            new_left, sorted_second = refreshed_basis(torch.stack(grams[0]), left, torch.stack(second), 0)
-            new_right, sorted_second = refreshed_basis(torch.stack(grams[1]), right, sorted_second, 1)
-            torch._foreach_copy_([basis_lefts[i] for i in indices], new_left.unbind(0))
-            torch._foreach_copy_([basis_rights[i] for i in indices], new_right.unbind(0))
+            sorted_second = torch.stack(second)
+            if use_left:
+                new_left, sorted_second = refreshed_basis(torch.stack(grams_left), left, sorted_second, 0)
+                torch._foreach_copy_([basis_lefts[i] for i in indices], new_left.unbind(0))
+            if use_right:
+                new_right, sorted_second = refreshed_basis(torch.stack(grams_right), right, sorted_second, 1)
+                torch._foreach_copy_([basis_rights[i] for i in indices], new_right.unbind(0))
             torch._foreach_copy_(second, sorted_second.unbind(0))
         for i, step in zip(indices, update.unbind(0)):
             updates[i] = step
@@ -248,10 +287,17 @@ class BlockAdamW(Optimizer):
 
     ``compiled=True`` compiles the update of every group with ``torch.compile``: the first steps take longer, and
     the many small element-wise operations around the matrix products become a few kernels.
+
+    ``one_sided=True`` makes ``"soap"`` rotate only the smaller side of every matrix (the right one if they are
+    equal), as in the one-sided variant of the SOAP paper: the other side keeps the coordinates of the weight. A 3F x F
+    matrix of a fused layer then has a Gram matrix, eigenbases and refreshes of size F instead of 3F, which is what
+    the refresh costs (cubic in the side). Like ``compiled``, it is not in the state dict: state saved with the
+    other setting is rejected.
     """
 
-    # class-level defaults, so optimizers pickled before the option existed still load
+    # class-level defaults, so optimizers pickled before the options existed still load
     compiled: bool = False
+    one_sided: bool = False
 
     def __init__(
         self,
@@ -265,6 +311,7 @@ class BlockAdamW(Optimizer):
         precondition_frequency: int = 10,
         shampoo_beta: Optional[float] = None,
         compiled: bool = False,
+        one_sided: bool = False,
     ):
         if block_update not in ("adam", "muon", "soap", *_NORMS):
             raise ValueError(f"unknown block_update {block_update!r}")
@@ -278,6 +325,7 @@ class BlockAdamW(Optimizer):
             precondition_frequency=precondition_frequency, shampoo_beta=shampoo_beta,
         )
         self.compiled = compiled
+        self.one_sided = one_sided
         super().__init__(params, defaults)
 
     def add_param_group(self, param_group):
@@ -382,6 +430,14 @@ class BlockAdamW(Optimizer):
         for p, state, new in zip(params, states, is_new):
             if new:
                 self._start_soap(p, state, gram_beta)
+            else:
+                sides = soap_sides(*p.shape, self.one_sided)
+                if sides != ("basis_left" in state, "basis_right" in state):
+                    raise ValueError(
+                        f"the state of a SOAP matrix {tuple(p.shape)} is {'one' if self.one_sided else 'two'}-sided "
+                        f"in this optimizer and was saved {'two' if self.one_sided else 'one'}-sided: "
+                        "one_sided cannot change in the middle of a run"
+                    )
         if any(is_new) and group["weight_decay"]:  # the first gradient takes no step, but the weights decay
             torch._foreach_mul_([p for p, new in zip(params, is_new) if new], 1 - lr * group["weight_decay"])
         started = [i for i, new in enumerate(is_new) if not new]
@@ -394,7 +450,7 @@ class BlockAdamW(Optimizer):
             self._update("soap")(
                 part,
                 [p.grad for p in part],
-                *([state[key] for state in part_states] for key in (
+                *([state.get(key) for state in part_states] for key in (
                     "exp_avg", "exp_avg_sq", "gram_left", "gram_right", "basis_left", "basis_right"
                 )),
                 *self._scalars(part[0], lr, 1 - beta1**step, 1 - beta2**step),
@@ -403,18 +459,23 @@ class BlockAdamW(Optimizer):
                 gram_beta=gram_beta,
                 weight_decay=group["weight_decay"],
                 refresh=step % group["precondition_frequency"] == 0,
+                one_sided=self.one_sided,
             )
 
-    @staticmethod
-    def _start_soap(p: Tensor, state: dict, gram_beta: float) -> None:
+    def _start_soap(self, p: Tensor, state: dict, gram_beta: float) -> None:
+        use_left, use_right = soap_sides(*p.shape, self.one_sided)
         state["step"] = 0
         state["exp_avg"] = torch.zeros_like(p)  # in the space of the weight
         state["exp_avg_sq"] = torch.zeros_like(p)  # in the eigenbasis
-        state["gram_left"] = p.new_zeros(p.shape[0], p.shape[0])
-        state["gram_right"] = p.new_zeros(p.shape[1], p.shape[1])
+        if use_left:
+            state["gram_left"] = p.new_zeros(p.shape[0], p.shape[0])
+        if use_right:
+            state["gram_right"] = p.new_zeros(p.shape[1], p.shape[1])
         accumulate_grams(state, p.grad, gram_beta)
-        state["basis_left"] = eigenbasis(state["gram_left"])
-        state["basis_right"] = eigenbasis(state["gram_right"])
+        if use_left:
+            state["basis_left"] = eigenbasis(state["gram_left"])
+        if use_right:
+            state["basis_right"] = eigenbasis(state["gram_right"])
 
 
 def block_param_groups(

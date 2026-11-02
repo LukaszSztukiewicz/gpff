@@ -424,14 +424,15 @@ def test_the_gram_matrices_average_with_shampoo_beta():
         torch.testing.assert_close(state["gram_right"], expected_right)
 
 
+@pytest.mark.parametrize("one_sided", [False, True])
 @pytest.mark.parametrize("precondition_frequency", [1, 2, 100])
-def test_soap_is_adam_when_the_gradients_are_diagonal(precondition_frequency):
+def test_soap_is_adam_when_the_gradients_are_diagonal(precondition_frequency, one_sided):
     # the eigenbasis of diagonal Gram matrices is a permutation of the coordinates: SOAP's moments are Adam's
     g = torch.Generator().manual_seed(0)
     start = torch.randn(5, 5, generator=g, dtype=torch.float64)
     weight, reference = nn.Parameter(start.clone()), nn.Parameter(start.clone())
     kwargs = dict(lr=LR, betas=(0.9, 0.99), eps=1e-8)
-    optimizer = soap([weight], precondition_frequency=precondition_frequency, **kwargs)
+    optimizer = soap([weight], precondition_frequency=precondition_frequency, one_sided=one_sided, **kwargs)
     adam = torch.optim.AdamW([reference], weight_decay=0.0, **kwargs)
 
     for k in range(9):
@@ -495,7 +496,8 @@ def test_repeated_refreshes_converge_to_the_eigenbasis():
     torch.testing.assert_close((basis.T @ q.flip(1)).abs(), identity(6), atol=1e-6, rtol=0)
 
 
-def test_soap_resumes_exactly_from_its_state():
+@pytest.mark.parametrize("one_sided", [False, True])
+def test_soap_resumes_exactly_from_its_state(one_sided):
     g = torch.Generator().manual_seed(0)
     start = torch.randn(4, 6, generator=g, dtype=torch.float64)
     grads = [torch.randn(4, 6, generator=g, dtype=torch.float64) for _ in range(12)]
@@ -505,15 +507,16 @@ def test_soap_resumes_exactly_from_its_state():
             weight.grad = grad.clone()
             optimizer.step()
 
+    options = dict(lr=LR, precondition_frequency=3, one_sided=one_sided)
     straight = nn.Parameter(start.clone())
-    run(straight, soap([straight], lr=LR, precondition_frequency=3), grads)
+    run(straight, soap([straight], **options), grads)
 
     interrupted = nn.Parameter(start.clone())
-    optimizer = soap([interrupted], lr=LR, precondition_frequency=3)
+    optimizer = soap([interrupted], **options)
     run(interrupted, optimizer, grads[:5])
     saved = copy.deepcopy(optimizer.state_dict())
     resumed = nn.Parameter(interrupted.detach().clone())
-    optimizer = soap([resumed], lr=LR, precondition_frequency=3)
+    optimizer = soap([resumed], **options)
     optimizer.load_state_dict(saved)
     run(resumed, optimizer, grads[5:])
 
@@ -532,11 +535,12 @@ def test_soap_leaves_a_weight_alone_while_its_gradients_are_zero():
     assert torch.equal(weight.detach(), before)
 
 
+@pytest.mark.parametrize("one_sided", [False, True])
 @pytest.mark.parametrize("shape", [(12, 4), (4, 12)])
-def test_soap_stays_finite_with_orthogonal_bases_on_gradients_of_rank_one(shape):
+def test_soap_stays_finite_with_orthogonal_bases_on_gradients_of_rank_one(shape, one_sided):
     g = torch.Generator().manual_seed(0)
     weight = nn.Parameter(torch.randn(*shape, generator=g, dtype=torch.float64))
-    optimizer = soap([weight], lr=LR, precondition_frequency=3)
+    optimizer = soap([weight], lr=LR, precondition_frequency=3, one_sided=one_sided)
 
     for _ in range(20):  # Gram matrices of rank one: most of their eigenvectors are arbitrary
         weight.grad = torch.randn(shape[0], 1, generator=g, dtype=torch.float64) @ torch.randn(
@@ -546,7 +550,9 @@ def test_soap_stays_finite_with_orthogonal_bases_on_gradients_of_rank_one(shape)
 
     assert torch.isfinite(weight).all()
     state = optimizer.state[weight]
-    for basis in (state["basis_left"], state["basis_right"]):
+    bases = [state[key] for key in ("basis_left", "basis_right") if key in state]
+    assert len(bases) == (1 if one_sided else 2)
+    for basis in bases:
         torch.testing.assert_close(basis.T @ basis, identity(len(basis)))
 
 
@@ -673,20 +679,26 @@ class LoopBlockAdamW(BlockAdamW):
 
     def _loop_soap(self, p, group):
         state, grad = self.state[p], p.grad
+        m, n = p.shape
+        # one-sided: the side that is not rotated has the identity as its basis, and no Gram matrix
+        use_left, use_right = (m < n, n <= m) if self.one_sided else (True, True)
         beta1, beta2 = group["betas"]
         gram_beta = beta2 if group["shampoo_beta"] is None else group["shampoo_beta"]
         if not state:
             state["step"] = 0
             state["exp_avg"] = torch.zeros_like(p)
             state["exp_avg_sq"] = torch.zeros_like(p)
-            state["gram_left"] = p.new_zeros(p.shape[0], p.shape[0])
-            state["gram_right"] = p.new_zeros(p.shape[1], p.shape[1])
-            state["gram_left"].lerp_(grad @ grad.T, 1 - gram_beta)
-            state["gram_right"].lerp_(grad.T @ grad, 1 - gram_beta)
-            state["basis_left"] = torch.linalg.eigh(state["gram_left"]).eigenvectors.flip(1)
-            state["basis_right"] = torch.linalg.eigh(state["gram_right"]).eigenvectors.flip(1)
+            if use_left:
+                state["gram_left"] = p.new_zeros(m, m)
+                state["gram_left"].lerp_(grad @ grad.T, 1 - gram_beta)
+                state["basis_left"] = torch.linalg.eigh(state["gram_left"]).eigenvectors.flip(1)
+            if use_right:
+                state["gram_right"] = p.new_zeros(n, n)
+                state["gram_right"].lerp_(grad.T @ grad, 1 - gram_beta)
+                state["basis_right"] = torch.linalg.eigh(state["gram_right"]).eigenvectors.flip(1)
             return torch.zeros_like(p)
-        left, right = state["basis_left"], state["basis_right"]
+        left = state["basis_left"] if use_left else torch.eye(m, dtype=p.dtype)
+        right = state["basis_right"] if use_right else torch.eye(n, dtype=p.dtype)
         state["step"] += 1
         step = state["step"]
         exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
@@ -695,18 +707,24 @@ class LoopBlockAdamW(BlockAdamW):
         exp_avg_sq.mul_(beta2).addcmul_(rotated, rotated, value=1 - beta2)
         denominator = (exp_avg_sq / (1 - beta2**step)).sqrt_().add_(group["eps"])
         update = left @ ((left.T @ exp_avg @ right) / (1 - beta1**step) / denominator) @ right.T
-        state["gram_left"].lerp_(grad @ grad.T, 1 - gram_beta)
-        state["gram_right"].lerp_(grad.T @ grad, 1 - gram_beta)
+        if use_left:
+            state["gram_left"].lerp_(grad @ grad.T, 1 - gram_beta)
+        if use_right:
+            state["gram_right"].lerp_(grad.T @ grad, 1 - gram_beta)
         if step % group["precondition_frequency"] == 0:
-            state["basis_left"], state["exp_avg_sq"] = ref_refreshed_basis(state["gram_left"], left, exp_avg_sq, 0)
-            state["basis_right"], state["exp_avg_sq"] = ref_refreshed_basis(
-                state["gram_right"], right, state["exp_avg_sq"], 1
-            )
+            if use_left:
+                state["basis_left"], state["exp_avg_sq"] = ref_refreshed_basis(
+                    state["gram_left"], left, exp_avg_sq, 0
+                )
+            if use_right:
+                state["basis_right"], state["exp_avg_sq"] = ref_refreshed_basis(
+                    state["gram_right"], right, state["exp_avg_sq"], 1
+                )
         return update
 
 
 # matrices of equal shapes next to each other, fused layers with 2 and 3 roles, and a group that is no block
-SHAPES = {1: [(4, 4), (4, 4), (4, 8), (5, 7), (4, 4)], 3: [(12, 4), (12, 4), (6, 5)], 2: [(8, 4), (8, 4)]}
+SHAPES = {1: [(4, 4), (4, 4), (4, 8), (5, 7), (7, 3), (4, 4)], 3: [(12, 4), (12, 4), (6, 5)], 2: [(8, 4), (8, 4)]}
 
 
 def parameter_groups(roles_of_groups=(1, 2, 3), seed=0):
@@ -814,10 +832,12 @@ def test_the_parameters_of_a_group_share_their_dtype():
         BlockAdamW([{"params": [nn.Parameter(torch.zeros(2, 2)), nn.Parameter(torch.zeros(2, 2, dtype=torch.float64))]}])
 
 
-@pytest.mark.parametrize("block_update", ["rms", "muon", "soap"])
-def test_a_compiled_step_is_the_step_of_the_eager_one(block_update):
+@pytest.mark.parametrize(
+    "block_update, one_sided", [("rms", False), ("muon", False), ("soap", False), ("soap", True)]
+)
+def test_a_compiled_step_is_the_step_of_the_eager_one(block_update, one_sided):
     # one block group and the rest: each compiles once (SOAP: once more for the steps that refresh the bases)
-    kwargs = dict(precondition_frequency=3) if block_update == "soap" else {}
+    kwargs = dict(precondition_frequency=3, one_sided=one_sided) if block_update == "soap" else {}
     groups = parameter_groups((1,))
     copies = copy.deepcopy(groups)
     compiled = BlockAdamW(groups, lr=LR, block_update=block_update, weight_decay=0.1, compiled=True, **kwargs)
@@ -836,3 +856,76 @@ def test_a_compiled_step_is_the_step_of_the_eager_one(block_update):
         for p, q in zip(group["params"], twin["params"]):
             torch.testing.assert_close(p.detach(), q.detach(), rtol=1e-6, atol=1e-8)
             assert compiled.state[p].keys() == eager.state[q].keys()
+
+
+# One-sided SOAP rotates only the smaller side of a matrix (the right one if they are equal).
+
+
+@pytest.mark.parametrize("weight_decay", [0.0, 0.1])
+def test_the_batched_one_sided_soap_step_is_the_step_of_the_loop(weight_decay):
+    # wide, tall and square matrices, some of equal shapes, a refresh at every other step
+    assert_same_steps_and_state(
+        *run_both("soap", (1,), steps=7, weight_decay=weight_decay, precondition_frequency=2, one_sided=True)
+    )
+
+
+def test_a_missing_gradient_leaves_a_one_sided_soap_matrix_behind():
+    results = run_both("soap", (1,), steps=6, skipped=(0, 2, 3), precondition_frequency=2, one_sided=True)
+    assert_same_steps_and_state(*results)
+
+
+@pytest.mark.parametrize("shape, side", [((4, 9), "left"), ((9, 4), "right"), ((5, 5), "right")])
+def test_one_sided_soap_keeps_the_state_of_the_smaller_side_only(shape, side):
+    other = "right" if side == "left" else "left"
+    g = torch.Generator().manual_seed(0)
+    weight = nn.Parameter(torch.randn(shape, generator=g, dtype=torch.float64))
+    optimizer = soap([weight], lr=LR, precondition_frequency=2, one_sided=True)
+
+    for _ in range(5):
+        weight.grad = torch.randn(shape, generator=g, dtype=torch.float64)
+        optimizer.step()
+
+    state = optimizer.state[weight]
+    assert state[f"basis_{side}"].shape == (min(shape),) * 2 == state[f"gram_{side}"].shape
+    assert f"basis_{other}" not in state and f"gram_{other}" not in state
+    assert torch.isfinite(weight).all()
+
+
+@pytest.mark.parametrize("shape", [(6, 4), (4, 6)])
+def test_one_sided_soap_commutes_with_rotating_the_smaller_side_of_the_weight(shape):
+    # the smaller side of the weight is the one with a basis: W -> W Q (or Q W) maps the gradients and the Gram matrix
+    # the same way, and so SOAP's update. The other side is not rotated, and the coordinates of Adam stay.
+    g = torch.Generator().manual_seed(0)
+    q, _ = torch.linalg.qr(torch.randn(4, 4, generator=g, dtype=torch.float64))
+    spread = torch.diag(torch.tensor([1, 2, 4, 8], dtype=torch.float64))  # well separated eigenvalues
+    if shape[0] > shape[1]:
+        turn, scaled = (lambda x: x @ q), (lambda x: x @ spread)
+    else:
+        turn, scaled = (lambda x: q @ x), (lambda x: spread @ x)
+    start = torch.randn(shape, generator=g, dtype=torch.float64)
+    weight, rotated = nn.Parameter(start.clone()), nn.Parameter(turn(start))
+    optimizers = [soap([w], lr=LR, precondition_frequency=2, one_sided=True) for w in (weight, rotated)]
+
+    for _ in range(9):  # four refreshes of the basis
+        grad = scaled(torch.randn(shape, generator=g, dtype=torch.float64))
+        weight.grad, rotated.grad = grad, turn(grad)
+        for optimizer in optimizers:
+            optimizer.step()
+
+    assert (weight.detach() - start).abs().max() > 1e-3
+    torch.testing.assert_close(rotated.detach(), turn(weight.detach()), rtol=1e-6, atol=1e-8)
+
+
+def test_the_state_of_one_sided_soap_is_rejected_by_a_two_sided_optimizer():
+    g = torch.Generator().manual_seed(0)
+    weight = nn.Parameter(torch.randn(4, 6, generator=g, dtype=torch.float64))
+    one_sided = soap([weight], lr=LR, one_sided=True)
+    for _ in range(2):
+        weight.grad = torch.randn(4, 6, generator=g, dtype=torch.float64)
+        one_sided.step()
+    two_sided = soap([weight], lr=LR)
+    two_sided.load_state_dict(copy.deepcopy(one_sided.state_dict()))
+
+    weight.grad = torch.randn(4, 6, generator=g, dtype=torch.float64)
+    with pytest.raises(ValueError, match="one_sided"):
+        two_sided.step()
