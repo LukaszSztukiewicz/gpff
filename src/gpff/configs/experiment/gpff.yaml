@@ -17,6 +17,9 @@ globals:
   prenorm: false
   # the messages an interaction sums over the neighbors of an atom are divided by sqrt(degree)
   degree_norm: false
+  # every interaction scales the message of a neighbor by an invariant gate that reads the scalars of both atoms and
+  # their distance; zero-initialized, so training starts as without gates
+  neighbor_gate: false
   bounded_forces: false
   # bound on the network's share of the force: the radius of a clean molecule
   # (QM9: 7.4 A) plus what the skip term leaves at intermediate sigma, ~2x
@@ -52,6 +55,7 @@ model:
       n_rbf: ${globals.n_rbf}
     prenorm: ${globals.prenorm}
     degree_norm: ${globals.degree_norm}
+    neighbor_gate: ${globals.neighbor_gate}
   output_modules:
     - _target_: gpff.model.heads.GatedEquivariant
       n_in: ${globals.n_atom_basis}

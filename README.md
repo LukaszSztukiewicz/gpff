@@ -113,6 +113,10 @@ gpff_train experiment=gpff data.load_properties=[] data.cache_in_memory=true \
 # task.optimizer_args.weight_decay (default 0, off) decays those matrices only:
 gpff_train experiment=gpff task/optimizer=block_adam task.optimizer_args.block_update=rms globals.lr=1e-5
 
+# Gate the messages an atom receives from its neighbors by an invariant number that reads
+# the scalars of both atoms and their distance (all its weights start at zero: a gate of one):
+gpff_train experiment=gpff globals.neighbor_gate=true
+
 # Sample with a local checkpoint; model_path and split_path are required and
 # are the only way to point gpff_generate at a model:
 gpff_generate \

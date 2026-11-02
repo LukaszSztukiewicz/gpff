@@ -69,10 +69,18 @@ def _interaction(
     idx_i: torch.Tensor,
     idx_j: torch.Tensor,
     n_atoms: int,
+    gate=None,
 ):
     """
     PaiNNInteraction.forward, except that Wij may hold the filters of only the
-    first half of the pairs when the second half is the same pairs reversed.
+    first half of the pairs when the second half is the same pairs reversed, and
+    that the message of every pair may be scaled by a gate.
+
+    gate: None, or (atoms, radial): the weights (n_atom_basis, 2) that read the
+    scalars of the receiving atom i and of the sending atom j, and the distance
+    term of every pair (one per pair, or one per direction), all in the logit
+    of the gate 2 * sigmoid(logit). The gate is an invariant number, so it
+    scales the scalar and the vector parts of a message alike.
     """
     x = interaction.interatomic_context_net(q)
     xj = x[idx_j]
@@ -82,6 +90,14 @@ def _interaction(
     else:
         # one filter for both directions of a pair
         x = (Wij * xj.unflatten(0, (2, -1))).flatten(0, 1)
+    if gate is not None:
+        atoms, radial = gate
+        scores = q @ atoms
+        logit = scores[idx_i][..., :1] + scores[idx_j][..., 1:]
+        if radial.shape[0] != logit.shape[0]:
+            # one term for both directions of a pair
+            radial = torch.cat([radial, radial])
+        x = x * (2 * torch.sigmoid(logit + radial))
 
     dq, dmuR, dmumu = torch.split(x, interaction.n_atom_basis, dim=-1)
     dq = snn.scatter_add(dq, idx_i, dim_size=n_atoms)
@@ -108,6 +124,7 @@ class PaiNN(nn.Module):
     # class-level default, so models pickled before the option existed still load
     prenorm: bool = False
     degree_norm: bool = False
+    neighbor_gate: bool = False
 
     def __init__(
         self,
@@ -125,6 +142,7 @@ class PaiNN(nn.Module):
         electronic_embeddings: Optional[List] = None,
         prenorm: bool = False,
         degree_norm: bool = False,
+        neighbor_gate: bool = False,
     ):
         """
         Args:
@@ -158,6 +176,16 @@ class PaiNN(nn.Module):
                 are normalized by ``prenorm``. This takes the exact degree of every
                 atom, so no dataset constant enters. The count is not recoverable from a
                 normalized sum, the network has to read it from the distances.
+            neighbor_gate: if True, every interaction block scales the message of
+                a neighbor j to an atom i by a gate in (0, 2), the sigmoid of the
+                sum of a linear function of the scalars of i, one of the scalars
+                of j and one of the radial basis of their distance (plus a bias),
+                times two. The gate is invariant, so equivariance is kept, and it
+                is not normalized over the neighbors: the sum still grows with
+                their number, unlike an attention softmax. All its weights start
+                at zero, so every gate starts at one and the model starts as the
+                one without gates; they are created after all other weights, so
+                that flag does not change the initialization of these.
         """
         super(PaiNN, self).__init__()
 
@@ -219,12 +247,21 @@ class PaiNN(nn.Module):
             self.scalar_norms = nn.ModuleList(nn.LayerNorm(n_atom_basis) for _ in range(n_norms))
             self.vector_norms = nn.ModuleList(VectorRMSNorm(n_atom_basis) for _ in range(n_norms))
 
-    def _block(self, block: nn.Module, k: int, q: torch.Tensor, mu: torch.Tensor, *args, update_scale=None):
+        # parameters, not layers, and zero: the gates draw no random numbers and start at one
+        self.neighbor_gate = neighbor_gate
+        if neighbor_gate:
+            self.gate_atoms = nn.Parameter(torch.zeros(n_interactions, n_atom_basis, 2))
+            self.gate_radial = nn.Parameter(torch.zeros(self.radial_basis.n_rbf, n_interactions))
+            self.gate_bias = nn.Parameter(torch.zeros(n_interactions))
+
+    def _block(
+        self, block: nn.Module, k: int, q: torch.Tensor, mu: torch.Tensor, *args, update_scale=None, gate=None
+    ):
         # schnetpack's blocks return their input plus the update; add the update to
         # the unnormalized features
         q_in, mu_in = (self.scalar_norms[k](q), self.vector_norms[k](mu)) if self.prenorm else (q, mu)
         if isinstance(block, PaiNNInteraction):
-            q_out, mu_out = _interaction(block, q_in, mu_in, *args)
+            q_out, mu_out = _interaction(block, q_in, mu_in, *args, gate=gate)
         else:
             q_out, mu_out = block(q_in, mu_in, *args)
         if not self.prenorm and update_scale is None:
@@ -285,6 +322,9 @@ class PaiNN(nn.Module):
         else:
             filter_list = torch.split(filters, 3 * self.n_atom_basis, dim=-1)
 
+        # the distance term of the gates of every interaction: (pairs, 1, n_interactions)
+        gate_radial = phi_ij @ self.gate_radial + self.gate_bias if self.neighbor_gate else None
+
         # the interactions sum their messages over the neighbors of an atom: divide by sqrt(degree)
         update_scale = None
         if self.degree_norm:
@@ -302,8 +342,10 @@ class PaiNN(nn.Module):
         qs = q.shape
         mu = torch.zeros((qs[0], 3, qs[2]), device=q.device)
         for i, (interaction, mixing) in enumerate(zip(self.interactions, self.mixing)):
+            gate = (self.gate_atoms[i], gate_radial[..., i : i + 1]) if self.neighbor_gate else None
             q, mu = self._block(
-                interaction, 2 * i, q, mu, filter_list[i], dir_ij, idx_i, idx_j, n_atoms, update_scale=update_scale
+                interaction, 2 * i, q, mu, filter_list[i], dir_ij, idx_i, idx_j, n_atoms,
+                update_scale=update_scale, gate=gate,
             )
             q, mu = self._block(mixing, 2 * i + 1, q, mu)
         if self.prenorm:
