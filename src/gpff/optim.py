@@ -67,6 +67,10 @@ class BlockAdamW(Optimizer):
       zero updates stay zero.
     * ``"muon"``: Muon's update, Nesterov ``momentum`` and Newton-Schulz orthogonalization (no Adam moments),
       scaled to the RMS of an AdamW update, so ``lr`` is comparable to AdamW's.
+
+    ``weight_decay`` is decoupled, as in AdamW: a step shrinks the weights by ``lr * weight_decay`` before the
+    update, whichever update it is. It is off by default; the groups of ``block_param_groups`` decay the block
+    matrices only.
     """
 
     def __init__(
@@ -146,7 +150,8 @@ def block_param_groups(params: Iterable[Tensor], model: nn.Module, scope: str = 
     ``scope="all"``: every linear layer of the PaiNN interaction and mixing blocks and of the gated equivariant
     blocks of the head. ``scope="vector"``: only the ones acting on vector features (``mu_channel_mix``,
     ``mix_vectors``), which mix the channels the same way for all 3 components: the l = 1 irrep blocks.
-    Embeddings, the filter network, biases and normalization gains are never blocks.
+    Embeddings, the filter network, biases and normalization gains are never blocks, and the rest never takes
+    weight decay: ``weight_decay`` of the optimizer decays the block matrices only.
     """
     if scope not in ("all", "vector"):
         raise ValueError(f"unknown block scope {scope!r}")
@@ -162,4 +167,4 @@ def block_param_groups(params: Iterable[Tensor], model: nn.Module, scope: str = 
     if not matrices:
         raise ValueError(f"no weight matrices of equivariant blocks in the parameters for block scope {scope!r}")
     rest = [p for p in params if id(p) not in blocks]
-    return [{"params": matrices, "block": True}] + ([{"params": rest}] if rest else [])
+    return [{"params": matrices, "block": True}] + ([{"params": rest, "weight_decay": 0.0}] if rest else [])

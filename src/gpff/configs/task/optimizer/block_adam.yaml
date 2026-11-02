@@ -14,6 +14,8 @@ block_scope: all
 optimizer_args:
   lr: ${globals.lr}
   betas: [0.98, 0.99]  # the paper's choice for normalized updates; AdamW's default is [0.9, 0.999]
-  weight_decay: 0.0
+  weight_decay: 0.0  # off; when on, decoupled (lr * weight_decay per step) on the block matrices only,
+  # never on biases, norm gains, embeddings or the filter net. Reasoned, not tuned: rms ~1e-3, muon 1e-3 to
+  # 1e-2 (the LLM value 0.1 would pull these small weights far below their init).
   block_update: rms
   momentum: 0.95  # muon only
