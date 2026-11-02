@@ -28,3 +28,5 @@ optimizer_args:
   momentum: 0.95  # muon only
   precondition_frequency: 10  # soap only: steps between two refreshes of the eigenbases (the costly part)
   shampoo_beta: null  # soap only: decay of the averages of G G^T and G^T G; null: betas[1]
+  # torch.compile the update of every group of parameters: same steps, fewer and fused kernels, a longer first step
+  compiled: false

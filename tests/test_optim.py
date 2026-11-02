@@ -14,7 +14,16 @@ from torch import nn
 
 from gpff.model.heads import GatedEquivariant
 from gpff.model.painn import PaiNN
-from gpff.optim import BlockAdamW, block_param_groups, eigenbasis, newton_schulz, refreshed_basis, spectral_norm
+from gpff.optim import (
+    BlockAdamW,
+    block_param_groups,
+    eigenbasis,
+    newton_schulz,
+    normalized,
+    orthogonalized,
+    refreshed_basis,
+    spectral_norm,
+)
 from gpff.task import AtomisticTask
 
 LR = 1e-2
@@ -569,3 +578,261 @@ def test_soap_options_are_checked():
     with pytest.raises(ValueError, match="roles"):  # the roles of a fused layer are not preconditioned apart
         BlockAdamW([{"params": [weight], "block": True, "roles": 3}], block_update="soap")
     BlockAdamW([{"params": [weight], "block": False, "roles": 3}], block_update="soap")  # not a block: plain AdamW
+
+
+# The step works on lists of tensors and batches the matrices of one shape. The loop over the parameters that it
+# replaced is the reference: it has to take the same steps and leave the same state.
+
+
+def ref_newton_schulz(matrix, steps=5):
+    a, b, c = 3.4445, -4.7750, 2.0315
+    x = matrix / matrix.norm().clamp_min(1e-7)
+    tall = x.shape[0] > x.shape[1]
+    if tall:
+        x = x.T
+    for _ in range(steps):
+        gram = x @ x.T
+        x = a * x + (b * gram + c * gram @ gram) @ x
+    return x.T if tall else x
+
+
+def ref_spectral_norm(update):
+    frobenius = update.norm()
+    unit = update / frobenius.clamp_min(torch.finfo(update.dtype).tiny)
+    gram = unit.T @ unit if unit.shape[0] >= unit.shape[1] else unit @ unit.T
+    gram = gram @ gram
+    gram = gram @ gram
+    return frobenius * gram.norm() ** (1 / 8)
+
+
+def ref_rms_norm(update):
+    return update.pow(2).mean().sqrt()
+
+
+def ref_refreshed_basis(gram, basis, second_moment, dim):
+    estimate = (basis * (gram @ basis)).sum(dim=0)
+    order = estimate.argsort(descending=True)
+    return torch.linalg.qr(gram @ basis[:, order]).Q, second_moment.index_select(dim, order)
+
+
+def ref_per_role(function, matrix, roles):
+    return function(matrix) if roles == 1 else torch.cat([function(role) for role in matrix.chunk(roles)])
+
+
+class LoopBlockAdamW(BlockAdamW):
+    """BlockAdamW as it stepped before it was batched: one parameter after the other, matrix by matrix."""
+
+    @torch.no_grad()
+    def step(self):
+        for group in self.param_groups:
+            lr = group["lr"]
+            mode = group["block_update"] if group["block"] else "adam"
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+                if group["weight_decay"]:
+                    p.mul_(1 - lr * group["weight_decay"])
+                if mode == "muon":
+                    update = self._loop_muon(p, group)
+                elif mode == "soap":
+                    update = self._loop_soap(p, group)
+                else:
+                    update = self._loop_adam(p, group)
+                    norm = {"rms": ref_rms_norm, "spectral": ref_spectral_norm}.get(mode)
+                    if norm is not None:
+                        update = ref_per_role(
+                            lambda role: role / norm(role).clamp_min(torch.finfo(role.dtype).tiny), update, group["roles"]
+                        )
+                p.add_(update, alpha=-lr)
+
+    def _loop_adam(self, p, group):
+        state = self.state[p]
+        if not state:
+            state["step"] = 0
+            state["exp_avg"] = torch.zeros_like(p)
+            state["exp_avg_sq"] = torch.zeros_like(p)
+        beta1, beta2 = group["betas"]
+        state["step"] += 1
+        exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
+        exp_avg.lerp_(p.grad, 1 - beta1)
+        exp_avg_sq.mul_(beta2).addcmul_(p.grad, p.grad, value=1 - beta2)
+        denominator = (exp_avg_sq / (1 - beta2 ** state["step"])).sqrt_().add_(group["eps"])
+        return exp_avg / (1 - beta1 ** state["step"]) / denominator
+
+    def _loop_muon(self, p, group):
+        state = self.state[p]
+        if not state:
+            state["momentum_buffer"] = torch.zeros_like(p)
+        buffer = state["momentum_buffer"]
+        buffer.lerp_(p.grad, 1 - group["momentum"])
+        return ref_per_role(
+            lambda role: ref_newton_schulz(role) * (0.2 * math.sqrt(max(role.shape))),
+            p.grad.lerp(buffer, group["momentum"]),
+            group["roles"],
+        )
+
+    def _loop_soap(self, p, group):
+        state, grad = self.state[p], p.grad
+        beta1, beta2 = group["betas"]
+        gram_beta = beta2 if group["shampoo_beta"] is None else group["shampoo_beta"]
+        if not state:
+            state["step"] = 0
+            state["exp_avg"] = torch.zeros_like(p)
+            state["exp_avg_sq"] = torch.zeros_like(p)
+            state["gram_left"] = p.new_zeros(p.shape[0], p.shape[0])
+            state["gram_right"] = p.new_zeros(p.shape[1], p.shape[1])
+            state["gram_left"].lerp_(grad @ grad.T, 1 - gram_beta)
+            state["gram_right"].lerp_(grad.T @ grad, 1 - gram_beta)
+            state["basis_left"] = torch.linalg.eigh(state["gram_left"]).eigenvectors.flip(1)
+            state["basis_right"] = torch.linalg.eigh(state["gram_right"]).eigenvectors.flip(1)
+            return torch.zeros_like(p)
+        left, right = state["basis_left"], state["basis_right"]
+        state["step"] += 1
+        step = state["step"]
+        exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
+        exp_avg.lerp_(grad, 1 - beta1)
+        rotated = left.T @ grad @ right
+        exp_avg_sq.mul_(beta2).addcmul_(rotated, rotated, value=1 - beta2)
+        denominator = (exp_avg_sq / (1 - beta2**step)).sqrt_().add_(group["eps"])
+        update = left @ ((left.T @ exp_avg @ right) / (1 - beta1**step) / denominator) @ right.T
+        state["gram_left"].lerp_(grad @ grad.T, 1 - gram_beta)
+        state["gram_right"].lerp_(grad.T @ grad, 1 - gram_beta)
+        if step % group["precondition_frequency"] == 0:
+            state["basis_left"], state["exp_avg_sq"] = ref_refreshed_basis(state["gram_left"], left, exp_avg_sq, 0)
+            state["basis_right"], state["exp_avg_sq"] = ref_refreshed_basis(
+                state["gram_right"], right, state["exp_avg_sq"], 1
+            )
+        return update
+
+
+# matrices of equal shapes next to each other, fused layers with 2 and 3 roles, and a group that is no block
+SHAPES = {1: [(4, 4), (4, 4), (4, 8), (5, 7), (4, 4)], 3: [(12, 4), (12, 4), (6, 5)], 2: [(8, 4), (8, 4)]}
+
+
+def parameter_groups(roles_of_groups=(1, 2, 3), seed=0):
+    g = torch.Generator().manual_seed(seed)
+
+    def parameters(shapes):
+        return [nn.Parameter(torch.randn(shape, generator=g, dtype=torch.float64)) for shape in shapes]
+
+    groups = [{"params": parameters(SHAPES[roles]), "block": True, "roles": roles} for roles in roles_of_groups]
+    return groups + [{"params": parameters([(6, 5), (5,), (4, 4), (4, 4)]), "weight_decay": 0.0}]
+
+
+def run_both(block_update, roles_of_groups, steps, skipped=(), **kwargs):
+    """The batched optimizer and the loop on the same parameters and gradients; the first parameter of the last block
+    group has no gradient in the steps ``skipped``. Returns the two sets of groups and the two optimizers."""
+    groups = parameter_groups(roles_of_groups)
+    copies = copy.deepcopy(groups)
+    batched = BlockAdamW(groups, lr=LR, block_update=block_update, **kwargs)
+    loop = LoopBlockAdamW(copies, lr=LR, block_update=block_update, **kwargs)
+    g = torch.Generator().manual_seed(1)
+    for k in range(steps):
+        for group, twin in zip(groups, copies):
+            for p, q in zip(group["params"], twin["params"]):
+                p.grad = torch.randn(p.shape, generator=g, dtype=p.dtype) * 3
+                q.grad = p.grad.clone()
+        if k in skipped:
+            last = len(roles_of_groups) - 1
+            groups[last]["params"][0].grad = copies[last]["params"][0].grad = None
+        batched.step()
+        loop.step()
+    return groups, copies, batched, loop
+
+
+def assert_same_steps_and_state(groups, copies, batched, loop):
+    for group, twin in zip(groups, copies):
+        for p, q in zip(group["params"], twin["params"]):
+            torch.testing.assert_close(p.detach(), q.detach(), rtol=1e-6, atol=1e-8)
+            assert batched.state[p].keys() == loop.state[q].keys()
+            for key, value in batched.state[p].items():
+                if isinstance(value, torch.Tensor):
+                    torch.testing.assert_close(value, loop.state[q][key], rtol=1e-6, atol=1e-8)
+                else:
+                    assert value == loop.state[q][key]
+
+
+@pytest.mark.parametrize("weight_decay", [0.0, 0.1])
+@pytest.mark.parametrize("block_update", ["adam", "rms", "spectral", "muon"])
+def test_the_batched_step_is_the_step_of_the_loop(block_update, weight_decay):
+    assert_same_steps_and_state(*run_both(block_update, (1, 2, 3), steps=6, weight_decay=weight_decay))
+
+
+@pytest.mark.parametrize("weight_decay", [0.0, 0.1])
+def test_the_batched_soap_step_is_the_step_of_the_loop(weight_decay):
+    # a refresh of the bases at every other step, and the steps of the matrices of one shape batched
+    assert_same_steps_and_state(
+        *run_both("soap", (1,), steps=7, weight_decay=weight_decay, precondition_frequency=2)
+    )
+
+
+@pytest.mark.parametrize("block_update, roles", [("adam", (1, 3)), ("rms", (1, 3)), ("muon", (1, 2)), ("soap", (1,))])
+def test_a_missing_gradient_leaves_the_parameter_and_its_step_count_behind(block_update, roles):
+    # the first gradient of a parameter may come late, and the steps of the others go on: batches of equal step only
+    kwargs = dict(precondition_frequency=2) if block_update == "soap" else {}
+    results = run_both(block_update, roles, steps=6, skipped=(0, 2, 3), **kwargs)
+    assert_same_steps_and_state(*results)
+    groups, _, batched, _ = results
+    if block_update != "muon":  # muon keeps no step count
+        late, on_time = (batched.state[p]["step"] for p in groups[len(roles) - 1]["params"][:2])
+        assert late < on_time
+
+
+def test_the_batched_functions_are_the_functions_of_each_matrix():
+    g = torch.Generator().manual_seed(0)
+
+    for shape in ((7, 7), (9, 5), (5, 9)):
+        batch = torch.randn(4, *shape, generator=g, dtype=torch.float64) * torch.tensor([0.1, 1, 10, 100.0]).view(4, 1, 1)
+        for i, matrix in enumerate(batch):
+            torch.testing.assert_close(newton_schulz(batch)[i], ref_newton_schulz(matrix))
+            torch.testing.assert_close(spectral_norm(batch)[i], ref_spectral_norm(matrix))
+            torch.testing.assert_close(normalized(batch, "rms")[i], matrix / ref_rms_norm(matrix))
+            torch.testing.assert_close(normalized(batch, "spectral")[i], matrix / ref_spectral_norm(matrix))
+            torch.testing.assert_close(
+                orthogonalized(batch)[i], ref_newton_schulz(matrix) * (0.2 * math.sqrt(max(shape)))
+            )
+
+
+@pytest.mark.parametrize("dim", [0, 1])
+def test_refreshing_a_batch_of_bases_is_refreshing_each_of_them(dim):
+    g = torch.Generator().manual_seed(0)
+    q, _ = torch.linalg.qr(torch.randn(3, 6, 6, generator=g, dtype=torch.float64))
+    grams = q @ torch.diag_embed(2.0 ** torch.rand(3, 6, generator=g, dtype=torch.float64) * 8) @ q.mT
+    bases, _ = torch.linalg.qr(torch.randn(3, 6, 6, generator=g, dtype=torch.float64))
+    moments = torch.randn(3, 6, 6, generator=g, dtype=torch.float64)
+
+    new_bases, new_moments = refreshed_basis(grams, bases, moments, dim)
+
+    for i in range(3):
+        basis, moment = ref_refreshed_basis(grams[i], bases[i], moments[i], dim)
+        torch.testing.assert_close(new_bases[i], basis)
+        torch.testing.assert_close(new_moments[i], moment)
+
+
+def test_the_parameters_of_a_group_share_their_dtype():
+    with pytest.raises(ValueError, match="dtype"):
+        BlockAdamW([{"params": [nn.Parameter(torch.zeros(2, 2)), nn.Parameter(torch.zeros(2, 2, dtype=torch.float64))]}])
+
+
+@pytest.mark.parametrize("block_update", ["rms", "muon", "soap"])
+def test_a_compiled_step_is_the_step_of_the_eager_one(block_update):
+    # one block group and the rest: each compiles once (SOAP: once more for the steps that refresh the bases)
+    kwargs = dict(precondition_frequency=3) if block_update == "soap" else {}
+    groups = parameter_groups((1,))
+    copies = copy.deepcopy(groups)
+    compiled = BlockAdamW(groups, lr=LR, block_update=block_update, weight_decay=0.1, compiled=True, **kwargs)
+    eager = BlockAdamW(copies, lr=LR, block_update=block_update, weight_decay=0.1, **kwargs)
+    g = torch.Generator().manual_seed(1)
+
+    for _ in range(7):
+        for group, twin in zip(groups, copies):
+            for p, q in zip(group["params"], twin["params"]):
+                p.grad = torch.randn(p.shape, generator=g, dtype=p.dtype) * 3
+                q.grad = p.grad.clone()
+        compiled.step()
+        eager.step()
+
+    for group, twin in zip(groups, copies):
+        for p, q in zip(group["params"], twin["params"]):
+            torch.testing.assert_close(p.detach(), q.detach(), rtol=1e-6, atol=1e-8)
+            assert compiled.state[p].keys() == eager.state[q].keys()
