@@ -21,6 +21,9 @@ __all__ = ["BlockAdamW", "block_param_groups"]
 
 # the equivariant blocks, with the name of their layer acting on vector features (None: no such layer)
 _BLOCKS = {PaiNNInteraction: None, PaiNNMixing: "mu_channel_mix", GatedEquivariantBlock: "mix_vectors"}
+# the fused layers of the blocks, by name in the block: one weight whose rows are the outputs of this many layers of
+# the same size computed as one, which the forward pass splits into the roles of the layer
+_ROLES = {"interatomic_context_net.1": 3, "intraatomic_context_net.1": 3, "mu_channel_mix": 2, "mix_vectors": 2}
 # the RMS of an AdamW update entry, which Muon's update is scaled to
 _ADAMW_RMS = 0.2
 
@@ -57,6 +60,23 @@ def newton_schulz(matrix: Tensor, steps: int = 5) -> Tensor:
 _NORMS = {"rms": rms_norm, "spectral": spectral_norm}
 
 
+def orthogonalized(matrix: Tensor) -> Tensor:
+    """Muon's update of a gradient: Newton-Schulz, scaled to the RMS of an AdamW update."""
+    return newton_schulz(matrix) * (_ADAMW_RMS * math.sqrt(max(matrix.shape)))
+
+
+def normalized(update: Tensor, norm: str) -> Tensor:
+    """``update`` divided by its RMS or spectral norm (zero stays zero)."""
+    return update / _NORMS[norm](update).clamp_min(torch.finfo(update.dtype).tiny)
+
+
+def per_role(function, matrix: Tensor, roles: int) -> Tensor:
+    """``function`` of each of the ``roles`` equal slices of the rows of ``matrix`` on its own, put back together."""
+    if roles == 1:
+        return function(matrix)
+    return torch.cat([function(role) for role in matrix.chunk(roles)])
+
+
 class BlockAdamW(Optimizer):
     """AdamW; the matrices of parameter groups with ``block=True`` (see ``block_param_groups``) take
     ``block_update`` steps instead:
@@ -71,6 +91,11 @@ class BlockAdamW(Optimizer):
     ``weight_decay`` is decoupled, as in AdamW: a step shrinks the weights by ``lr * weight_decay`` before the
     update, whichever update it is. It is off by default; the groups of ``block_param_groups`` decay the block
     matrices only.
+
+    A block group may set ``roles`` (default 1) for a fused layer: its weight stacks that many equal matrices,
+    one per role of the layer's output. ``"rms"``, ``"spectral"`` and ``"muon"`` then take the step of each of
+    them on its own, as if the roles were separate layers, instead of one step for the stack: the size of a
+    role's step does not depend on the gradients of the other roles.
     """
 
     def __init__(
@@ -87,7 +112,7 @@ class BlockAdamW(Optimizer):
             raise ValueError(f"unknown block_update {block_update!r}")
         defaults = dict(
             lr=lr, betas=tuple(betas), eps=eps, weight_decay=weight_decay,
-            block=False, block_update=block_update, momentum=momentum,
+            block=False, block_update=block_update, momentum=momentum, roles=1,
         )
         super().__init__(params, defaults)
 
@@ -96,6 +121,8 @@ class BlockAdamW(Optimizer):
         group = self.param_groups[-1]
         if group["block"] and any(p.ndim != 2 for p in group["params"]):
             raise ValueError("the parameters of a block group have to be weight matrices")
+        if group["roles"] < 1 or (group["block"] and any(p.shape[0] % group["roles"] for p in group["params"])):
+            raise ValueError("the rows of a block matrix have to split into the roles of its group")
 
     @torch.no_grad()
     def step(self, closure=None):
@@ -116,7 +143,7 @@ class BlockAdamW(Optimizer):
                 else:
                     update = self._adam_update(p, group)
                     if mode in _NORMS:
-                        update = update / _NORMS[mode](update).clamp_min(torch.finfo(update.dtype).tiny)
+                        update = per_role(lambda role: normalized(role, mode), update, group["roles"])
                 p.add_(update, alpha=-lr)
         return loss
 
@@ -140,11 +167,12 @@ class BlockAdamW(Optimizer):
             state["momentum_buffer"] = torch.zeros_like(p)
         buffer = state["momentum_buffer"]
         buffer.lerp_(p.grad, 1 - group["momentum"])
-        update = newton_schulz(p.grad.lerp(buffer, group["momentum"]))
-        return update * (_ADAMW_RMS * math.sqrt(max(p.shape)))
+        return per_role(orthogonalized, p.grad.lerp(buffer, group["momentum"]), group["roles"])
 
 
-def block_param_groups(params: Iterable[Tensor], model: nn.Module, scope: str = "all") -> List[dict]:
+def block_param_groups(
+    params: Iterable[Tensor], model: nn.Module, scope: str = "all", slices: bool = False
+) -> List[dict]:
     """Split ``params`` into the weight matrices of the equivariant blocks of ``model`` (``block=True``) and the rest.
 
     ``scope="all"``: every linear layer of the PaiNN interaction and mixing blocks and of the gated equivariant
@@ -152,19 +180,28 @@ def block_param_groups(params: Iterable[Tensor], model: nn.Module, scope: str = 
     ``mix_vectors``), which mix the channels the same way for all 3 components: the l = 1 irrep blocks.
     Embeddings, the filter network, biases and normalization gains are never blocks, and the rest never takes
     weight decay: ``weight_decay`` of the optimizer decays the block matrices only.
+
+    ``slices=True`` gives the fused layers (``_ROLES``: the layers whose output the forward pass splits into 2 or 3
+    roles) the ``roles`` of their group, so that ``BlockAdamW`` steps each role as a block of its own. The block
+    matrices then come in one group per number of roles, in increasing order. The last layer of the gated blocks'
+    scalar net splits its output unevenly (scalars and gates), and stays one block.
     """
     if scope not in ("all", "vector"):
         raise ValueError(f"unknown block scope {scope!r}")
-    blocks = {}
+    roles = {}  # id of a block matrix -> number of roles of its layer
     for module in model.modules():
         for block_cls, vector_layer in _BLOCKS.items():
             if isinstance(module, block_cls):
                 for name, layer in module.named_modules():
                     if isinstance(layer, nn.Linear) and (scope == "all" or name == vector_layer):
-                        blocks[id(layer.weight)] = layer.weight
+                        roles[id(layer.weight)] = _ROLES.get(name, 1) if slices else 1
     params = list(params)
-    matrices = [p for p in params if id(p) in blocks]
+    matrices = [p for p in params if id(p) in roles]
     if not matrices:
         raise ValueError(f"no weight matrices of equivariant blocks in the parameters for block scope {scope!r}")
-    rest = [p for p in params if id(p) not in blocks]
-    return [{"params": matrices, "block": True}] + ([{"params": rest, "weight_decay": 0.0}] if rest else [])
+    rest = [p for p in params if id(p) not in roles]
+    blocks = [
+        {"params": [p for p in matrices if roles[id(p)] == n], "block": True, "roles": n}
+        for n in sorted({roles[id(p)] for p in matrices})
+    ]
+    return blocks + ([{"params": rest, "weight_decay": 0.0}] if rest else [])

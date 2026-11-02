@@ -120,13 +120,82 @@ def test_first_muon_step_is_the_scaled_orthogonalized_gradient():
     torch.testing.assert_close(before - weight.detach(), expected)
 
 
+def step_fused_and_separate(block_update, roles=3, group_roles=None, rows=6, columns=8, steps=4, **kwargs):
+    """A weight of ``roles`` stacked matrices, stepped as one block group with ``group_roles`` (default: ``roles``),
+    next to the same matrices as separate parameters. The gradient of each role has its own scale (0.1, 1, 10, ...)."""
+    g = torch.Generator().manual_seed(0)
+    fused = nn.Parameter(torch.randn(roles * rows, columns, generator=g, dtype=torch.float64))
+    separate = [nn.Parameter(role.clone()) for role in fused.detach().chunk(roles)]
+    optimizers = (
+        BlockAdamW(
+            [{"params": [fused], "block": True, "roles": group_roles or roles}],
+            lr=LR, block_update=block_update, **kwargs,
+        ),
+        BlockAdamW([{"params": separate, "block": True}], lr=LR, block_update=block_update, **kwargs),
+    )
+    scales = torch.tensor([10.0 ** (k - 1) for k in range(roles)], dtype=torch.float64).repeat_interleave(rows)[:, None]
+    for _ in range(steps):
+        grad = torch.randn(roles * rows, columns, generator=g, dtype=torch.float64) * scales
+        fused.grad = grad
+        for p, role in zip(separate, grad.chunk(roles)):
+            p.grad = role.clone()
+        for optimizer in optimizers:
+            optimizer.step()
+    return fused.detach(), torch.cat([p.detach() for p in separate])
+
+
 @pytest.mark.parametrize("block_update", ["adam", "rms", "spectral", "muon"])
-def test_every_update_fits_a_linear_regression(block_update):
+def test_a_fused_layer_steps_like_separate_layers_for_its_roles(block_update):
+    fused, separate = step_fused_and_separate(block_update)
+
+    torch.testing.assert_close(fused, separate)
+
+
+@pytest.mark.parametrize("block_update", ["rms", "spectral", "muon"])
+def test_stepping_the_roles_apart_differs_from_stepping_their_stack(block_update):
+    apart, _ = step_fused_and_separate(block_update)
+    stack, separate = step_fused_and_separate(block_update, group_roles=1)
+
+    assert not torch.allclose(apart, stack)
+    assert not torch.allclose(stack, separate)
+
+
+def test_first_muon_step_of_a_fused_layer_has_the_scale_of_each_role():
+    g = torch.Generator().manual_seed(0)
+    roles, rows, columns = 3, 6, 8
+    weight = nn.Parameter(torch.randn(roles * rows, columns, generator=g, dtype=torch.float64))
+    scales = torch.tensor([0.1, 1.0, 10.0], dtype=torch.float64).repeat_interleave(rows)[:, None]
+    weight.grad = torch.randn(roles * rows, columns, generator=g, dtype=torch.float64) * scales
+    before, grad = weight.detach().clone(), weight.grad.clone()
+
+    BlockAdamW([{"params": [weight], "block": True, "roles": roles}], lr=LR, block_update="muon", momentum=0.9).step()
+
+    steps = (before - weight.detach()).chunk(roles)
+    # the scale is Muon's for a matrix of the role's shape (sqrt(8)), not of the whole weight (sqrt(18))
+    expected = [LR * 0.2 * math.sqrt(columns) * newton_schulz(role) for role in grad.chunk(roles)]
+    for step, want in zip(steps, expected):
+        torch.testing.assert_close(step, want)
+    # a role takes a step of the same size whatever the size of its gradient
+    rms = torch.stack([step.pow(2).mean().sqrt() for step in steps])
+    assert rms.max() / rms.min() < 1.5
+
+
+def test_the_roles_of_a_group_have_to_split_its_rows():
+    for roles in (3, 0):
+        with pytest.raises(ValueError, match="roles"):
+            BlockAdamW([{"params": [nn.Parameter(torch.zeros(10, 4))], "block": True, "roles": roles}])
+
+
+@pytest.mark.parametrize("roles", [1, 2])
+@pytest.mark.parametrize("block_update", ["adam", "rms", "spectral", "muon"])
+def test_every_update_fits_a_linear_regression(block_update, roles):
     g = torch.Generator().manual_seed(0)
     x = torch.randn(64, 8, generator=g, dtype=torch.float64)
     y = x @ torch.randn(8, 4, generator=g, dtype=torch.float64)
     layer = nn.Linear(8, 4, bias=False).double()
-    optimizer = BlockAdamW([{"params": list(layer.parameters()), "block": True}], lr=0.05, block_update=block_update)
+    optimizer = BlockAdamW(
+        [{"params": list(layer.parameters()), "block": True, "roles": roles}], lr=0.05, block_update=block_update
+    )
 
     losses = []
     for _ in range(300):
@@ -183,6 +252,40 @@ def test_all_scope_selects_the_weights_of_every_linear_layer_in_the_blocks():
     assert ids([net.embedding.weight, net.filter_net.weight, net.filter_net.bias, net.gain]) <= ids(rest["params"])
     assert ids(blocks["params"]) | ids(rest["params"]) == ids(net.parameters())
     assert not ids(blocks["params"]) & ids(rest["params"])
+
+
+def test_slices_give_the_fused_layers_their_roles():
+    net = Net()
+
+    unsliced, unsliced_rest = block_param_groups(net.parameters(), net, "all")
+    *blocks, rest = block_param_groups(net.parameters(), net, "all", slices=True)
+
+    assert unsliced["roles"] == 1
+    assert [group["roles"] for group in blocks] == [1, 2, 3]
+    by_roles = {group["roles"]: ids(group["params"]) for group in blocks}
+    fused3 = [net.interaction.interatomic_context_net[1].weight, net.mixing.intraatomic_context_net[1].weight]
+    fused2 = [net.mixing.mu_channel_mix.weight] + [block.mix_vectors.weight for block in net.head]
+    assert by_roles[3] == ids(fused3)
+    assert by_roles[2] == ids(fused2)
+    # the other layers stay whole, among them the last of the scalar nets, whose outputs differ in size
+    whole = [net.interaction.interatomic_context_net[0].weight, net.mixing.intraatomic_context_net[0].weight]
+    whole += [layer.weight for block in net.head for layer in block.scalar_net]
+    assert by_roles[1] == ids(whole)
+    # the roles of the interaction and mixing blocks are as wide as the features
+    assert all(weight.shape[0] == 3 * 8 for weight in fused3) and net.mixing.mu_channel_mix.weight.shape[0] == 2 * 8
+    # nothing else changes: the same matrices and the same rest
+    assert ids(p for group in blocks for p in group["params"]) == ids(unsliced["params"])
+    assert ids(rest["params"]) == ids(unsliced_rest["params"])
+    BlockAdamW([*blocks, rest], block_update="muon")  # every group's matrices split into its roles
+
+
+def test_slices_with_the_vector_scope_are_the_two_roles_of_the_vector_layers():
+    net = Net()
+
+    blocks, rest = block_param_groups(net.parameters(), net, "vector", slices=True)
+
+    assert blocks["roles"] == 2
+    assert ids(blocks["params"]) == ids([net.mixing.mu_channel_mix.weight] + [b.mix_vectors.weight for b in net.head])
 
 
 @pytest.mark.parametrize("block_update", ["adam", "rms", "muon"])
@@ -248,3 +351,19 @@ def test_task_without_block_scope_keeps_its_optimizer():
 
     assert plain.optimizer_cls is torch.optim.AdamW
     assert len(plain.configure_optimizers().param_groups) == 1
+
+
+def test_task_steps_the_roles_of_the_fused_layers_apart_on_request():
+    sliced = task(optimizer_cls=BlockAdamW, block_scope="all", block_slices=True)
+
+    optimizer = sliced.configure_optimizers()
+
+    assert [group["roles"] for group in optimizer.param_groups if group["block"]] == [1, 2, 3]
+    assert ids(p for group in optimizer.param_groups for p in group["params"]) == ids(sliced.parameters())
+    unsliced = task(optimizer_cls=BlockAdamW, block_scope="all").configure_optimizers()
+    assert [group["roles"] for group in unsliced.param_groups if group["block"]] == [1]
+
+
+def test_slices_need_the_blocks():
+    with pytest.raises(ValueError, match="block_slices"):
+        task(optimizer_cls=BlockAdamW, block_slices=True)
