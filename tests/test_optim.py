@@ -185,6 +185,29 @@ def test_all_scope_selects_the_weights_of_every_linear_layer_in_the_blocks():
     assert not ids(blocks["params"]) & ids(rest["params"])
 
 
+@pytest.mark.parametrize("block_update", ["adam", "rms", "muon"])
+def test_weight_decay_shrinks_only_the_block_matrices(block_update):
+    net = Net()
+    blocks, rest = block_param_groups(net.parameters(), net, "all")
+    before = {id(p): p.detach().clone() for p in net.parameters()}
+    for p in net.parameters():
+        p.grad = torch.zeros_like(p)  # no update: only the decay moves the weights
+
+    BlockAdamW([blocks, rest], lr=LR, weight_decay=0.5, block_update=block_update).step()
+
+    for p in blocks["params"]:
+        torch.testing.assert_close(p.detach(), before[id(p)] * (1 - LR * 0.5))
+    for p in rest["params"]:
+        assert torch.equal(p.detach(), before[id(p)])
+
+
+def test_weight_decay_is_off_by_default():
+    net = Net()
+    optimizer = BlockAdamW(block_param_groups(net.parameters(), net, "all"))
+
+    assert [group["weight_decay"] for group in optimizer.param_groups] == [0.0, 0.0]
+
+
 def test_block_scope_needs_blocks_and_a_known_name():
     layer = nn.Linear(2, 2)
     with pytest.raises(ValueError, match="no weight matrices"):
