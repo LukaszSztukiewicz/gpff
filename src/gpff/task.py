@@ -1,4 +1,5 @@
 from token import OP
+from functools import partial
 from typing import Optional, Dict, List, Type, Any
 import logging
 import os
@@ -12,11 +13,18 @@ from schnetpack.task import AtomisticTask as SPKAtomisticTask
 from schnetpack.task import UnsupervisedModelOutput
 from schnetpack.model.base import AtomisticModel
 
+from gpff.optim import block_param_groups
+
 
 log = logging.getLogger(__name__)
 
 
 __all__ = ["ModelOutput", "AtomisticTask"]
+
+
+def _with_blocks(optimizer_cls, model, scope, params, **kwargs):
+    """Build the optimizer from ``params`` split into the weight matrices of the equivariant blocks and the rest."""
+    return optimizer_cls(block_param_groups(params, model, scope), **kwargs)
 
 
 def loss_fn(pred, target, weights=None, scale_loss: Optional[str] = None, epsilon: float = 1e-8):
@@ -122,6 +130,7 @@ class AtomisticTask(SPKAtomisticTask):
         debug_folder: Optional[str] = None,
         exit_after_n_skipped_train_batches: Optional[int] = None,
         loss_threshold: float = 1e3,
+        block_scope: Optional[str] = None,
     ):
         """
         Args:
@@ -129,6 +138,8 @@ class AtomisticTask(SPKAtomisticTask):
             outputs: list of outputs an optional loss functions
             optimizer_cls: type of torch optimizer,e.g. torch.optim.Adam
             optimizer_args: dict of optimizer keyword arguments
+            block_scope: "all" or "vector" to give optimizer_cls (gpff.optim.BlockAdamW) the weight matrices of
+              the equivariant blocks as a parameter group of their own (see gpff.optim.block_param_groups)
             scheduler_cls: type of torch learning rate scheduler
             scheduler_args: dict of scheduler keyword arguments
             scheduler_monitor: name of metric to be observed for ReduceLROnPlateau
@@ -155,6 +166,9 @@ class AtomisticTask(SPKAtomisticTask):
         self.n_skipped_val_batches = 0
         self.exit_after_n_skipped_train_batches = exit_after_n_skipped_train_batches
         self.loss_threshold = loss_threshold
+        if block_scope is not None:
+            # schnetpack builds the optimizer from self.parameters(): group them instead
+            self.optimizer_cls = partial(_with_blocks, optimizer_cls, self.model, block_scope)
 
     def setup(self, stage=None):
         """

@@ -101,6 +101,14 @@ gpff_train experiment=gpff data.load_properties=[] data.cache_in_memory=true \
   data.persistent_workers=true callbacks.deterministic_data_seed.per_sample_train_noise=true \
   'compile={dynamic:true}'
 
+# Control the update size of the weight matrices of the equivariant blocks
+# (gpff.optim): AdamW's update divided by its RMS or spectral norm, or Muon's
+# update. The learning rate then sets the size of each matrix's update, so it
+# needs its own search; starting points are in configs/task/optimizer/block_adam.yaml.
+# task.optimizer_args.block_update is rms, spectral, muon or adam (control);
+# task.block_scope is all matrices of the blocks or only the vector ones (all, vector):
+gpff_train experiment=gpff task/optimizer=block_adam task.optimizer_args.block_update=rms globals.lr=1e-5
+
 # Sample with a local checkpoint; model_path and split_path are required and
 # are the only way to point gpff_generate at a model:
 gpff_generate \

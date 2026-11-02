@@ -1,0 +1,19 @@
+# @package task
+# AdamW with a controlled update size for the weight matrices of the equivariant blocks
+# (gpff.optim; Manolache & Niepert, "Equivariance Breaks the Learning Rate").
+# Expected globals:
+#   - lr: size of the update of every matrix for rms and spectral (its RMS or spectral norm), AdamW-like for muon
+#
+# block_update: rms | spectral | muon | adam (adam = plain AdamW, for control runs)
+# block_scope:  all (every matrix of the interaction, mixing and head blocks) | vector (only those acting
+#               on vector features)
+# Starting points for globals.lr, from the ratios to Adam's lr in the paper's tuned runs (sweep around
+# them): rms ~0.1x, spectral ~3x, muon ~1x the Adam lr.
+optimizer_cls: gpff.optim.BlockAdamW
+block_scope: all
+optimizer_args:
+  lr: ${globals.lr}
+  betas: [0.98, 0.99]  # the paper's choice for normalized updates; AdamW's default is [0.9, 0.999]
+  weight_decay: 0.0
+  block_update: rms
+  momentum: 0.95  # muon only
