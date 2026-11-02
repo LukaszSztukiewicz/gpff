@@ -4,12 +4,13 @@ An equivariant layer mixes channels with one matrix that is shared over the 2l +
 components of a feature (in PaiNN: the 3 components of a vector). Adam rescales every
 entry on its own, so one learning rate still gives these matrices very different step
 sizes. ``BlockAdamW`` rescales the update of each such matrix ("block") so that the
-learning rate is its size, or replaces it by Muon's update.
+learning rate is its size, or replaces it by Muon's or SOAP's update.
 
 Manolache & Niepert, "Equivariance Breaks the Learning Rate" (NeurIPS 2026 workshop).
+Vyas et al., "SOAP: Improving and Stabilizing Shampoo using Adam" (ICLR 2025).
 """
 import math
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 import torch
 from schnetpack.nn import GatedEquivariantBlock
@@ -77,6 +78,29 @@ def per_role(function, matrix: Tensor, roles: int) -> Tensor:
     return torch.cat([function(role) for role in matrix.chunk(roles)])
 
 
+def accumulate_grams(state: dict, grad: Tensor, beta: float) -> None:
+    """Average ``grad @ grad.T`` and ``grad.T @ grad`` into the Gram matrices of the state of a SOAP matrix."""
+    state["gram_left"].lerp_(grad @ grad.T, 1 - beta)
+    state["gram_right"].lerp_(grad.T @ grad, 1 - beta)
+
+
+def eigenbasis(gram: Tensor) -> Tensor:
+    """The eigenvectors of a symmetric matrix as columns, by decreasing eigenvalue."""
+    return torch.linalg.eigh(gram).eigenvectors.flip(1)
+
+
+def refreshed_basis(gram: Tensor, basis: Tensor, second_moment: Tensor, dim: int):
+    """One step of power iteration from ``basis`` towards the eigenbasis of ``gram``: what SOAP does between two
+    eigendecompositions, which is cheaper. The columns of ``basis`` are first sorted by their eigenvalue
+    estimate, and ``second_moment`` (whose axis ``dim`` runs along them) with them, so that each of its entries
+    stays with its direction when the eigenvalues change their order. Returns the new basis and the sorted
+    second moment."""
+    estimate = (basis * (gram @ basis)).sum(dim=0)
+    order = estimate.argsort(descending=True)
+    basis = basis[:, order]
+    return torch.linalg.qr(gram @ basis).Q, second_moment.index_select(dim, order)
+
+
 class BlockAdamW(Optimizer):
     """AdamW; the matrices of parameter groups with ``block=True`` (see ``block_param_groups``) take
     ``block_update`` steps instead:
@@ -87,6 +111,14 @@ class BlockAdamW(Optimizer):
       zero updates stay zero.
     * ``"muon"``: Muon's update, Nesterov ``momentum`` and Newton-Schulz orthogonalization (no Adam moments),
       scaled to the RMS of an AdamW update, so ``lr`` is comparable to AdamW's.
+    * ``"soap"``: Adam in the eigenbasis of Shampoo's preconditioner. Every matrix keeps the averages
+      (``shampoo_beta``, default ``betas[1]``) of ``G G^T`` and ``G^T G`` over its gradients ``G``, and the Adam
+      moments are those of ``G`` rotated into their eigenvectors, which are refreshed every
+      ``precondition_frequency`` steps. The rotation keeps the size of the update, so ``lr`` is AdamW's.
+      The first gradient only starts the preconditioner and takes no step, as in the reference implementation.
+      Eigenvectors cost cubic time in the sides of a matrix: the 3F x F matrices of the fused layers have a
+      side of 3F, and a larger ``precondition_frequency`` makes that cheaper. Fused layers are not split into
+      ``roles``.
 
     ``weight_decay`` is decoupled, as in AdamW: a step shrinks the weights by ``lr * weight_decay`` before the
     update, whichever update it is. It is off by default; the groups of ``block_param_groups`` decay the block
@@ -107,12 +139,19 @@ class BlockAdamW(Optimizer):
         weight_decay: float = 0.0,
         block_update: str = "rms",
         momentum: float = 0.95,
+        precondition_frequency: int = 10,
+        shampoo_beta: Optional[float] = None,
     ):
-        if block_update not in ("adam", "muon", *_NORMS):
+        if block_update not in ("adam", "muon", "soap", *_NORMS):
             raise ValueError(f"unknown block_update {block_update!r}")
+        if precondition_frequency < 1:
+            raise ValueError("precondition_frequency has to be at least 1")
+        if shampoo_beta is not None and not 0 <= shampoo_beta < 1:
+            raise ValueError("shampoo_beta has to be in [0, 1)")
         defaults = dict(
             lr=lr, betas=tuple(betas), eps=eps, weight_decay=weight_decay,
             block=False, block_update=block_update, momentum=momentum, roles=1,
+            precondition_frequency=precondition_frequency, shampoo_beta=shampoo_beta,
         )
         super().__init__(params, defaults)
 
@@ -123,6 +162,8 @@ class BlockAdamW(Optimizer):
             raise ValueError("the parameters of a block group have to be weight matrices")
         if group["roles"] < 1 or (group["block"] and any(p.shape[0] % group["roles"] for p in group["params"])):
             raise ValueError("the rows of a block matrix have to split into the roles of its group")
+        if group["block"] and group["block_update"] == "soap" and group["roles"] != 1:
+            raise ValueError("soap preconditions whole matrices: it does not split fused layers into roles")
 
     @torch.no_grad()
     def step(self, closure=None):
@@ -140,6 +181,8 @@ class BlockAdamW(Optimizer):
                     p.mul_(1 - lr * group["weight_decay"])
                 if mode == "muon":
                     update = self._muon_update(p, group)
+                elif mode == "soap":
+                    update = self._soap_update(p, group)
                 else:
                     update = self._adam_update(p, group)
                     if mode in _NORMS:
@@ -168,6 +211,40 @@ class BlockAdamW(Optimizer):
         buffer = state["momentum_buffer"]
         buffer.lerp_(p.grad, 1 - group["momentum"])
         return per_role(orthogonalized, p.grad.lerp(buffer, group["momentum"]), group["roles"])
+
+    def _soap_update(self, p: Tensor, group: dict) -> Tensor:
+        state, grad = self.state[p], p.grad
+        beta1, beta2 = group["betas"]
+        gram_beta = beta2 if group["shampoo_beta"] is None else group["shampoo_beta"]
+        if not state:
+            state["step"] = 0
+            state["exp_avg"] = torch.zeros_like(p)  # in the space of the weight
+            state["exp_avg_sq"] = torch.zeros_like(p)  # in the eigenbasis
+            state["gram_left"] = p.new_zeros(p.shape[0], p.shape[0])
+            state["gram_right"] = p.new_zeros(p.shape[1], p.shape[1])
+            accumulate_grams(state, grad, gram_beta)
+            state["basis_left"] = eigenbasis(state["gram_left"])
+            state["basis_right"] = eigenbasis(state["gram_right"])
+            return torch.zeros_like(p)
+
+        left, right = state["basis_left"], state["basis_right"]
+        state["step"] += 1
+        step = state["step"]
+        exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
+        exp_avg.lerp_(grad, 1 - beta1)
+        rotated = left.T @ grad @ right
+        exp_avg_sq.mul_(beta2).addcmul_(rotated, rotated, value=1 - beta2)
+        denominator = (exp_avg_sq / (1 - beta2**step)).sqrt_().add_(group["eps"])
+        update = left @ ((left.T @ exp_avg @ right) / (1 - beta1**step) / denominator) @ right.T
+
+        # the gradient joins the preconditioner after its step: it did not rotate itself
+        accumulate_grams(state, grad, gram_beta)
+        if step % group["precondition_frequency"] == 0:
+            state["basis_left"], state["exp_avg_sq"] = refreshed_basis(state["gram_left"], left, exp_avg_sq, 0)
+            state["basis_right"], state["exp_avg_sq"] = refreshed_basis(
+                state["gram_right"], right, state["exp_avg_sq"], 1
+            )
+        return update
 
 
 def block_param_groups(

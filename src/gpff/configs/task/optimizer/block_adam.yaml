@@ -3,8 +3,10 @@
 # (gpff.optim; Manolache & Niepert, "Equivariance Breaks the Learning Rate").
 # Expected globals:
 #   - lr: size of the update of every matrix for rms and spectral (its RMS or spectral norm), AdamW-like for muon
+#     and soap
 #
-# block_update: rms | spectral | muon | adam (adam = plain AdamW, for control runs)
+# block_update: rms | spectral | muon | soap | adam (adam = plain AdamW, for control runs). soap is Adam in the
+#               eigenbasis of Shampoo's preconditioner (Vyas et al.); it does not take block_slices.
 # block_scope:  all (every matrix of the interaction, mixing and head blocks) | vector (only those acting
 #               on vector features)
 # block_slices: false | true. PaiNN fuses layers that compute 2 or 3 outputs with different roles (the messages of
@@ -24,3 +26,5 @@ optimizer_args:
   # 1e-2 (the LLM value 0.1 would pull these small weights far below their init).
   block_update: rms
   momentum: 0.95  # muon only
+  precondition_frequency: 10  # soap only: steps between two refreshes of the eigenbases (the costly part)
+  shampoo_beta: null  # soap only: decay of the averages of G G^T and G^T G; null: betas[1]
