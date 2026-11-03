@@ -129,7 +129,7 @@ def test_multiple_validation_passes_are_subtracted(monkeypatch):
     assert logged["perf/train_seconds"] == 7.0
 
 
-@pytest.mark.parametrize("experiment", ["gpff", "gpff_stable", "dm_t_aware"])
+@pytest.mark.parametrize("experiment", ["gpff", "gpff_t_aware", "dm_t_aware"])
 def test_performance_metrics_enabled_by_default_and_can_be_disabled(experiment):
     import gpff.cli.train
     from hydra import compose, initialize_config_module
