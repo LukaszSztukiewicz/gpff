@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import pickle
+import threading
 from collections import Counter
 from multiprocessing import get_context
 from pathlib import Path
@@ -193,6 +194,13 @@ def _clean_index(index: int):
     return conformers, reason, len(mols)
 
 
+# Workers clean molecules much faster than the database takes rows, and Pool.imap
+# keeps every result it has not handed over: at most this many molecules are cleaned
+# ahead of the one being written.
+PENDING_MOLECULES = 8192
+CHUNK = 32
+
+
 def _cleaned(n: int, n_workers: int) -> Iterator:
     """The results for the entries 0..n-1 in order, so that a build does not
     depend on the number of workers."""
@@ -200,9 +208,27 @@ def _cleaned(n: int, n_workers: int) -> Iterator:
         for index in range(n):
             yield _clean_index(index)
             _RECORDS[index] = None  # the molecule is not needed again
-    else:
-        with get_context("fork").Pool(n_workers) as pool:
-            yield from pool.imap(_clean_index, range(n), chunksize=32)
+        return
+
+    free = threading.Semaphore(max(PENDING_MOLECULES, 2 * CHUNK))
+    stop = threading.Event()
+
+    def indices():
+        for index in range(n):
+            free.acquire()
+            if stop.is_set():
+                return
+            yield index
+
+    with get_context("fork").Pool(n_workers) as pool:
+        try:
+            for result in pool.imap(_clean_index, indices(), chunksize=CHUNK):
+                free.release()
+                yield result
+        finally:
+            # a build that stops early must not leave the pool waiting for the generator
+            stop.set()
+            free.release()
 
 
 def build_geom_drugs_revisited(

@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import pickle
+import threading
 from pathlib import Path
 
 import hydra
@@ -227,6 +228,36 @@ def test_the_build_does_not_depend_on_the_number_of_workers(source, tmp_path):
     for name in ("split_all.npz", "split_top5.npz"):
         for key in ("train_idx", "val_idx", "test_idx"):
             assert np.array_equal(np.load(one / name)[key], np.load(two / name)[key])
+
+
+def test_workers_that_may_be_only_a_few_molecules_ahead_build_the_same_database(tmp_path, monkeypatch):
+    molecules = conformers("CCO", 2)
+    directory = tmp_path / "many"
+    directory.mkdir()
+    for split in ("train", "val", "test"):
+        with open(directory / f"{split}_data.pickle", "wb") as file:
+            pickle.dump([("CCO", molecules)] * 200, file)
+    monkeypatch.setattr(geom_revisited, "PENDING_MOLECULES", 64)  # 3 chunks of 200 molecules cycle
+
+    one, _ = build(directory, tmp_path, name="one", n_workers=1)
+    three, _ = build(directory, tmp_path, name="three", n_workers=3)
+    rows_one, rows_three = read_rows(one), read_rows(three)
+    assert len(rows_one) == len(rows_three) == 3 * 200 * 2
+    for a, b in zip(rows_one, rows_three):
+        assert a[:4] == b[:4] and np.array_equal(a[4], b[4])
+
+
+def test_stopping_early_does_not_leave_the_pool_hanging(source, monkeypatch):
+    records = load_records(source / "train_data.pickle") * 40  # 240 molecules
+    monkeypatch.setattr(geom_revisited, "_RECORDS", records)
+    monkeypatch.setattr(geom_revisited, "PENDING_MOLECULES", 64)
+    results = geom_revisited._cleaned(len(records), n_workers=2)
+    next(results)
+
+    closer = threading.Thread(target=results.close)
+    closer.start()
+    closer.join(timeout=120)
+    assert not closer.is_alive()
 
 
 def test_max_molecules_reads_the_first_molecules_of_each_split(source, tmp_path):
