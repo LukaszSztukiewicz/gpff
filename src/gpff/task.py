@@ -1,4 +1,5 @@
 from token import OP
+from functools import partial
 from typing import Optional, Dict, List, Type, Any
 import logging
 import os
@@ -12,11 +13,18 @@ from schnetpack.task import AtomisticTask as SPKAtomisticTask
 from schnetpack.task import UnsupervisedModelOutput
 from schnetpack.model.base import AtomisticModel
 
+from gpff.optim import block_param_groups
+
 
 log = logging.getLogger(__name__)
 
 
 __all__ = ["ModelOutput", "AtomisticTask"]
+
+
+def _with_blocks(optimizer_cls, model, scope, slices, params, **kwargs):
+    """Build the optimizer from ``params`` split into the weight matrices of the equivariant blocks and the rest."""
+    return optimizer_cls(block_param_groups(params, model, scope, slices), **kwargs)
 
 
 def loss_fn(pred, target, weights=None, scale_loss: Optional[str] = None, epsilon: float = 1e-8):
@@ -61,7 +69,6 @@ class ModelOutput(SPKModelOutput):
         target_property: Optional[str] = None,
         weights_key: Optional[str] = None,
         scale_loss: Optional[str] = None,
-        warmup_steps: int = 0,
     ):
         r"""
         Args:
@@ -82,18 +89,12 @@ class ModelOutput(SPKModelOutput):
         )
         self.weights_key = weights_key
         self.scale_loss = scale_loss
-        self.warmup_steps = warmup_steps
-        self.global_step = 0
 
     def calculate_loss(self, pred, target):
         # calculate weighted loss
         weights = None
         if self.weights_key is not None:
             weights = target[self.weights_key]
-
-            if self.global_step < self.warmup_steps:
-                dampening = self.global_step / self.warmup_steps
-                weights = (1-dampening) * torch.ones_like(weights) + dampening * weights
 
         loss = self.loss_weight * loss_fn(
             pred[self.name], target[self.target_property], weights, self.scale_loss
@@ -122,6 +123,8 @@ class AtomisticTask(SPKAtomisticTask):
         debug_folder: Optional[str] = None,
         exit_after_n_skipped_train_batches: Optional[int] = None,
         loss_threshold: float = 1e3,
+        block_scope: Optional[str] = None,
+        block_slices: bool = False,
     ):
         """
         Args:
@@ -129,6 +132,10 @@ class AtomisticTask(SPKAtomisticTask):
             outputs: list of outputs an optional loss functions
             optimizer_cls: type of torch optimizer,e.g. torch.optim.Adam
             optimizer_args: dict of optimizer keyword arguments
+            block_scope: "all" or "vector" to give optimizer_cls (gpff.optim.BlockAdamW) the weight matrices of
+              the equivariant blocks as a parameter group of their own (see gpff.optim.block_param_groups)
+            block_slices: with block_scope, step the roles of the fused layers (the 2 or 3 outputs one weight
+              computes at once) as blocks of their own
             scheduler_cls: type of torch learning rate scheduler
             scheduler_args: dict of scheduler keyword arguments
             scheduler_monitor: name of metric to be observed for ReduceLROnPlateau
@@ -155,6 +162,11 @@ class AtomisticTask(SPKAtomisticTask):
         self.n_skipped_val_batches = 0
         self.exit_after_n_skipped_train_batches = exit_after_n_skipped_train_batches
         self.loss_threshold = loss_threshold
+        if block_slices and block_scope is None:
+            raise ValueError("block_slices needs a block_scope: it splits the matrices of the blocks")
+        if block_scope is not None:
+            # schnetpack builds the optimizer from self.parameters(): group them instead
+            self.optimizer_cls = partial(_with_blocks, optimizer_cls, self.model, block_scope, block_slices)
 
     def setup(self, stage=None):
         """

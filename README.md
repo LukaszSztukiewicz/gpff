@@ -58,6 +58,16 @@ After install the entry points are on `PATH`:
 
 `gpfftrain` still works as a deprecated alias for `gpff_train`.
 
+Training logs performance metrics by default through the configured logger
+(including W&B): epoch/train/validation seconds, molecules per second, examples
+seen, CUDA allocated/reserved peaks in GiB, and batch-loss extrema/finite counts.
+The optional learned output gain is also recorded. Metrics use `perf/`, `train/`,
+and `model/` prefixes. Epoch timing includes validation and preceding callback
+overhead; train timing subtracts validation, including repeated validation passes.
+The first epoch includes compilation; compare later epochs for steady throughput.
+Counts resume from checkpoints, and metrics are per device. Disable with
+`~callbacks.performance_metrics`.
+
 Hydra configs live under `src/gpff/configs/`. Override with standard dotted
 overrides. Everything about model inference — the model itself, `device`,
 `dtype`, and whether the model predicts noise or forces — belongs to the
@@ -90,6 +100,19 @@ gpff_train experiment=gpff +callbacks=milestones 'callbacks.milestone_checkpoint
 gpff_train experiment=gpff data.load_properties=[] data.cache_in_memory=true \
   data.persistent_workers=true callbacks.deterministic_data_seed.per_sample_train_noise=true \
   'compile={dynamic:true}'
+
+# Control the update size of the weight matrices of the equivariant blocks
+# (gpff.optim): AdamW's update divided by its RMS or spectral norm, or Muon's
+# update. The learning rate then sets the size of each matrix's update, so it
+# needs its own search; starting points are in configs/task/optimizer/block_adam.yaml.
+# task.optimizer_args.block_update is rms, spectral, muon, soap (Adam in the eigenbasis of Shampoo's
+# preconditioner, refreshed every task.optimizer_args.precondition_frequency steps) or adam (control);
+# task.block_scope is all matrices of the blocks or only the vector ones (all, vector).
+# task.block_slices=true steps the roles of the fused layers (2 or 3 outputs computed by one weight) on their own.
+# task.optimizer_args.one_sided=true makes soap rotate only the smaller side of every matrix (cheaper refreshes).
+# task.optimizer_args.compiled=true compiles the update with torch.compile (same steps, fewer kernels).
+# task.optimizer_args.weight_decay (default 0, off) decays those matrices only:
+gpff_train experiment=gpff task/optimizer=block_adam task.optimizer_args.block_update=rms globals.lr=1e-5
 
 # Sample with a local checkpoint; model_path and split_path are required and
 # are the only way to point gpff_generate at a model:

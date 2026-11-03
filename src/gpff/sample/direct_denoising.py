@@ -104,7 +104,12 @@ class DirectDenoisingSampler(Sampler):
         Returns:
             batch: A dictionary with updated atomic positions after consistency sampling.
         """
+        x_curr = batch[properties.R].clone()
         batch = self.preprocess_step(batch, step, conditions=conditions, **kwargs)
+        # molecules converged in an earlier step stay where they are; the
+        # perturbation would otherwise be kept as their frozen position
+        converged_atoms = batch[keys.converged][batch[properties.idx_m]].unsqueeze(-1)
+        batch[properties.R] = torch.where(converged_atoms, x_curr, batch[properties.R])
 
         # get predictions
         predictions = self.calculator.calculate(batch, forces=True, x0=True, estimate_sigma=True)
