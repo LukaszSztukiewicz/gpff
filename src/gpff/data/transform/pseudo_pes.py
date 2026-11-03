@@ -22,6 +22,7 @@ class PseudoPESTransform(trn.Transform):
         weight_generator: Optional[LossWeights] = None,
         align_permutation: bool = False,
         align_rotation: bool = False,
+        align_by_element: bool = True,
     ):
         """
         Args:
@@ -34,8 +35,18 @@ class PseudoPESTransform(trn.Transform):
             force_weight_key: key to store the force weight
             use_best_permutation: whether to use the best permutation to align 
                 the noisy geometry to the reference geometry
-            align_rotation: whether to align the rotation of 
+            align_rotation: whether to align the rotation of
                 the noisy geometry to the reference geometry
+            align_by_element: whether the permutation only pairs atoms of the same
+                element (the default). If False, the pairing is anonymous: it looks
+                at the positions alone, and every atom keeps its own element. That is
+                the pairing that does not need the element of a noisy atom, e.g.
+                when the elements are noised or masked as well. Pairing by element
+                only exchanges atoms of one element, so the noisy molecule (positions
+                with their elements) keeps its distribution; the anonymous pairing
+                moves elements between noisy positions, so for a model that reads the
+                clean elements the noisy molecules of training no longer match the
+                sampler's prior exactly, even at sigma_max.
         """
         super().__init__()
         self.geometry_sampler = geometry_sampler
@@ -43,6 +54,7 @@ class PseudoPESTransform(trn.Transform):
         self.weight_generator = weight_generator
         self.align_permutation = align_permutation
         self.align_rotation = align_rotation
+        self.align_by_element = align_by_element
 
     def forward(
         self,
@@ -66,12 +78,21 @@ class PseudoPESTransform(trn.Transform):
         x_t, sigma_t, t, noise = self.geometry_sampler(x_0=x_0, atom_types=atom_types, t=t, noise=noise)
             
         # align best permutation of x_t to x_0
-        if self.align_permutation:
+        if self.align_permutation and self.align_by_element:
             x_t, atom_types = align_permutation(
                 positions=x_t,
                 target_positions=x_0,
                 numbers=atom_types,
                 target_numbers=atom_types,
+            )
+        elif self.align_permutation:
+            # one class for all atoms: the pairing ignores the elements, which stay with x_0
+            one_class = torch.zeros_like(atom_types)
+            x_t, _ = align_permutation(
+                positions=x_t,
+                target_positions=x_0,
+                numbers=one_class,
+                target_numbers=one_class,
             )
 
         # align rotation of x_t to x_0

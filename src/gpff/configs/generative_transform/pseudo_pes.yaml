@@ -2,6 +2,8 @@
 # Expected globals:
 #   - align_permutation: Align permutations (default: true)
 #   - align_rotation: Align rotations (default: false)
+# Own key (not a global): align_by_element pairs atoms of the same element only (default: true);
+#   false pairs by position alone (generative_transform.align_by_element=false)
 #   - sigma_max: Maximum noise scale (required for VE geometries)
 #   - Other globals depend on selected geometry_sampler, energy_function, weight_generator
 defaults:
@@ -12,6 +14,7 @@ defaults:
 _target_: gpff.data.transform.PseudoPESTransform
 align_permutation: ${globals.align_permutation}
 align_rotation: ${globals.align_rotation}
+align_by_element: true
 geometry_sampler: ${pseudo_pes.geometry_sampler}
 energy_function: ${pseudo_pes.energy_function}
 weight_generator: ${pseudo_pes.weight_generator}
