@@ -55,8 +55,29 @@ After install the entry points are on `PATH`:
 | `gpff_generate`  | Sample molecules from a checkpoint. Wraps `gpff.cli.generate:sample_molecules()`. |
 | `gpff_prepare_metadata`  | Compute the per-sample arrays of a sampled DB into `evaluation/metadata/`. Wraps `gpff.cli.prepare_metadata:main()`. |
 | `gpff_calculate_metrics` | Reduce those arrays to `evaluation/results.json`. Wraps `gpff.cli.calculate_metrics:main()`. |
+| `gpff_prepare_geom_revisited` | Build the GEOM-Drugs dataset of the MiDi split, cleaned as in GEOM-Drugs Revisited (below). Wraps `gpff.cli.prepare_geom_revisited:main()`. |
 
 `gpfftrain` still works as a deprecated alias for `gpff_train`.
+
+### GEOM-Drugs (Revisited)
+
+`gpff_prepare_geom_revisited --source_dir <train/val/test_data.pickle of the MiDi split>
+--data_root data/geom_drugs` writes one dataset folder: `geom_drugs.db` (every cleaned
+conformer once, hydrogens included, with `smiles`, `mol_id` and `conf_rank`), the two split
+files `split_all.npz` (all conformers) and `split_top5.npz` (the first 5 of each molecule),
+and `manifest.json` (source files, cleaning, counts, sha256s). The molecules are cleaned by
+the script of GEOM-Drugs Revisited (Nikitin et al. 2025), vendored unchanged. Train on a
+view with its data config and the folder:
+
+```bash
+gpff_train experiment=gpff data=geom_drugs_revisited_top5 run.data_dir=data/geom_drugs/<id>
+gpff_train experiment=gpff data=geom_drugs_revisited_all  run.data_dir=data/geom_drugs/<id>
+```
+
+The folder has no `split.npz`, so `data=geom_drugs` (for the TFDS-based folders) fails on it
+instead of reading the wrong conformers, and the other way round. The source pickles carry
+no energies: "first 5" is the order of the pickle, which the MiDi paper calls the 5 lowest
+energy conformers.
 
 Training logs performance metrics by default through the configured logger
 (including W&B): epoch/train/validation seconds, molecules per second, examples
