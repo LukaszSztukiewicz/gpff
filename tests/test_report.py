@@ -298,6 +298,8 @@ def test_the_report_compares_formulas_when_the_reference_is_recorded(tmp_path, m
 
     page = (output / "index.html").read_text()
     assert "Composition</h2>" in page and "Formula TV" in page and "TV floor" in page
+    # run-a copies its test molecules' formulas, run-b draws its own
+    assert page.count("<td>given</td>") == 2 and page.count("<td>generated</td>") == 2
     for name in ("formula_counts", "formula_distances", "formula_scatter", "formula_feasibility"):
         assert (output / "figures" / f"{name}.png").stat().st_size > 0
         assert f"figures/{name}.png" in page

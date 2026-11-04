@@ -134,16 +134,31 @@ def _share_of_samples(evaluations: dict, key: str) -> str:
     return f"{100 * hits / total:.1f} [{100 * low:.1f}, {100 * high:.1f}]"
 
 
-def results_table(sets: dict, configs) -> str:
-    """The headline metrics per config and set, as an HTML table, means over seeds."""
+def _types(stats) -> str:
+    """"given" if the samples have exactly their test molecules' formulas, else "generated"."""
+    if stats is None:
+        return "?"
+    return "given" if stats["distances"]["tv"] == 0.0 else "generated"
+
+
+def results_table(sets: dict, configs, formulas=None) -> str:
+    """The headline metrics per config and set, as an HTML table, means over seeds.
+
+    With the formula statistics (report.formula_table) a column says whether the
+    atom types were given, the samples having exactly their test molecules'
+    formulas, or generated: a set that was handed them has no composition to judge.
+    """
     columns = [column for column in COLUMNS
                if any(column[0] in e["results"]
                       for data in sets.values() for config in configs
                       for e in data[config].values())]
     with_vun = any("vun" in e["results"] for data in sets.values() for config in configs
                    for e in data[config].values())
+    with_types = formulas is not None and any(
+        formulas[name][config] is not None for name in sets for config in configs)
     header = "".join(f"<th>{html.escape(name)}</th>" for _, name, _, _ in columns)
-    lines = [f"<table><tr><th>config</th><th>set</th><th>seeds</th><th>Valid % [95% CI]</th>"
+    lines = [f"<table><tr><th>config</th><th>set</th><th>seeds</th>"
+             f"{'<th>Types</th>' if with_types else ''}<th>Valid % [95% CI]</th>"
              f"{'<th>VUN % [95% CI]</th>' if with_vun else ''}{header}</tr>"]
     for config in configs:
         for label, data in sets.items():
@@ -161,9 +176,10 @@ def results_table(sets: dict, configs) -> str:
                 values = [e["results"][key] for e in evaluations.values() if key in e["results"]]
                 cells.append(f"{scale * np.mean(values):.{digits}f}" if values else "-")
             vun = f"<td>{_share_of_samples(evaluations, 'vun')}</td>" if with_vun else ""
+            types = f"<td>{_types(formulas[label][config])}</td>" if with_types else ""
             lines.append(
                 f"<tr><td>{html.escape(config)}</td><td>{html.escape(label)}</td>"
-                f"<td>{len(evaluations)}</td><td>{validity}</td>{vun}"
+                f"<td>{len(evaluations)}</td>{types}<td>{validity}</td>{vun}"
                 + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
             )
     lines.append("</table>")
@@ -171,7 +187,11 @@ def results_table(sets: dict, configs) -> str:
 
 
 RESULTS_NOTE = (
-    "<p>VUN is a share of all samples, with the Wilson interval of the pooled samples "
+    "<p><b>Types</b>: <i>given</i> if the samples have exactly their test molecules' "
+    "formulas, which means the model was handed the atom types and generated none, "
+    "<i>generated</i> if it chose them; ? if the evaluation did not record its reference. "
+    "Compare a set that was given the types with one that generated them only for the "
+    "geometry. VUN is a share of all samples, with the Wilson interval of the pooled samples "
     "(approximate: only the first molecule with a SMILES counts, so the samples are not "
     "quite independent). Unique and Novel are shares of the <i>valid</i> molecules only, so "
     "a set with lower validity can show a higher Novel: compare VUN, and the intervals "
@@ -359,7 +379,7 @@ def main() -> int:
     sections = [
         "<p>Sets: " + "; ".join(f"<b>{html.escape(name)}</b> {html.escape(str(path))}"
                                 for name, path in zip(names, args.model_dirs)) + "</p>",
-        results_table(sets, configs),
+        results_table(sets, configs, formulas),
         RESULTS_NOTE,
     ]
     table = composition_table(sets, configs, formulas)
