@@ -11,11 +11,12 @@
 # and the options of gpff_scalable: radial basis, globals.filter_hidden and
 # globals.global_channel.
 defaults:
+  # a group of its own; Hydra wants the overrides after it
+  - /model/representation/graph: knn
   - override /generative_transform: pseudo_pes
   - override /model: nnp
   - override /model/representation: painn
   - override /model/representation/radial_basis: uniform
-  - /model/representation/graph: knn
   - override /data: qm9_valid
   - override /prior: gaussian
 
