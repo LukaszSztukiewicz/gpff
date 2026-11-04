@@ -3,11 +3,11 @@
     gpff_report <model dir>... --output_dir DIR [--names A B ...] [--control A]
 
 A model dir is <run>/frozen/repro/<model>, whose <config>/seed<N>/evaluation/
-folders gpff_prepare_metadata and gpff_calculate_metrics filled. Nothing is
-computed again; the report only reads them and writes
+folders gpff_prepare_metadata and gpff_calculate_metrics filled. No sample is
+evaluated again; the report reads them and writes
 
-    DIR/index.html      a results table (validity with its 95% Wilson interval)
-                        and the figures
+    DIR/index.html      a results table (validity and VUN with their 95% Wilson
+                        intervals), a composition table, and the figures
     DIR/figures/*.png
 
 The figures: the causes RDKit rejects samples for, validity by heavy-atom count,
@@ -15,7 +15,11 @@ the elongation and ring sizes of the valid molecules, the heteroatom shares
 (when a set generates the atom types), the bond and angle environments of every
 set, and with --control every other set's difference to it, overall and per
 heavy-atom count (paired when both come from the same test molecules and
-seeds). Sets named <run>:<epoch>, the default name of a milestone, are also
+seeds). The composition table and the figures of atoms per molecule and of
+formula distributions (gpff.analysis.formula) compare the samples' formulas with
+those of the test molecules they were generated from, which they read from the
+reference files the evaluations recorded (provenance.json); a set whose
+evaluation did not record them is left out of those. Sets named <run>:<epoch>, the default name of a milestone, are also
 drawn against the epoch, and --control <run> compares every such set with the
 control run's same epoch, adding a config x epoch map of the differences. Only the configs every set has are shown, unless
 --configs names them. A gallery at the end shows --gallery samples per failure
@@ -35,9 +39,9 @@ import numpy as np
 from gpff.analysis import report
 import matplotlib.pyplot as plt  # after report, which picks the Agg backend
 
-# results table: results.json key, header, scale, digits
+# results table: results.json key, header, scale, digits (valid and vun come first, with their
+# intervals)
 COLUMNS = (
-    ("vun", "VUN %", 100, 1),
     ("uniqueness", "Unique %", 100, 1),
     ("novelty", "Novel %", 100, 1),
     ("bond_length_w1", "Bond W1 mÅ", 1000, 2),
@@ -57,6 +61,8 @@ PAGE = """<!doctype html>
 body {{ font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #0b0b0b;
        background: #f9f9f7; margin: 24px; max-width: 1400px; }}
 table {{ border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }}
+table.wide {{ font-size: 12px; }}
+.scroll {{ overflow-x: auto; }}
 th, td {{ padding: 3px 10px; border-bottom: 1px solid #e1e0d9; text-align: right; }}
 th:nth-child(-n+2), td:nth-child(-n+2) {{ text-align: left; }}
 img {{ max-width: 100%; }}
@@ -106,15 +112,39 @@ def default_name(model_dir: Path) -> str:
     return f"{parts[-4]}:{short}"
 
 
+def _share_of_samples(evaluations: dict, key: str) -> str:
+    """A results.json share of all samples with its 95% Wilson interval, pooled over seeds.
+
+    "x [low, high]" in percent, "-" if an evaluation lacks the share or the number of
+    its samples. Approximate for vun: it counts the first molecule with each SMILES, so
+    the samples are not quite independent.
+    """
+    shares, sizes = [], []
+    for evaluation in evaluations.values():
+        n = evaluation["results"].get("n_molecules")
+        if n is None and "rdkit_valid" in evaluation:
+            n = len(evaluation["rdkit_valid"])
+        shares.append(evaluation["results"].get(key))
+        sizes.append(n)
+    if any(value is None for value in shares + sizes):
+        return "-"
+    total = float(sum(sizes))
+    hits = float(sum(share * n for share, n in zip(shares, sizes)))
+    low, high = report.wilson(hits, total)
+    return f"{100 * hits / total:.1f} [{100 * low:.1f}, {100 * high:.1f}]"
+
+
 def results_table(sets: dict, configs) -> str:
     """The headline metrics per config and set, as an HTML table, means over seeds."""
     columns = [column for column in COLUMNS
                if any(column[0] in e["results"]
                       for data in sets.values() for config in configs
                       for e in data[config].values())]
+    with_vun = any("vun" in e["results"] for data in sets.values() for config in configs
+                   for e in data[config].values())
     header = "".join(f"<th>{html.escape(name)}</th>" for _, name, _, _ in columns)
     lines = [f"<table><tr><th>config</th><th>set</th><th>seeds</th><th>Valid % [95% CI]</th>"
-             f"{header}</tr>"]
+             f"{'<th>VUN % [95% CI]</th>' if with_vun else ''}{header}</tr>"]
     for config in configs:
         for label, data in sets.items():
             evaluations = data[config]
@@ -130,12 +160,110 @@ def results_table(sets: dict, configs) -> str:
             for key, _, scale, digits in columns:
                 values = [e["results"][key] for e in evaluations.values() if key in e["results"]]
                 cells.append(f"{scale * np.mean(values):.{digits}f}" if values else "-")
+            vun = f"<td>{_share_of_samples(evaluations, 'vun')}</td>" if with_vun else ""
             lines.append(
                 f"<tr><td>{html.escape(config)}</td><td>{html.escape(label)}</td>"
-                f"<td>{len(evaluations)}</td><td>{validity}</td>"
+                f"<td>{len(evaluations)}</td><td>{validity}</td>{vun}"
                 + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
             )
     lines.append("</table>")
+    return "\n".join(lines)
+
+
+RESULTS_NOTE = (
+    "<p>VUN is a share of all samples, with the Wilson interval of the pooled samples "
+    "(approximate: only the first molecule with a SMILES counts, so the samples are not "
+    "quite independent). Unique and Novel are shares of the <i>valid</i> molecules only, so "
+    "a set with lower validity can show a higher Novel: compare VUN, and the intervals "
+    "before reading a difference.</p>"
+)
+
+COMPOSITION_NOTE = (
+    "<p>How the atoms of the samples compare with those of the test molecules they were "
+    "generated from (sample i has test molecule i's number of atoms). <b>Element TV</b> and "
+    "<b>JS</b> compare the pooled element shares, <b>N share ×</b> is the pooled share of N "
+    "relative to the test molecules' (1 is right). Pooled shares say nothing about which "
+    "molecules the atoms are in, so the next columns compare whole formulas. <b>Formula "
+    "TV</b> is the smallest share of the molecules whose formula would have to change to make "
+    "the two sets equal; <b>Formula JS</b> is the Jensen-Shannon divergence in bits, finite "
+    "where one set has formulas the other lacks and weighing rare formulas more, on a scale "
+    "of its own. Read both against the <b>floor</b>: what a perfect model scores, a random "
+    "training molecule of each test molecule's size (mean ± sd of 20 draws). Two finite "
+    "samples of one distribution are never equal, so 0 is out of reach; a set that copies "
+    "the formulas scores 0 by construction. <b>Indep. atoms</b>: atoms drawn independently "
+    "with the set's own element shares, which is all that matching the shares buys. "
+    "<b>#N W1</b>: Wasserstein distance of the number of N atoms per molecule, in atoms. "
+    "<b>New formulas</b>: share of the molecules whose formula no training or validation "
+    "molecule has (the test molecules' share in brackets). <b>Feasible</b>: share of the "
+    "formulas a neutral closed-shell molecule can have (even valence sum, not more H and F "
+    "than the heavy atoms hold; QM9's elements only); any other is a radical whatever the "
+    "geometry. <b>Valid | feasible</b>: validity of the samples whose formula is feasible, "
+    "the geometry's share. <b>Valid, std.</b>: validity if the set had the test molecules' "
+    "mix of N and O counts (0 for a mix it cannot generate), so that leaving out the hard "
+    "molecules does not pay.</p>"
+)
+
+
+def feasibility_check(formulas: dict) -> str:
+    """A sentence for the feasibility caption if samples are valid despite an impossible formula."""
+    worst = max((stats["infeasible_valid"] for per_config in formulas.values()
+                 for stats in per_config.values()
+                 if stats is not None and "infeasible_valid" in stats), default=0.0)
+    if worst <= 0:
+        return ""
+    return (f" Up to {100 * worst:.2f}% of a set's samples are valid in spite of an "
+            "impossible formula (outside the bars): the rule does not cover them.")
+
+
+def _pm(pair) -> str:
+    mean, sd = pair
+    return f"{mean:.3f} ± {sd:.3f}"
+
+
+# composition table: header, what to show of formula_stats (a string, or None for "-")
+COMPOSITION_COLUMNS = (
+    ("Element TV", lambda s: f"{s['element']['tv']:.4f}"),
+    ("Element JS 10⁻³ bit", lambda s: f"{1e3 * s['element']['js']:.2f}"),
+    ("N share ×", lambda s: f"{s['ratio']['N']:.2f}"),
+    ("O share ×", lambda s: f"{s['ratio']['O']:.2f}"),
+    ("Formula TV", lambda s: f"{s['distances']['tv']:.3f}"),
+    ("TV floor", lambda s: _pm(s["floor"]["tv"])),
+    ("TV indep. atoms", lambda s: f"{s['independent']['tv']:.3f}"),
+    ("Formula JS bit", lambda s: f"{s['distances']['js']:.3f}"),
+    ("JS floor", lambda s: _pm(s["floor"]["js"])),
+    ("JS indep. atoms", lambda s: f"{s['independent']['js']:.3f}"),
+    ("#N W1", lambda s: f"{s['count_w1']['N']:.3f}"),
+    ("#O W1", lambda s: f"{s['count_w1']['O']:.3f}"),
+    ("New formulas % (test)",
+     lambda s: f"{100 * s['unseen']:.1f} ({100 * s['unseen_reference']:.1f})"),
+    ("Feasible %", lambda s: f"{100 * s['feasible']:.1f}"),
+    ("Valid | feasible %", lambda s: f"{100 * s['valid_given_feasible']:.1f}"),
+    ("Valid, std. %", lambda s: f"{100 * s['standardized_validity']:.1f}"),
+)
+
+
+def composition_table(sets: dict, configs, formulas: dict) -> str:
+    """The composition of the samples against their test molecules, per config and set.
+
+    Empty when no set has the statistics (see report.formula_stats).
+    """
+    if not any(formulas[name][config] is not None for name in sets for config in configs):
+        return ""
+    header = "".join(f"<th>{html.escape(name)}</th>" for name, _ in COMPOSITION_COLUMNS)
+    lines = [f'<div class="scroll"><table class="wide"><tr><th>config</th><th>set</th>{header}</tr>']
+    for config in configs:
+        for label in sets:
+            stats = formulas[label][config]
+            cells = []
+            for _, show in COMPOSITION_COLUMNS:
+                try:
+                    value = "-" if stats is None else show(stats)
+                except (KeyError, TypeError):
+                    value = "-"
+                cells.append("-" if "nan" in value else value)
+            lines.append(f"<tr><td>{html.escape(config)}</td><td>{html.escape(label)}</td>"
+                         + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>")
+    lines.append("</table></div>")
     return "\n".join(lines)
 
 
@@ -227,11 +355,16 @@ def main() -> int:
 
     figures_dir = args.output_dir / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
+    formulas = report.formula_table(sets, configs)
     sections = [
         "<p>Sets: " + "; ".join(f"<b>{html.escape(name)}</b> {html.escape(str(path))}"
                                 for name, path in zip(names, args.model_dirs)) + "</p>",
         results_table(sets, configs),
+        RESULTS_NOTE,
     ]
+    table = composition_table(sets, configs, formulas)
+    if table:
+        sections += ["<h2>Composition</h2>", COMPOSITION_NOTE, table]
 
     def add(figure, filename: str, heading: str, caption: str) -> None:
         if figure is None:
@@ -274,6 +407,33 @@ def main() -> int:
         "The share of the atoms and of the molecules each heteroatom has, for models that "
         "generate the atom types; an untyped set has its test molecules' composition. "
         "Fewer N or O than that makes validity easier without the model getting better.")
+    add(report.count_figure(sets, configs, formulas), "formula_counts.png",
+        "Atoms per molecule",
+        "The share of the molecules with 0, 1, 2 and 3 or more N atoms (top) and O atoms "
+        "(bottom); the black dashes are the test molecules'. The pooled shares above cannot "
+        "tell a few molecules with many N from many molecules with one.")
+    add(report.formula_distance_figure(sets, configs, formulas), "formula_distances.png",
+        "Formula distributions",
+        "Distance between the formulas (C7H11NO) of the samples and those of the test "
+        "molecules they were generated from: total variation on top, Jensen-Shannon below. "
+        "The black dash is the oracle floor, what a model that draws from the data scores "
+        "(mean ± sd of draws); it is not 0. The open circle is atoms drawn independently with "
+        "the set's own element shares: a bar there has learned no more than the shares. A set "
+        "that copies the formulas has no bar.")
+    add(report.formula_scatter_figure(sets, configs, formulas), "formula_scatter.png",
+        "Formula frequencies",
+        "The share of every formula in the samples against its share in the test molecules, "
+        "log-log; the line is equality. Grey: one oracle draw, how far a perfect model "
+        "scatters by chance, so a set is worse only where its cloud is wider than the grey "
+        "one. A formula missing on one side sits on the half-sample line. The three formulas "
+        "that differ most are named.")
+    add(report.feasibility_figure(sets, configs, formulas), "formula_feasibility.png",
+        "Invalid samples: formula or geometry",
+        "Height: the share of all samples that are invalid. Dark: the formula is one no "
+        "neutral closed-shell molecule can have (odd valence sum, or more H and F than the "
+        "heavy atoms hold), so no geometry could be valid: the type generation's doing. "
+        "Light: the formula is possible, the geometry still is not."
+        + feasibility_check(formulas))
     add(report.elongation_figure(sets, configs), "elongation.png", "Elongation",
         "Cumulative distribution of the valid molecules' largest atom distance; dashed, "
         "the reference elongation_w1 was computed against, when an evaluation recorded it.")

@@ -9,6 +9,7 @@ never filled in. The gallery also reads a few rows of the sample database.
 """
 import json
 import re
+from functools import lru_cache
 from pathlib import Path
 
 import matplotlib
@@ -16,15 +17,20 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
+from matplotlib.patches import Patch  # noqa: E402
 from ase.data import chemical_symbols  # noqa: E402
 from ase.db import connect  # noqa: E402
 
+from gpff.analysis import formula  # noqa: E402
 from gpff.analysis.structure import FAILURES  # noqa: E402
 
 __all__ = [
     "CONFIG_ORDER",
     "composition_figure",
+    "composition_reference",
     "control_pairs",
+    "count_figure",
     "delta_figure",
     "difference",
     "elongation_figure",
@@ -32,6 +38,11 @@ __all__ = [
     "epoch_delta_figure",
     "epoch_figure",
     "failure_figure",
+    "feasibility_figure",
+    "formula_distance_figure",
+    "formula_scatter_figure",
+    "formula_stats",
+    "formula_table",
     "gallery",
     "load_set",
     "pooled",
@@ -114,6 +125,7 @@ def load_evaluation(evaluation_dir: Path) -> dict:
             evaluation[key] = np.load(metadata / f"{key}.npy")
     if (metadata / "element_counts.npz").exists():
         with np.load(metadata / "element_counts.npz") as table:
+            evaluation["element_counts"] = {symbol: table[symbol] for symbol in table.files}
             evaluation["sizes"] = sum(table[symbol] for symbol in table.files)
             evaluation["heavy_atoms"] = evaluation["sizes"] - (
                 table["H"] if "H" in table.files else 0
@@ -504,6 +516,375 @@ def composition_figure(sets: dict, configs):
                 if column == 0:
                     ax.set_ylabel(ylabel)
         _legend_above(figure, axes, len(sets))
+    return figure
+
+
+# formula_stats: draws of the oracle (the floor) and of the independent-atoms baseline
+FORMULA_DRAWS = 20
+BASELINE_DRAWS = 5
+FORMULA_SEED = 0
+# the heteroatoms whose share relative to the reference is reported
+HETEROATOMS = ("N", "O")
+# a count of atoms per molecule at or above this is one bin of count_figure
+COUNT_CAP = 3
+# formulas named in a panel of formula_scatter_figure
+SCATTER_LABELS = 3
+
+# the floor of a split depends on the reference only: {(files, n, symbols): floor}
+_FLOORS: dict = {}
+
+
+def _provenance_input(evaluation: dict, metric: str, argument: str):
+    """The existing file an evaluation recorded as `argument` of `metric`, or None."""
+    entry = evaluation.get("provenance", {}).get("results", {}).get(metric, {})
+    path = entry.get("inputs", {}).get(argument, {}).get("path")
+    return Path(path) if path and Path(path).exists() else None
+
+
+@lru_cache(maxsize=4)
+def _load_reference(counts_path: str, split_path: str) -> dict:
+    with np.load(counts_path) as table:
+        counts = {symbol: table[symbol] for symbol in table.files}
+    with np.load(split_path) as split:
+        test = np.asarray(split["test_idx"])
+        pool = [np.asarray(split[f"{name}_idx"]) for name in ("train", "val")
+                if f"{name}_idx" in split.files]
+    return {"counts": counts, "test_idx": test,
+            "pool_idx": np.concatenate(pool) if pool else np.zeros(0, dtype=int),
+            "key": (counts_path, split_path)}
+
+
+def composition_reference(evaluation: dict):
+    """The reference molecules an evaluation's composition was measured against.
+
+    Read from the files its provenance.json records for element_tv: the element
+    counts of every reference molecule and the split. Returns {counts, test_idx,
+    pool_idx (train and val), key}, or None if the evaluation did not record them
+    (or they are gone).
+    """
+    counts = _provenance_input(evaluation, "element_tv", "reference_element_counts_path")
+    split = _provenance_input(evaluation, "element_tv", "split_path")
+    if counts is None or split is None:
+        return None
+    return _load_reference(str(counts), str(split))
+
+
+def formula_stats(evaluations: dict):
+    """How the formulas of one config's samples compare with those of their test molecules.
+
+    All seeds of the config are pooled. Sample i was generated from test molecule
+    i, so the reference is the test molecules' formulas (see gpff.analysis.formula).
+    Returns None when an evaluation lacks the element counts or the reference it
+    was measured against. Otherwise a dict with
+
+        n                           samples
+        symbols, formulas           the columns, and the distinct formulas (count rows)
+        p, q, oracle_p              the shares of the samples, of the test molecules and
+                                    of one oracle draw over those formulas
+        distances                   formula tv, js, hellinger of p and q
+        floor                       {metric: (mean, sd)} of the oracle's distances
+        independent                 {metric: mean} of atoms drawn independently with the
+                                    pooled shares of the samples
+        element                     tv, js, hellinger of the pooled element shares
+        ratio                       {element: pooled share over the reference's}
+        count_w1, counts            per N and O, the W1 of the atoms per molecule, and the
+                                    shares of the molecules with 0, 1, ... atoms
+        unseen, unseen_reference    share of the molecules whose formula no training or
+                                    validation molecule has, of the samples and the test set
+        feasible, reference_feasible, valid_given_feasible, infeasible_valid,
+        infeasible_invalid, feasible_invalid
+                                    formula_feasible (QM9's elements only), split by validity
+        validity, standardized_validity
+    """
+    parts = []
+    for seed in sorted(evaluations):
+        evaluation = evaluations[seed]
+        reference = composition_reference(evaluation)
+        if reference is None or "element_counts" not in evaluation:
+            return None
+        parts.append((evaluation, reference))
+    if not parts or any(r["key"] != parts[0][1]["key"] for _, r in parts):
+        return None
+    reference = parts[0][1]
+    symbols = formula.symbols_of(reference["counts"], *[e["element_counts"] for e, _ in parts])
+    reference_matrix = formula.count_matrix(reference["counts"], symbols)
+    pool = reference_matrix[reference["pool_idx"]]
+
+    generated, tests, valids = [], [], []
+    for evaluation, _ in parts:
+        matrix = formula.count_matrix(evaluation["element_counts"], symbols)
+        test = reference_matrix[reference["test_idx"][: len(matrix)]]
+        generated.append(matrix[: len(test)])
+        tests.append(test)
+        valid = evaluation.get("rdkit_valid")
+        valids.append(None if valid is None else np.asarray(valid, dtype=bool)[: len(test)])
+    gen, test = np.concatenate(generated), np.concatenate(tests)
+    valid = None if any(v is None for v in valids) else np.concatenate(valids)
+    n = len(gen)
+
+    stats: dict = {"n": n, "symbols": symbols, "validity": None if valid is None else float(valid.mean())}
+    rng = np.random.default_rng(FORMULA_SEED)
+    draw = formula.resample_by_size(pool, test.sum(axis=1), rng) if len(pool) else None
+    matrices = [pool, gen, test] + ([draw] if draw is not None else [])
+    ids, rows = formula.formula_ids(*matrices)
+    pool_ids, gen_ids, test_ids = ids[:3]
+    stats["formulas"] = rows
+    stats["p"] = formula.formula_distribution(gen_ids, len(rows))
+    stats["q"] = formula.formula_distribution(test_ids, len(rows))
+    stats["oracle_p"] = formula.formula_distribution(ids[3], len(rows)) if draw is not None else None
+    stats["distances"] = formula.distances(stats["p"], stats["q"])
+    seen = np.zeros(len(rows), dtype=bool)
+    seen[pool_ids] = True
+    stats["unseen"] = float((~seen[gen_ids]).mean())
+    stats["unseen_reference"] = float((~seen[test_ids]).mean())
+
+    key = (reference["key"], n, tuple(symbols))
+    if key not in _FLOORS:
+        _FLOORS[key] = (formula.oracle_floor(pool, test, FORMULA_DRAWS, FORMULA_SEED)
+                        if len(pool) else None)
+    stats["floor"] = _FLOORS[key]
+
+    baseline_rng = np.random.default_rng(FORMULA_SEED + 1)
+    shares = formula.element_shares(gen)
+    drawn = [formula.formula_distances(
+        formula.independent_atoms(shares, gen.sum(axis=1), baseline_rng), test)[0]
+        for _ in range(BASELINE_DRAWS)]
+    stats["independent"] = {name: float(np.mean([d[name] for d in drawn]))
+                            for name in ("tv", "js", "hellinger")}
+
+    reference_shares = formula.element_shares(test)
+    stats["element"] = formula.distances(shares, reference_shares)
+    stats["ratio"] = {
+        symbol: (float(shares[symbols.index(symbol)] / reference_shares[symbols.index(symbol)])
+                 if symbol in symbols and reference_shares[symbols.index(symbol)] > 0 else np.nan)
+        for symbol in HETEROATOMS
+    }
+    stats["count_w1"] = {
+        symbol: formula.count_w1(gen[:, symbols.index(symbol)], test[:, symbols.index(symbol)])
+        for symbol in HETEROATOMS if symbol in symbols
+    }
+    stats["counts"] = {
+        symbol: {"generated": formula.count_distribution(gen, symbols, symbol, COUNT_CAP),
+                 "reference": formula.count_distribution(test, symbols, symbol, COUNT_CAP)}
+        for symbol in HETEROATOMS
+    }
+
+    if set(reference["counts"]) <= set(formula.QM9_VALENCE):
+        feasible = formula.formula_feasible(gen, symbols)
+        stats["feasible"] = float(feasible.mean())
+        stats["reference_feasible"] = float(formula.formula_feasible(test, symbols).mean())
+        if valid is not None:
+            stats["valid_given_feasible"] = float(valid[feasible].mean()) if feasible.any() else np.nan
+            stats["infeasible_valid"] = float((~feasible & valid).mean())
+            stats["infeasible_invalid"] = float((~feasible & ~valid).mean())
+            stats["feasible_invalid"] = float((feasible & ~valid).mean())
+    if valid is not None:
+        stats["standardized_validity"] = formula.standardized_validity(
+            valid, formula.composition_strata(gen, symbols), formula.composition_strata(test, symbols)
+        )
+    return stats
+
+
+def formula_table(sets: dict, configs) -> dict:
+    """{set: {config: formula_stats}}; None where a config lacks what the statistics need."""
+    return {name: {config: formula_stats(data[config]) for config in configs}
+            for name, data in sets.items()}
+
+
+def _any_stats(stats: dict, sets: dict, configs, key: str = "p") -> bool:
+    return any(stats[name][config] is not None and key in stats[name][config]
+               for name in sets for config in configs)
+
+
+def _bar_x(i: int, n_sets: int, width: float) -> float:
+    return (i - (n_sets - 1) / 2) * width
+
+
+def _legend_of(figure, styles: dict, sets: dict, extra=()) -> None:
+    handles = [Patch(facecolor=styles[name]["color"], hatch=styles[name]["hatch"],
+                     edgecolor=SURFACE, label=name) for name in sets] + list(extra)
+    figure.legend(handles=handles, loc="upper center", ncols=min(len(handles), 4),
+                  bbox_to_anchor=(0.5, 1.02))
+    figure.tight_layout(rect=(0, 0, 1, 0.9 if len(handles) > 1 else 1))
+
+
+def formula_distance_figure(sets: dict, configs, stats: dict):
+    """The distance of the formulas of the samples to those of their test molecules.
+
+    Total variation and Jensen-Shannon, per config and set, with two markers: the
+    oracle's floor (mean ± sd over draws), the distance of a perfect model, which
+    is not 0; and the distance of atoms drawn independently with the set's own
+    element shares. A set that copies its test molecules' formulas scores 0.
+    """
+    if not _any_stats(stats, sets, configs):
+        return None
+    styles = set_styles(sets)
+    width = 0.8 / len(sets)
+    panels = (("tv", "total variation"), ("js", "Jensen-Shannon (bits)"))
+    with plt.rc_context(STYLE):
+        figure, axes = plt.subplots(2, len(configs), squeeze=False, sharey="row",
+                                    figsize=(2.6 * len(configs) + 1, 5.4))
+        for column, config in enumerate(configs):
+            for row, (metric, ylabel) in enumerate(panels):
+                ax = axes[row][column]
+                for i, name in enumerate(sets):
+                    s = stats[name][config]
+                    if s is None:
+                        continue
+                    x = _bar_x(i, len(sets), width)
+                    ax.bar(x, s["distances"][metric], width, color=styles[name]["color"],
+                           hatch=styles[name]["hatch"], edgecolor=SURFACE, linewidth=1)
+                    if s["floor"] is not None:
+                        mean, sd = s["floor"][metric]
+                        ax.errorbar(x, mean, yerr=sd, fmt="_", color=INK, markersize=16,
+                                    elinewidth=1.2, capsize=0)
+                    ax.plot(x, s["independent"][metric], marker="o", linestyle="none",
+                            markerfacecolor=SURFACE, markeredgecolor=INK, markersize=5)
+                ax.set_xticks([])
+                ax.grid(axis="x", visible=False)
+                if row == 0:
+                    ax.set_title(config)
+                if column == 0:
+                    ax.set_ylabel(ylabel)
+        _legend_of(figure, styles, sets, (
+            Line2D([], [], marker="_", color=INK, linestyle="none", markersize=12,
+                   label="oracle floor (mean ± sd)"),
+            Line2D([], [], marker="o", markerfacecolor=SURFACE, markeredgecolor=INK,
+                   linestyle="none", markersize=5, label="independent atoms")))
+    return figure
+
+
+def count_figure(sets: dict, configs, stats: dict):
+    """The shares of the molecules with 0, 1, 2 and 3 or more N and O atoms.
+
+    The pooled element shares cannot tell a few molecules with several N from many
+    with one; this can. The black dashes are the test molecules of the first set
+    drawn.
+    """
+    if not _any_stats(stats, sets, configs, "counts"):
+        return None
+    styles = set_styles(sets)
+    width = 0.8 / len(sets)
+    labels = [str(k) for k in range(COUNT_CAP)] + [f"{COUNT_CAP}+"]
+    with plt.rc_context(STYLE):
+        figure, axes = plt.subplots(len(HETEROATOMS), len(configs), squeeze=False, sharey="row",
+                                    figsize=(2.6 * len(configs) + 1, 2.9 * len(HETEROATOMS)))
+        for column, config in enumerate(configs):
+            for row, symbol in enumerate(HETEROATOMS):
+                ax = axes[row][column]
+                drawn_reference = False
+                for i, name in enumerate(sets):
+                    s = stats[name][config]
+                    if s is None:
+                        continue
+                    ax.bar(np.arange(COUNT_CAP + 1) + _bar_x(i, len(sets), width),
+                           100 * s["counts"][symbol]["generated"], width,
+                           color=styles[name]["color"], hatch=styles[name]["hatch"],
+                           edgecolor=SURFACE, linewidth=1)
+                    if not drawn_reference:
+                        ax.plot(np.arange(COUNT_CAP + 1), 100 * s["counts"][symbol]["reference"],
+                                marker="_", linestyle="none", color=INK, markersize=18,
+                                markeredgewidth=1.6)
+                        drawn_reference = True
+                ax.set_xticks(range(COUNT_CAP + 1), labels)
+                ax.grid(axis="x", visible=False)
+                if row == 0:
+                    ax.set_title(config)
+                if row == len(HETEROATOMS) - 1:
+                    ax.set_xlabel("atoms per molecule")
+                if column == 0:
+                    ax.set_ylabel(f"molecules by number of {symbol} (%)")
+        _legend_of(figure, styles, sets, (
+            Line2D([], [], marker="_", color=INK, linestyle="none", markersize=12,
+                   markeredgewidth=1.6, label="test molecules"),))
+    return figure
+
+
+def formula_scatter_figure(sets: dict, configs, stats: dict):
+    """Share of every formula in the samples against its share in the test molecules.
+
+    Log-log, one panel per set and config, the line is equality. Grey: one oracle
+    draw, how far a perfect model scatters by chance alone, so a set is only worse
+    where its cloud is wider than the grey one. Formulas absent from one side sit
+    on the half-sample line at the bottom or the left edge. The three formulas with
+    the largest difference are named.
+    """
+    if not _any_stats(stats, sets, configs):
+        return None
+    styles = set_styles(sets)
+    with plt.rc_context(STYLE):
+        figure, axes = plt.subplots(len(sets), len(configs), squeeze=False, sharex=True,
+                                    sharey=True,
+                                    figsize=(2.3 * len(configs) + 1, 2.3 * len(sets) + 0.8))
+        for row, name in enumerate(sets):
+            for column, config in enumerate(configs):
+                ax = axes[row][column]
+                s = stats[name][config]
+                if s is None:
+                    ax.set_axis_off()
+                    continue
+                floor = 0.5 / s["n"]
+                q = np.maximum(s["q"], floor)
+                p = np.maximum(s["p"], floor)
+                if s["oracle_p"] is not None:
+                    ax.scatter(q, np.maximum(s["oracle_p"], floor), s=7, color=MUTED,
+                               alpha=0.45, linewidths=0)
+                ax.scatter(q, p, s=9, color=styles[name]["color"], linewidths=0, alpha=0.9)
+                top = 1.4 * max(p.max(), q.max())
+                ax.plot([floor, top], [floor, top], color=AXIS, linewidth=0.8)
+                ax.set_xscale("log")
+                ax.set_yscale("log")
+                for k in np.argsort(-np.abs(s["p"] - s["q"]))[:SCATTER_LABELS]:
+                    ax.annotate(formula.hill_formula(s["formulas"][k], s["symbols"]),
+                                (q[k], p[k]), fontsize=6, color=INK_SECONDARY,
+                                xytext=(3, 3), textcoords="offset points")
+                if row == 0:
+                    ax.set_title(config)
+                if column == 0:
+                    ax.set_ylabel(f"{name}\nshare of the samples")
+                if row == len(sets) - 1:
+                    ax.set_xlabel("share of the test molecules")
+        figure.tight_layout()
+    return figure
+
+
+def feasibility_figure(sets: dict, configs, stats: dict):
+    """Where the invalid samples come from: the formula, or the geometry.
+
+    Every invalid sample is either one whose formula no neutral closed-shell
+    molecule can have (dark: the type head's doing, geometry cannot fix it) or one
+    with a possible formula that RDKit still rejects (light). Height is the share
+    of all samples that are invalid.
+    """
+    if not _any_stats(stats, sets, configs, "infeasible_invalid"):
+        return None
+    styles = set_styles(sets)
+    width = 0.8 / len(sets)
+    with plt.rc_context(STYLE):
+        figure, axes = plt.subplots(1, len(configs), squeeze=False, sharey=True,
+                                    figsize=(2.2 * len(configs) + 1, 3.8))
+        for column, config in enumerate(configs):
+            ax = axes[0][column]
+            for i, name in enumerate(sets):
+                s = stats[name][config]
+                if s is None or "infeasible_invalid" not in s:
+                    continue
+                x = _bar_x(i, len(sets), width)
+                impossible = 100 * s["infeasible_invalid"]
+                ax.bar(x, impossible, width, color=styles[name]["color"],
+                       hatch=styles[name]["hatch"], edgecolor=SURFACE, linewidth=1)
+                ax.bar(x, 100 * s["feasible_invalid"], width, bottom=impossible,
+                       color=styles[name]["color"], alpha=0.35, hatch=styles[name]["hatch"],
+                       edgecolor=SURFACE, linewidth=1)
+            ax.set_xticks([])
+            ax.grid(axis="x", visible=False)
+            ax.set_title(config)
+            if column == 0:
+                ax.set_ylabel("invalid samples (%)")
+        _legend_of(figure, styles, sets, (
+            Patch(facecolor=INK_SECONDARY, edgecolor=SURFACE, label="formula impossible"),
+            Patch(facecolor=INK_SECONDARY, alpha=0.35, edgecolor=SURFACE,
+                  label="formula possible, still invalid")))
     return figure
 
 

@@ -6,7 +6,12 @@ import pytest
 from ase import Atoms
 from ase.db import connect
 
-from gpff.analysis import calculate_bond_length_w1, collect_element_counts
+from gpff.analysis import (
+    calculate_bond_length_w1,
+    collect_element_counts,
+    composition_metrics,
+    numbers_from_element_counts,
+)
 from gpff.analysis import report
 from gpff.cli import report as report_cli
 
@@ -156,7 +161,9 @@ def test_the_report_writes_every_figure_and_the_page(tmp_path, monkeypatch):
     assert report_cli.main() == 0
 
     page = (output / "index.html").read_text()
-    assert "run-b:100" in page and "Valid % [95% CI]" in page
+    assert "run-b:100" in page and "Valid % [95% CI]" in page and "VUN % [95% CI]" in page
+    # no reference was recorded, so there is no formula section
+    assert "Composition</h2>" not in page and "formula_distances" not in page
     for name in ("deltas", "deltas_by_size", "failures", "validity_by_size", "composition",
                  "elongation", "rings", "epoch_rdkit_validity", "epoch_vun", "bonds_0", "bonds_2"):
         assert (output / "figures" / f"{name}.png").stat().st_size > 0
@@ -184,3 +191,113 @@ def test_a_control_run_adds_the_epoch_map(tmp_path, monkeypatch):
     for name in ("deltas_by_epoch", "deltas", "deltas_by_size"):
         assert f"figures/{name}.png" in page
     assert "Each set against run-a at its own epoch" in page and "gallery" not in page
+
+
+def test_vun_has_a_wilson_interval_over_the_pooled_samples():
+    evaluations = {"seed1": {"results": {"vun": 0.5, "n_molecules": 100.0}},
+                   "seed2": {"results": {"vun": 0.5, "n_molecules": 300.0}}}
+
+    low, high = report.wilson(200, 400)
+
+    assert report_cli._share_of_samples(evaluations, "vun") == f"50.0 [{100 * low:.1f}, {100 * high:.1f}]"
+    assert report_cli._share_of_samples({"seed1": {"results": {}}}, "vun") == "-"
+
+
+def toy_reference(tmp_path, n=600, seed=0) -> dict:
+    """The element counts of toy molecules, every one with a possible formula, and a split."""
+    rng = np.random.default_rng(seed)
+    carbon = rng.integers(2, 6, n)
+    nitrogen, oxygen, unsaturation = (rng.integers(0, 2, n) for _ in range(3))
+    table = {"H": 2 * carbon + 2 + nitrogen - 2 * unsaturation, "C": carbon,
+             "N": nitrogen, "O": oxygen}
+    split = {"train_idx": np.arange(300), "val_idx": np.arange(300, 350),
+             "test_idx": np.arange(350, 600)}
+    np.savez(tmp_path / "element_counts.npz", **table)
+    np.savez(tmp_path / "split.npz", **split)
+    return {"table": table, "test_idx": split["test_idx"], "n": n,
+            "counts_path": tmp_path / "element_counts.npz", "split_path": tmp_path / "split.npz"}
+
+
+def write_formulas(evaluation, reference: dict, copy: bool, seed: int) -> None:
+    """The element counts of the samples (the test molecules' own, or random ones), and the
+    reference files the evaluation recorded in its provenance."""
+    if copy:
+        rows = reference["test_idx"][:N_SAMPLES]
+    else:
+        rows = np.random.default_rng(seed).integers(0, reference["n"], N_SAMPLES)
+    table = {symbol: counts[rows] for symbol, counts in reference["table"].items()}
+    np.savez(evaluation / "metadata" / "element_counts.npz", **table)
+    inputs = {"reference_element_counts_path": {"path": str(reference["counts_path"]), "md5": "x"},
+              "split_path": {"path": str(reference["split_path"]), "md5": "x"}}
+    (evaluation / "provenance.json").write_text(
+        json.dumps({"results": {"element_tv": {"inputs": inputs}}})
+    )
+
+
+def test_formula_stats_need_the_recorded_reference(tmp_path):
+    model_dir = tmp_path / "run-a" / "frozen" / "repro" / "epoch_100_model"
+    write_evaluation(model_dir, "dd16", 0.6, seed=0)
+
+    assert report.formula_stats(report.load_set(model_dir)["dd16"]) is None
+
+
+def test_a_set_that_copies_the_test_formulas_is_at_distance_zero(tmp_path):
+    reference = toy_reference(tmp_path)
+    model_dir = tmp_path / "run-a" / "frozen" / "repro" / "epoch_100_model"
+    write_evaluation(model_dir, "dd16", 0.7, seed=0)
+    write_formulas(model_dir / "dd16" / "seed42069" / "evaluation", reference, copy=True, seed=0)
+
+    stats = report.formula_stats(report.load_set(model_dir)["dd16"])
+
+    assert stats["distances"]["tv"] == pytest.approx(0.0)
+    assert stats["element"]["tv"] == pytest.approx(0.0)
+    assert stats["feasible"] == 1.0 and stats["infeasible_valid"] == 0.0
+    assert stats["standardized_validity"] == pytest.approx(stats["validity"])
+    # a perfect model does not score zero against finite samples, and matching the
+    # element shares alone is further from the data than that
+    assert stats["floor"]["tv"][0] > 0.0
+    assert stats["independent"]["tv"] > stats["floor"]["tv"][0]
+
+
+def test_the_element_distance_is_that_of_the_composition_metrics(tmp_path):
+    reference = toy_reference(tmp_path)
+    model_dir = tmp_path / "run-a" / "frozen" / "repro" / "epoch_100_model"
+    write_evaluation(model_dir, "dd16", 0.7, seed=0)
+    write_formulas(model_dir / "dd16" / "seed42069" / "evaluation", reference, copy=False, seed=3)
+    evaluations = report.load_set(model_dir)["dd16"]
+
+    stats = report.formula_stats(evaluations)
+
+    generated = numbers_from_element_counts(evaluations["seed42069"]["element_counts"])
+    test = numbers_from_element_counts(
+        {symbol: counts[reference["test_idx"][:N_SAMPLES]]
+         for symbol, counts in reference["table"].items()}
+    )
+    expected = composition_metrics(
+        generated, np.array([len(m) for m in generated]), test, np.array([len(m) for m in test])
+    )
+    assert stats["element"]["tv"] == pytest.approx(expected["element_tv"])
+    assert stats["distances"]["tv"] > stats["element"]["tv"]
+
+
+def test_the_report_compares_formulas_when_the_reference_is_recorded(tmp_path, monkeypatch):
+    reference = toy_reference(tmp_path)
+    model_dirs = []
+    for run, copy in (("run-a", True), ("run-b", False)):
+        model_dir = tmp_path / run / "frozen" / "repro" / "epoch_100_model"
+        for i, config in enumerate(("dd16", "sdd256")):
+            write_evaluation(model_dir, config, 0.7, seed=i)
+            write_formulas(model_dir / config / "seed42069" / "evaluation", reference,
+                           copy=copy, seed=10 + i)
+        model_dirs.append(str(model_dir))
+    output = tmp_path / "report"
+
+    monkeypatch.setattr(sys, "argv", ["gpff_report", *model_dirs, "--output_dir", str(output),
+                                      "--gallery", "0"])
+    assert report_cli.main() == 0
+
+    page = (output / "index.html").read_text()
+    assert "Composition</h2>" in page and "Formula TV" in page and "TV floor" in page
+    for name in ("formula_counts", "formula_distances", "formula_scatter", "formula_feasibility"):
+        assert (output / "figures" / f"{name}.png").stat().st_size > 0
+        assert f"figures/{name}.png" in page
