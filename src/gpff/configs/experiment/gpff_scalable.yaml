@@ -1,0 +1,102 @@
+# @package _global_
+# GPFF force field, time-agnostic, with the options for larger molecules. With its
+# defaults it is experiment=gpff (fully connected graph from the data transform, a
+# uniform Gaussian basis of 4 functions per A of the cutoff, one linear layer from the
+# basis to the filters). Every option is switched by one override:
+#
+#   radial basis   model/representation/radial_basis=uniform|hybrid|log
+#                  globals.n_rbf=<n> globals.rbf_cutoff=<A> set the uniform one
+#   filter MLP     globals.filter_hidden=64   (two layers instead of one linear layer)
+#   global channel globals.global_channel=true
+#
+# For a graph built inside the model see experiment=gpff_scalable_graph.
+defaults:
+  - override /generative_transform: pseudo_pes
+  - override /model: nnp
+  - override /model/representation: painn
+  - override /model/representation/radial_basis: uniform
+  - override /data: qm9_valid
+  - override /prior: gaussian
+
+globals:
+  # Architecture
+  sigma_max: 30
+  cutoff: ${mul:${globals.sigma_max}, 5}
+  n_atom_basis: 256
+  n_interactions: 4
+  # radial basis=uniform: the number of Gaussians and the last offset
+  n_rbf: ${mul:${globals.cutoff}, 4}
+  rbf_cutoff: ${globals.cutoff}
+  # if set, the filters are a two-layer MLP of the basis with this many hidden units
+  filter_hidden: null
+  # a virtual node per molecule in every interaction block
+  global_channel: false
+  # growth control: normalized PaiNN blocks and forces bounded like their target
+  prenorm: false
+  # the messages an interaction sums over the neighbors of an atom are divided by sqrt(degree)
+  degree_norm: false
+  bounded_forces: false
+  # bound on the network's share of the force: the radius of a clean molecule
+  # (QM9: 7.4 A) plus what the skip term leaves at intermediate sigma, ~2x
+  x0_radius: 15.0
+
+  # Transform alignment
+  align_permutation: true
+  align_rotation: false
+
+  # Training
+  weights_key: ${key:forces_weight}
+  scale_loss: null
+  lr: 1e-4
+
+  # Metadata
+  model_path: "best_model"
+
+run:
+  experiment: gpff_scalable
+  tags:
+    - gpff
+    - scalable
+
+prior:
+  sigma: ${globals.sigma_max}
+
+model:
+  representation:
+    cutoff_fn:
+      cutoff: ${globals.cutoff}
+    n_atom_basis: ${globals.n_atom_basis}
+    n_interactions: ${globals.n_interactions}
+    prenorm: ${globals.prenorm}
+    degree_norm: ${globals.degree_norm}
+    filter_hidden: ${globals.filter_hidden}
+    global_channel: ${globals.global_channel}
+  output_modules:
+    - _target_: gpff.model.heads.GatedEquivariant
+      n_in: ${globals.n_atom_basis}
+      n_hidden: null
+      n_layers: 3
+      output_key: ${key:forces}
+      bounded: ${globals.bounded_forces}
+      x0_radius: ${globals.x0_radius}
+
+data:
+  transforms:
+    - ${generative_transform}
+    - _target_: gpff.utils.neighbors.AllToAllNeighborList
+    - _target_: schnetpack.transform.CastTo32
+
+task:
+  warmup_steps: 0
+  outputs:
+    - _target_: gpff.task.ModelOutput
+      name: ${key:forces}
+      metrics:
+        mae:
+          _target_: torchmetrics.regression.MeanAbsoluteError
+        mse:
+          _target_: torchmetrics.regression.MeanSquaredError
+          squared: True
+      loss_weight: 1.
+      scale_loss: ${globals.scale_loss}
+      weights_key: ${globals.weights_key}

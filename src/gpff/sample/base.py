@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from typing import Any, Dict, Optional, List
 from abc import ABC, abstractmethod
+from gpff.model.graph import NeighborGraph
 from gpff.utils import compute_neighbors
 from gpff.utils.alignment import _molecule_layout, _pad_by_molecule
 from gpff.sample.schedules import NoiseSchedule, EDMNoiseSchedule
@@ -27,26 +28,27 @@ _PAIR_KEYS = (
 
 def _molecule_selection(batch: Dict[str, Any], molecules: torch.Tensor) -> Dict[str, torch.Tensor]:
     """
-    Indices that select some molecules of a batch with a neighbor list, and
-    the renumbered index entries of that sub-batch.
+    Indices that select some molecules of a batch, and the renumbered index
+    entries of that sub-batch.
 
     Args:
-        batch: A batch with a neighbor list.
+        batch: A batch, with a neighbor list unless the model builds its own graph.
         molecules: (n_molecules,) True for the molecules to keep.
     """
     atoms = molecules[batch[properties.idx_m]]
     atom_idx = atoms.nonzero().squeeze(-1)
-    pair_idx = atoms[batch[properties.idx_i]].nonzero().squeeze(-1)
     atom_index = torch.cumsum(atoms, 0) - 1
+    indices = {properties.idx_m: (torch.cumsum(molecules, 0) - 1)[batch[properties.idx_m][atom_idx]]}
+    pair_idx = None
+    if properties.idx_i in batch:
+        pair_idx = atoms[batch[properties.idx_i]].nonzero().squeeze(-1)
+        indices[properties.idx_i] = atom_index[batch[properties.idx_i][pair_idx]]
+        indices[properties.idx_j] = atom_index[batch[properties.idx_j][pair_idx]]
     return {
         "atoms": atom_idx,
         "pairs": pair_idx,
         "molecules": molecules.nonzero().squeeze(-1),
-        "indices": {
-            properties.idx_i: atom_index[batch[properties.idx_i][pair_idx]],
-            properties.idx_j: atom_index[batch[properties.idx_j][pair_idx]],
-            properties.idx_m: (torch.cumsum(molecules, 0) - 1)[batch[properties.idx_m][atom_idx]],
-        },
+        "indices": indices,
     }
 
 
@@ -66,7 +68,9 @@ def _select_molecules(
         elif not isinstance(value, torch.Tensor) or value.ndim == 0:
             sub[key] = value
         elif key in _PAIR_KEYS:
-            sub[key] = value[selection["pairs"]]
+            # a model that builds its own graph reads no pairs
+            if selection["pairs"] is not None:
+                sub[key] = value[selection["pairs"]]
         elif key == properties.pbc:
             # (n_molecules * 3,) once collated, or (n_molecules, 3)
             sub[key] = value.view(-1, 3)[selection["molecules"]].reshape(-1, *value.shape[1:])
@@ -135,6 +139,8 @@ class Calculator:
         if model is not None:
             model = model.to(device=self.device, dtype=self.dtype)
         self.model = model
+        # such a model needs no neighbor list: it builds its graph from the positions of every call
+        self.builds_graph = model is not None and any(isinstance(m, NeighborGraph) for m in model.modules())
 
     def check_model(self):
         """
@@ -150,8 +156,12 @@ class Calculator:
         Ensure the batch holds a neighbor list, updating it in place.
 
         The list is fully connected, so it stays valid as the positions move
-        and is built once for the whole denoising run.
+        and is built once for the whole denoising run. A model that builds its
+        own graph (see :class:`gpff.model.graph.NeighborGraph`) gets none: its
+        graph follows the positions at every call.
         """
+        if self.builds_graph:
+            return batch
         if properties.idx_i not in batch:
             batch.update(
                 compute_neighbors(batch, fully_connected=True, device=self.device)

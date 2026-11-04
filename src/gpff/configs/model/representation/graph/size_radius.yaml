@@ -1,0 +1,10 @@
+# All pairs within r = radius * R_g(x) / R_g,ref(N), R_g,ref(N) = c N^e: the radius
+# grows and shrinks with the molecule, so the graph of x_t is the graph of the
+# clean-size molecule. A pair weighs cosine_cutoff(d_ij / r).
+# Expected globals:
+#   - graph_radius: radius (A) at the reference size
+#   - rg_ref_coefficient, rg_ref_exponent: c (A) and e of R_g,ref(N)
+_target_: gpff.model.graph.SizeRadiusGraph
+radius: ${globals.graph_radius}
+rg_ref_coefficient: ${globals.rg_ref_coefficient}
+rg_ref_exponent: ${globals.rg_ref_exponent}

@@ -1,0 +1,7 @@
+# The union of the k nearest neighbors of every atom, built from the current
+# positions inside the model (training and every sampler step). A pair weighs
+# cosine_cutoff(d_ij / max(rho_i, rho_j)), rho_i the distance to the (k+1)-th neighbor.
+# Expected globals:
+#   - knn_k
+_target_: gpff.model.graph.KNNGraph
+k: ${globals.knn_k}
