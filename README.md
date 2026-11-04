@@ -114,6 +114,23 @@ gpff_train experiment=gpff data.load_properties=[] data.cache_in_memory=true \
 # task.optimizer_args.weight_decay (default 0, off) decays those matrices only:
 gpff_train experiment=gpff task/optimizer=block_adam task.optimizer_args.block_update=rms globals.lr=1e-5
 
+# Scale to larger molecules (all off by default; experiment=gpff_scalable without an
+# override is experiment=gpff). A radial basis of far fewer functions than the 4 per A of
+# the cutoff: hybrid (0.25 A apart up to 6 A, then a ratio of 1.25 up to 300 A, 42 functions),
+# log (32 functions from 0.5 A to 300 A) or uniform with globals.n_rbf and globals.rbf_cutoff.
+# A two-layer MLP between the basis and the filters instead of one linear layer, and a
+# global channel (a virtual node per molecule with its size and shape) in every interaction block:
+gpff_train experiment=gpff_scalable model/representation/radial_basis=hybrid \
+  globals.filter_hidden=64 globals.global_channel=true
+# A neighbor graph built inside the model, on the GPU, from the current positions: in training
+# and at every step of a sampler (gpff_generate builds no neighbor list for such a model).
+# knn is the symmetric union of the k nearest neighbors; a pair weighs
+# cosine_cutoff(d_ij / max(rho_i, rho_j)), rho_i the distance to the (k+1)-th neighbor, so a
+# pair leaves the graph with weight 0. size_radius takes all pairs within
+# graph_radius * R_g(x_t) / R_g,ref(N), R_g,ref(N) = c N^e (globals.rg_ref_coefficient/exponent):
+gpff_train experiment=gpff_scalable_graph globals.knn_k=16
+gpff_train experiment=gpff_scalable_graph model/representation/graph=size_radius
+
 # Sample with a local checkpoint; model_path and split_path are required and
 # are the only way to point gpff_generate at a model:
 gpff_generate \
