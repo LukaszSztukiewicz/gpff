@@ -45,7 +45,11 @@ globals:
   # Graph
   # graph=knn: neighbors of every atom
   knn_k: 16
-  # graph=size_radius: r = graph_radius * R_g(x_t) / R_g,ref(N), R_g,ref(N) = c N^e
+  # graph=size_radius: r = graph_radius * R_g(x_t) / R_g,ref(N), R_g,ref(N) = c N^e, the radius of gyration
+  # (RMS distance of the atoms from their centroid) of a clean molecule of N atoms. Dataset-specific, so
+  # without a default; least-squares fit of log R_g on log N over 20,000 random rows of the dataset:
+  #   QM9 b36d9cd218f5998d (N 3-29):          c = 1.1357, e = 0.2579 (std of log R_g 0.086)
+  #   GEOM-Drugs f71e7ef19df1bd58 (N 12-150): c = 1.3304, e = 0.2958 (std of log R_g 0.120)
   graph_radius: 5.0
   rg_ref_coefficient: ???
   rg_ref_exponent: ???
