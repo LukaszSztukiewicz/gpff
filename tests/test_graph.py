@@ -231,3 +231,19 @@ def test_geometry_invariants_tell_a_ball_from_a_line_and_do_not_depend_on_pose_o
     torch.testing.assert_close(moved.radial, reference.radial, atol=1e-5, rtol=0)
     torch.testing.assert_close(moved.log_rg - reference.log_rg, torch.full((3,), math.log(3), dtype=torch.float64), atol=1e-5, rtol=0)
     torch.testing.assert_close(moved.direction, reference.direction @ q.T, atol=1e-5, rtol=0)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")
+@pytest.mark.parametrize("graph", [KNNGraph(4), SizeRadiusGraph(radius=2.5, rg_ref_coefficient=1.2, rg_ref_exponent=0.45)])
+def test_graph_on_the_gpu_is_the_graph_on_the_cpu(graph):
+    molecules = molecules_of([14, 9, 30, 1, 5])
+    positions, idx_m, n_atoms = batch_of(molecules)
+
+    torch.use_deterministic_algorithms(True)
+    try:
+        i, j, weight = graph(positions.cuda(), idx_m.cuda(), n_atoms.cuda())
+    finally:
+        torch.use_deterministic_algorithms(False)
+
+    on_gpu = dict(zip(zip(i.tolist(), j.tolist()), weight.tolist()))
+    assert_same_graph(on_gpu, build(graph, molecules))

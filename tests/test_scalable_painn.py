@@ -268,3 +268,33 @@ def test_compiled_model_with_a_graph_matches_the_eager_one():
 
     torch.testing.assert_close(out["scalar_representation"], expected["scalar_representation"])
     torch.testing.assert_close(out["vector_representation"], expected["vector_representation"])
+
+
+needs_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")
+
+
+@needs_cuda
+@pytest.mark.parametrize("graph", GRAPHS)
+def test_model_with_a_graph_trains_on_the_gpu_in_deterministic_mode_like_on_the_cpu(graph):
+    cpu_model = painn(GRAPHS[graph](), global_channel=True, filter_hidden=8)
+    torch.manual_seed(5)
+    for parameter in cpu_model.global_channels.parameters():
+        parameter.data.normal_(0, 0.3)
+    model = painn(GRAPHS[graph](), global_channel=True, filter_hidden=8).float().cuda()
+    model.load_state_dict(cpu_model.state_dict())
+    inputs = inputs_for([40, 7, 25, 1])
+    inputs_cuda = {k: (v.float() if v.is_floating_point() else v).cuda() for k, v in inputs.items()}
+    inputs_cuda[properties.R].requires_grad_()
+
+    torch.use_deterministic_algorithms(True)
+    try:
+        out = model(inputs_cuda)
+        (out["scalar_representation"].pow(2).sum() + out["vector_representation"].pow(2).sum()).backward()
+    finally:
+        torch.use_deterministic_algorithms(False)
+
+    expected = cpu_model(dict(inputs))
+    for key in ("scalar_representation", "vector_representation"):
+        torch.testing.assert_close(out[key].detach().double().cpu(), expected[key], rtol=1e-3, atol=1e-3)
+    assert all(parameter.grad is not None and torch.isfinite(parameter.grad).all() for parameter in model.parameters())
+    assert torch.isfinite(inputs_cuda[properties.R].grad).all()
