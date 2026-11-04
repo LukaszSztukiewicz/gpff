@@ -1,0 +1,10 @@
+# Uniform grid of Gaussians from 0 to rbf_cutoff, each as wide as the spacing:
+# the values of gaussian.yaml (schnetpack's GaussianRBF), with the number of
+# functions and the range set independently of the model cutoff.
+# Expected globals:
+#   - n_rbf: number of Gaussians
+#   - rbf_cutoff: last offset (A)
+_target_: gpff.nn.radial.UniformGaussianRBF
+n_rbf: ${globals.n_rbf}
+cutoff: ${globals.rbf_cutoff}
+trainable: False

@@ -1,0 +1,6 @@
+# 32 Gaussians with log-spaced offsets from 0.5 A to 300 A (a ratio of 1.23 between
+# neighbors), each as wide as the gaps to its neighbors.
+_target_: gpff.nn.radial.LogGaussianRBF
+n_rbf: 32
+start: 0.5
+cutoff: 300.0

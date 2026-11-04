@@ -1,0 +1,8 @@
+# Offsets 0.25 A apart up to 6 A, then a constant ratio of 1.25 up to 300 A:
+# 42 Gaussians that resolve the bonded and non-bonded distances of a clean molecule
+# and the distances of one at a large noise level to within 25 %.
+_target_: gpff.nn.radial.HybridGaussianRBF
+spacing: 0.25
+switch: 6.0
+ratio: 1.25
+cutoff: 300.0
