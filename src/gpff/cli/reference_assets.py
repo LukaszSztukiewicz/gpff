@@ -9,11 +9,18 @@ files from the reference QM9 database so they can be rebuilt from scratch:
     <prefix>_elongation_values.npy      reference elongation distribution
     <prefix>_energy_U0_atomrefs_eV.npy  single-atom reference energies
     <prefix>_smiles_values.txt          one SMILES per molecule, in database order
+    <prefix>_bond_lengths.npz           reference bond table: every bond's
+                                        molecule, bond_type, environment, length
+    <prefix>_bond_angles.npz            reference angle table: every angle's
+                                        molecule, angle_type, environment, angle
+    <prefix>_element_counts.npz         every molecule's atom count per element,
+                                        one array per element, in database order
 
 The distribution and atom-reference arrays are read from the database's own
-metadata; the SMILES are computed by walking the database with RDKit (slow, one
-line per molecule including the empty lines of invalid ones, so positions still
-line up with a split file). --targets picks which assets to build (default: all).
+metadata; the SMILES and the three tables are computed in one walk of the database
+with RDKit (slow; one SMILES line per molecule including the empty lines of
+invalid ones, so positions still line up with a split file). --targets picks
+which assets to build (default: all).
 
 The run stops before doing any work if a requested array is not in the database.
 """
@@ -28,7 +35,12 @@ from ase.db import connect
 from tqdm import tqdm
 
 import gpff  # noqa: F401
-from gpff.analysis import analyze_with_rdkit
+from gpff.analysis import (
+    analyze_with_rdkit,
+    collect_angles,
+    collect_bonds,
+    collect_element_counts,
+)
 
 # assets read straight from the reference database's metadata, saved as .npy
 METADATA_ARRAY_TARGETS = (
@@ -37,9 +49,17 @@ METADATA_ARRAY_TARGETS = (
     "elongation_values",
     "energy_U0_atomrefs_eV",
 )
-# the asset computed by walking the database, saved as one SMILES per line
+# the assets computed in one RDKit walk of the database: one SMILES per line,
+# and the measurement tables as .npz
 SMILES_TARGET = "smiles_values"
-TARGETS = (*METADATA_ARRAY_TARGETS, SMILES_TARGET)
+# target -> the analysis key it collects and its collector
+TABLE_TARGETS = {
+    "bond_lengths": ("bonds", collect_bonds),
+    "bond_angles": ("angles", collect_angles),
+    "element_counts": ("numbers", collect_element_counts),
+}
+WALK_TARGETS = (SMILES_TARGET, *TABLE_TARGETS)
+TARGETS = (*METADATA_ARRAY_TARGETS, *WALK_TARGETS)
 
 
 def _selected(requested: list[str], known) -> list[str]:
@@ -56,19 +76,29 @@ def read_metadata_array(db_path: str | Path, key: str) -> np.ndarray:
     return np.asarray(metadata[key], dtype=float)
 
 
-def compute_reference_smiles(db_path: str | Path, timeout: int = 5, verbose: bool = True) -> list[str]:
-    """The isomeric SMILES of every molecule, in database order (empty if invalid).
+def analyze_reference(
+    db_path: str | Path, timeout: int = 5, verbose: bool = True
+) -> tuple[list[str], dict[str, dict[str, np.ndarray]]]:
+    """The isomeric SMILES and the measurement tables of every molecule, in database order.
 
-    Walks the whole database, so it is slow. Invalid molecules keep an empty
-    string so positions still line up with a split file.
+    Walks the whole database once, so it is slow. Invalid molecules keep an
+    empty SMILES, so positions still line up with a split file, and contribute
+    no bonds and no angles. The tables come back keyed by their target name.
     """
     smiles = []
+    measured: dict[str, list] = {target: [] for target in TABLE_TARGETS}
     with connect(db_path) as db:
         for row in tqdm(
-            db.select(), total=db.count(), desc="Computing reference SMILES", disable=not verbose
+            db.select(), total=db.count(), desc="Analyzing reference molecules", disable=not verbose
         ):
-            smiles.append(analyze_with_rdkit(row.toatoms(), timeout=timeout)["smiles"])
-    return smiles
+            analysis = analyze_with_rdkit(row.toatoms(), timeout=timeout)
+            analysis["numbers"] = row.numbers
+            smiles.append(analysis["smiles"])
+            for target, (key, _) in TABLE_TARGETS.items():
+                measured[target].append(analysis[key])
+    return smiles, {
+        target: collect(measured[target]) for target, (_, collect) in TABLE_TARGETS.items()
+    }
 
 
 def missing_arrays(db_path: str | Path, targets) -> list[str]:
@@ -94,7 +124,7 @@ def parse_args() -> argparse.Namespace:
                         metavar="TARGET",
                         help=f"Assets to build: {', '.join(TARGETS)}. Default: all.")
     parser.add_argument("--timeout", type=int, default=5,
-                        help="Per-molecule RDKit timeout for smiles_values.")
+                        help="Per-molecule RDKit timeout for smiles_values and the tables.")
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
 
@@ -125,11 +155,20 @@ def main() -> int:
         np.save(out_path, read_metadata_array(args.reference_db_path, key))
         print(f"  wrote {out_path}")
 
-    if SMILES_TARGET in targets:
-        smiles = compute_reference_smiles(args.reference_db_path, timeout=args.timeout, verbose=verbose)
-        out_path = args.assets_dir / f"{args.prefix}_smiles_values.txt"
-        out_path.write_text("\n".join(smiles) + "\n")
-        print(f"  wrote {out_path} ({len(smiles)} lines)")
+    if set(targets) & set(WALK_TARGETS):
+        smiles, tables = analyze_reference(
+            args.reference_db_path, timeout=args.timeout, verbose=verbose
+        )
+        if SMILES_TARGET in targets:
+            out_path = args.assets_dir / f"{args.prefix}_smiles_values.txt"
+            out_path.write_text("\n".join(smiles) + "\n")
+            print(f"  wrote {out_path} ({len(smiles)} lines)")
+        for target in (t for t in targets if t in TABLE_TARGETS):
+            out_path = args.assets_dir / f"{args.prefix}_{target}.npz"
+            np.savez(out_path, **tables[target])
+            # every column of a table is equally long; element_counts has no molecule one
+            n_rows = len(next(iter(tables[target].values()), []))
+            print(f"  wrote {out_path} ({n_rows} rows)")
 
     return 0
 

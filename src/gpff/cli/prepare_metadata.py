@@ -4,13 +4,27 @@ Walks a sampled-molecule database and writes the per-sample arrays into the
 evaluation metadata folder, one file per quantity. The database is only read.
 Reduce the arrays to metrics with ``gpff_calculate_metrics``.
 
-    <run>/evaluation/metadata/   one <key>.npy per numeric array, smiles.txt
+    <run>/evaluation/metadata/   one <key>.npy per numeric array, smiles.txt,
+                                 bond_lengths.npz, bond_angles.npz,
+                                 element_counts.npz
 
 --targets selects which arrays to compute (default: all). The structure arrays
 come from an RDKit pass and a slower PoseBusters pass; the property arrays are
 predicted and need their models:
 
     rdkit_valid, ring_counts, elongation, nfe, smiles   (RDKit pass)
+    failure    why RDKit rejected the molecule, one of gpff.analysis.FAILURES
+               ("valid" if it did not)
+    n_fragments   disconnected parts of the perceived bond graph (-1 if none
+                  was perceived)
+    element_counts  every molecule's atom count per element, one array per
+                    element (from the atoms, in the RDKit pass)
+    strain     the energy a relaxation released, read from the row data that
+               gpff_relax writes (nan for a database it did not relax)
+    bond_lengths  one row per bond of the valid molecules (RDKit pass): its
+                  molecule, bond_type, environment and length
+    bond_angles   one row per bond angle of the valid molecules (RDKit pass):
+                  its molecule, angle_type, environment and angle
     posebusters_valid                                                (PoseBusters)
     gap        needs --gap_model_path
     energy_U0  needs --energy_u0_model_path and --atomrefs_path (the single-atom
@@ -21,7 +35,7 @@ every CPU this process may use).
 
 Only the requested arrays are (re)written; any other file already in the folder
 is left as it is. Computing one array of a pass runs the whole pass (the RDKit
-pass yields its five arrays together), but only the targeted ones are saved. The
+pass yields all of its arrays together), but only the targeted ones are saved. The
 run stops before doing any work if a requested target misses an input.
 """
 from __future__ import annotations
@@ -50,14 +64,27 @@ from tqdm import tqdm
 # bundled checkpoints saved under the old package name.
 import gpff  # noqa: F401
 from gpff import keys as keys_module
-from gpff.analysis import analyze_with_rdkit, get_posebusters_validity
+from gpff.analysis import (
+    analyze_with_rdkit,
+    collect_angles,
+    collect_bonds,
+    collect_element_counts,
+    get_posebusters_validity,
+)
+from gpff.cli import record_provenance
 
-# the RDKit pass yields these five arrays in one walk; the PoseBusters pass is
+# the RDKit pass yields these arrays in one walk; the PoseBusters pass is
 # separate and much slower. The property arrays are predicted, one model each.
-RDKIT_KEYS = ("rdkit_valid", "ring_counts", "elongation", "nfe", "smiles")
+# TABLE_KEYS are saved as .npz tables: bond_lengths and bond_angles hold one row
+# per bond or angle rather than per sample, element_counts one column per element.
+TABLE_KEYS = ("bond_lengths", "bond_angles", "element_counts")
+RDKIT_KEYS = (
+    "rdkit_valid", "failure", "n_fragments", "ring_counts", "elongation", "nfe", "smiles",
+    "strain", *TABLE_KEYS
+)
 POSEBUSTERS_KEYS = ("posebusters_valid",)
 PROPERTY_KEYS = ("gap", "energy_U0")
-# every per-sample array, in a stable order; smiles is the only text one
+# every array, in a stable order; smiles is the only text one
 METADATA_KEYS = (*RDKIT_KEYS, *POSEBUSTERS_KEYS, *PROPERTY_KEYS)
 
 # the argument holding the predictor of each predicted-property array
@@ -111,11 +138,13 @@ def load_atomrefs(path: str | Path) -> np.ndarray:
 
 
 def write_array(metadata_dir: Path, key: str, values) -> None:
-    """Write one per-sample array to the metadata folder (smiles as text, else .npy)."""
+    """Write one array to the metadata folder (smiles as text, a table as .npz, else .npy)."""
     metadata_dir.mkdir(parents=True, exist_ok=True)
     if key == "smiles":
         # one SMILES per line; a molecule RDKit rejected contributes an empty one
         (metadata_dir / "smiles.txt").write_text("\n".join(values) + "\n")
+    elif key in TABLE_KEYS:
+        np.savez(metadata_dir / f"{key}.npz", **values)
     else:
         np.save(metadata_dir / f"{key}.npy", np.asarray(values))
 
@@ -161,6 +190,7 @@ def _analyze_structures(
     run_rdkit: bool,
     run_posebusters: bool,
     timeout: int,
+    posebusters_timeout: float,
 ) -> list[dict]:
     """Run the requested passes on molecules start..stop-1 (0-based), one dict each.
 
@@ -175,9 +205,13 @@ def _analyze_structures(
             result = {}
             if run_rdkit:
                 result.update(analyze_with_rdkit(atoms, timeout=timeout))
+                result["numbers"] = atoms.numbers
                 result["nfe"] = atoms_row.data.get(keys_module.nfe, 0)
+                result["strain"] = atoms_row.data.get("strain", np.nan)
             if run_posebusters:
-                result["posebusters_valid"] = get_posebusters_validity(atoms)
+                result["posebusters_valid"] = get_posebusters_validity(
+                    atoms, timeout=posebusters_timeout
+                )
             results.append(result)
     return results
 
@@ -187,14 +221,16 @@ def compute_structure_arrays(
     run_rdkit: bool,
     run_posebusters: bool,
     timeout: int = 5,
+    posebusters_timeout: float = 0,
     data_workdir: str | None = None,
     verbose: bool = False,
     n_workers: int = 1,
 ) -> dict:
     """Walk the database and return the per-structure arrays of the passes that run.
 
-    run_rdkit yields rdkit_valid, ring_counts, elongation, nfe and smiles in one
-    walk; run_posebusters yields posebusters_valid from a separate, slower one.
+    run_rdkit yields rdkit_valid, failure, n_fragments, ring_counts, elongation,
+    nfe, smiles, strain, bond_lengths, bond_angles and element_counts in one walk;
+    run_posebusters yields posebusters_valid from a separate, slower one.
     With n_workers > 1 the molecules are split into chunks analysed by a pool of
     worker processes; the arrays keep the database order either way. The workers
     are spawned, so a script calling this with n_workers > 1 needs an
@@ -208,7 +244,7 @@ def compute_structure_arrays(
     chunk_size = max(1, min(256, -(-n_molecules // (n_workers * 8))))
     chunks = [(start, min(start + chunk_size, n_molecules))
               for start in range(0, n_molecules, chunk_size)]
-    pass_args = (run_rdkit, run_posebusters, timeout)
+    pass_args = (run_rdkit, run_posebusters, timeout, posebusters_timeout)
     chunk_results: list = [None] * len(chunks)
 
     with tqdm(
@@ -243,10 +279,17 @@ def compute_structure_arrays(
     if run_rdkit:
         arrays.update(
             rdkit_valid=np.array([r["rdkit_valid"] for r in results], dtype=bool),
+            # fixed-width text, so np.load needs no pickle
+            failure=np.array([r["failure"] for r in results], dtype=str),
+            n_fragments=np.array([r["n_fragments"] for r in results], dtype=int),
             ring_counts=np.array([r["ring_counts"] for r in results], dtype=float).reshape(-1, 4),
             elongation=np.array([r["elongation"] for r in results], dtype=float),
             nfe=np.array([r["nfe"] for r in results], dtype=float),
+            strain=np.array([r["strain"] for r in results], dtype=float),
             smiles=[r["smiles"] for r in results],
+            bond_lengths=collect_bonds([r["bonds"] for r in results]),
+            bond_angles=collect_angles([r["angles"] for r in results]),
+            element_counts=collect_element_counts([r["numbers"] for r in results]),
         )
     if run_posebusters:
         arrays["posebusters_valid"] = np.array(
@@ -375,6 +418,10 @@ def parse_args() -> argparse.Namespace:
                         help="Processes for the RDKit and PoseBusters passes. "
                              "Default: every CPU this process may use; 1 runs them "
                              "in this process.")
+    parser.add_argument("--posebusters_timeout", type=float, default=0,
+                        help="Seconds one PoseBusters check may take, 0 (default) for "
+                             "no limit. A check over the limit counts as invalid; a few "
+                             "large generated structures keep PoseBusters busy for hours.")
     parser.add_argument("--data_workdir", type=Path, default=None)
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
@@ -424,6 +471,7 @@ def main() -> int:
         arrays.update(
             compute_structure_arrays(
                 samples_db_path, run_rdkit, run_posebusters,
+                posebusters_timeout=args.posebusters_timeout,
                 data_workdir=data_workdir, verbose=verbose,
                 n_workers=args.structure_workers or os.process_cpu_count() or 1,
             )
@@ -445,6 +493,9 @@ def main() -> int:
 
     for key in targets:
         write_array(metadata_dir, key, arrays[key])
+    record_provenance(
+        evaluation_dir, "metadata", targets, {name: getattr(args, name) for name in PATH_ARGS}
+    )
     return 0
 
 

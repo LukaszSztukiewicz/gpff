@@ -16,7 +16,8 @@ gpff/
         │   ├── train.py            # gpff_train
         │   ├── generate.py         # gpff_generate
         │   ├── prepare_metadata.py  # gpff_prepare_metadata
-        │   └── calculate_metrics.py # gpff_calculate_metrics
+        │   ├── calculate_metrics.py # gpff_calculate_metrics
+        │   └── report.py            # gpff_report
         ├── callbacks.py
         ├── keys.py
         ├── task.py
@@ -56,6 +57,7 @@ After install the entry points are on `PATH`:
 | `gpff_prepare_metadata`  | Compute the per-sample arrays of a sampled DB into `evaluation/metadata/`. Wraps `gpff.cli.prepare_metadata:main()`. |
 | `gpff_calculate_metrics` | Reduce those arrays to `evaluation/results.json`. Wraps `gpff.cli.calculate_metrics:main()`. |
 | `gpff_prepare_geom_revisited` | Build the GEOM-Drugs dataset of the MiDi split, cleaned as in GEOM-Drugs Revisited (below). Wraps `gpff.cli.prepare_geom_revisited:main()`. |
+| `gpff_report` | Figures and an HTML page of evaluated sample sets. Wraps `gpff.cli.report:main()`. |
 
 `gpfftrain` still works as a deprecated alias for `gpff_train`.
 
@@ -203,6 +205,8 @@ gpff_calculate_metrics \
   --reference_energy_U0_path assets/qm9_energy_U0_values.npy \
   --reference_gap_path assets/qm9_gap_values.npy \
   --reference_elongation_path assets/qm9_elongation_values.npy \
+  --reference_bond_lengths_path assets/qm9_bond_lengths.npz \
+  --reference_bond_angles_path assets/qm9_bond_angles.npz \
   --reference_smiles_path assets/qm9_smiles_values.txt \
   --split_path /path/to/split.npz
 
@@ -211,6 +215,55 @@ gpff_prepare_metadata --samples_db_path samples.db \
   --targets rdkit_valid posebusters_valid smiles
 gpff_calculate_metrics --samples_db_path samples.db \
   --metrics rdkit_validity posebusters_validity uniqueness mean_tanimoto_similarity
+
+# Bond lengths, each bond against the reference bonds of its own chemical
+# environment (e.g. C(sp2)-C(sp3)); the reference bond table is built once with
+# gpff_reference_assets --targets bond_lengths. Also writes the per-environment
+# breakdown to evaluation/bond_length_w1.json:
+gpff_prepare_metadata --samples_db_path samples.db --targets rdkit_valid bond_lengths
+gpff_calculate_metrics --samples_db_path samples.db --metrics bond_length_w1 \
+  --reference_bond_lengths_path assets/qm9_bond_lengths.npz
+
+# Bond angles work the same way, in degrees, with the central atom's
+# hybridization as the environment (e.g. C-C(sp3)-C):
+gpff_prepare_metadata --samples_db_path samples.db --targets rdkit_valid bond_angles
+gpff_calculate_metrics --samples_db_path samples.db --metrics bond_angle_w1 \
+  --reference_bond_angles_path assets/qm9_bond_angles.npz
+
+# What a relaxation has to move is the geometry the model got wrong, as opposed
+# to the molecule it chose: relax the samples (uff, xtb or a MACE model on the
+# GPU) and compare the two databases with the same metrics. mean_strain is the
+# energy the relaxation released:
+# (relax the reference molecules the same way and build the reference tables
+# from those: every method pulls structures toward its own minima, UFF by some
+# 40 mA even for real QM9 geometries)
+gpff_relax --samples_db_path samples.db --output_db_path relaxed.db --method uff
+# or, with mace-torch installed (pip install -e .[mace]), many molecules at a
+# time on the GPU, which is the fastest and the most accurate of the three:
+# gpff_relax ... --method mace --mace_model_path MACE-OFF24_medium.model
+gpff_prepare_metadata --samples_db_path relaxed.db --targets rdkit_valid strain bond_lengths
+gpff_calculate_metrics --samples_db_path relaxed.db --metrics mean_strain bond_length_w1 \
+  --reference_bond_lengths_path assets/qm9_bond_lengths.npz
+
+# Why molecules are invalid (failure_<cause> shares), valid+unique+novel, the
+# elongation W1 and, for models that generate the atom types, the composition
+# against the test molecules the samples came from (the reference element counts
+# come from gpff_reference_assets --targets element_counts). Each call also notes
+# in evaluation/provenance.json which code computed every array and metric:
+gpff_prepare_metadata --samples_db_path samples.db \
+  --targets rdkit_valid failure smiles elongation element_counts
+gpff_calculate_metrics --samples_db_path samples.db \
+  --metrics rdkit_validity failures vun elongation_w1 composition \
+  --reference_smiles_path assets/qm9_smiles_values.txt \
+  --reference_elongation_path assets/qm9_elongation_values.npy \
+  --reference_element_counts_path assets/qm9_element_counts.npz \
+  --split_path /path/to/split.npz
+
+# Figures and an HTML page of evaluated models, each <run>/frozen/repro/<model>
+# with <config>/seed<N>/evaluation/ folders; --control adds the paired
+# differences of the others to it:
+gpff_report runs/a/frozen/repro/epoch_5000_model runs/b/frozen/repro/epoch_5000_model \
+  --control a:5000 --output_dir report/
 ```
 
 ## Citation

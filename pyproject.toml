@@ -45,6 +45,10 @@ dependencies = [
 notebook = [
     "jupyterlab",
 ]
+# gpff_relax --method mace; the models themselves are downloaded separately
+mace = [
+    "mace-torch",
+]
 
 [project.scripts]
 gpff_train = "gpff.cli.train:train"
@@ -53,6 +57,8 @@ gpff_prepare_metadata = "gpff.cli.prepare_metadata:main"
 gpff_prepare_geom_revisited = "gpff.cli.prepare_geom_revisited:main"
 gpff_calculate_metrics = "gpff.cli.calculate_metrics:main"
 gpff_reference_assets = "gpff.cli.reference_assets:main"
+gpff_relax = "gpff.cli.relax:main"
+gpff_report = "gpff.cli.report:main"
 # Deprecated alias for gpff_train, kept for existing job scripts.
 gpfftrain = "gpff.cli.train:train"
 
