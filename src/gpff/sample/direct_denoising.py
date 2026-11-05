@@ -72,6 +72,8 @@ class DirectDenoisingSampler(Sampler):
         Perturb the positions stochastically before the model call.
         """
         batch[properties.R] = self.add_noise(batch[properties.R], step)
+        if keys.h in batch:
+            batch[keys.h] = self.add_noise(batch[keys.h], step)
         return batch
 
     def postprocess_step(
@@ -105,11 +107,14 @@ class DirectDenoisingSampler(Sampler):
             batch: A dictionary with updated atomic positions after consistency sampling.
         """
         x_curr = batch[properties.R].clone()
+        h_curr = batch.get(keys.h)
         batch = self.preprocess_step(batch, step, conditions=conditions, **kwargs)
         # molecules converged in an earlier step stay where they are; the
         # perturbation would otherwise be kept as their frozen position
         converged_atoms = batch[keys.converged][batch[properties.idx_m]].unsqueeze(-1)
         batch[properties.R] = torch.where(converged_atoms, x_curr, batch[properties.R])
+        if h_curr is not None:
+            batch[keys.h] = torch.where(converged_atoms, h_curr, batch[keys.h])
 
         # get predictions
         predictions = self.calculator.calculate(batch, forces=True, x0=True, estimate_sigma=True)
@@ -140,6 +145,9 @@ class DirectDenoisingSampler(Sampler):
                 keys.sigma_curr: sigma_curr,
             },
         )
+        # noisy types take the same step as the positions
+        if keys.h_0 in predictions:
+            batch = self.update_types(batch, predictions[keys.h_0])
         batch = self.postprocess_step(batch, step, conditions=conditions, **kwargs)
 
         return batch

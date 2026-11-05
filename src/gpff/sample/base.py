@@ -1,7 +1,7 @@
 # python
 import torch
 import torch.nn as nn
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Sequence
 from abc import ABC, abstractmethod
 from gpff.model.graph import NeighborGraph
 from gpff.utils import compute_neighbors
@@ -219,7 +219,7 @@ class Calculator:
         std = (centered.square().sum(dim=(1, 2)) / (n - 1)).sqrt()
         return std[inverse].unsqueeze(-1)
 
-    def _predict(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def _predict(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """
         The model's atom-wise prediction (noise or forces) for the batch.
 
@@ -232,7 +232,8 @@ class Calculator:
         active = ~batch[keys.converged]
         n_active = int(active.sum()) if self.skip_converged else len(active)
         if n_active == len(active):
-            return self.model(batch)[key].detach()
+            outputs = self.model(batch)
+            return {name: outputs[name].detach() for name in (key, keys.h_0, keys.type_forces) if name in outputs}
 
         # the selection changes only when another molecule converges; reusing
         # it also hands the model the same neighbor list tensors every step
@@ -243,8 +244,17 @@ class Calculator:
         selection = cached[2]
 
         prediction = torch.zeros_like(batch[properties.R])
+        outputs = {key: prediction}
+        if keys.h in batch:
+            # Converged atoms keep their current types, even when no model call remains.
+            outputs[keys.h_0] = batch[keys.h].clone()
         if n_active > 0:
-            prediction[selection["atoms"]] = self.model(_select_molecules(batch, selection))[key].detach()
+            active_outputs = self.model(_select_molecules(batch, selection))
+            prediction[selection["atoms"]] = active_outputs[key].detach()
+            if keys.h_0 in active_outputs:
+                outputs[keys.h_0][selection["atoms"]] = active_outputs[keys.h_0].detach()
+            elif keys.type_forces in active_outputs:
+                outputs[keys.h_0][selection["atoms"]] += active_outputs[keys.type_forces].detach() / 2
         # the batch keeps the last prediction of each converged molecule
         previous = batch.get(key)
         if previous is not None and previous.shape == prediction.shape:
@@ -253,7 +263,7 @@ class Calculator:
             batch[key] = previous
         else:
             batch[key] = prediction
-        return prediction
+        return outputs
 
     def calculate(
         self,
@@ -289,7 +299,8 @@ class Calculator:
 
         self.check_model()
         batch = self.update_neighbors(batch)
-        prediction = self._predict(batch)
+        predictions = self._predict(batch)
+        prediction = predictions[self.noise_key if self.noise_model else keys.forces]
         results = {}
 
         # noise model
@@ -318,6 +329,12 @@ class Calculator:
                 results[keys.score] = predicted_forces / (2*sigma_t**2)
             if x0:
                 results[keys.x_0] = batch[properties.R] + predicted_forces / 2
+                # clean types: predicted directly, or from the type force of
+                # models trained before (runs loving-leech, up-panda)
+                if keys.h_0 in predictions:
+                    results[keys.h_0] = predictions[keys.h_0].detach()
+                elif keys.type_forces in predictions:
+                    results[keys.h_0] = batch[keys.h] + predictions[keys.type_forces].detach() / 2
 
         # update number of function evaluations
         batch[keys.nfe] += ~batch[keys.converged]
@@ -338,6 +355,8 @@ class Sampler(ABC):
         time_aware_model: if True, the model is time-aware and the time is passed as an input.
         observers: optional list of SamplerObserver instances attached to every
             denoise call, e.g. a ProgressReporter or TrajectoryRecorder.
+        atom_types: atomic numbers of the entries of noisy one-hot types, if
+            the batch has them (keys.h).
     """
 
     def __init__(
@@ -346,12 +365,14 @@ class Sampler(ABC):
         n_steps: int = 50,
         time_aware_model: bool = False,
         observers: Optional[List[SamplerObserver]] = None,
+        atom_types: Sequence[int] = (1, 6, 7, 8, 9),
     ):
         self.calculator = calculator if calculator is not None else Calculator()
         self.n_steps = n_steps
         self.time_aware_model = time_aware_model
         self.observers: List[SamplerObserver] = list(observers or [])
         self._active_observers: Optional[List[SamplerObserver]] = None
+        self.atom_types = torch.tensor(atom_types)
 
     @property
     def device(self) -> torch.device | str:
@@ -428,6 +449,14 @@ class Sampler(ABC):
                 mask = mask.unsqueeze(-1)
             batch[key] = torch.where(mask, batch[key], value)
 
+        return batch
+
+    def update_types(self, batch: Dict[str, torch.Tensor], h: torch.Tensor) -> Dict[str, torch.Tensor]:
+        """
+        Set the noisy one-hot types; each atom's element is their largest entry.
+        """
+        batch = self.update_batch(batch, updates={keys.h: h})
+        batch[properties.Z] = self.atom_types.to(h.device)[batch[keys.h].argmax(-1)]
         return batch
 
     def _init_state(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:

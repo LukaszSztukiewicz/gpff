@@ -237,12 +237,12 @@ def test_calculator_with_a_graph_model_needs_no_neighbor_list():
 
     assert calculator.builds_graph
     assert properties.idx_i not in calculator.update_neighbors(inputs)
-    full = calculator._predict(dict(inputs))
+    full = calculator._predict(dict(inputs))[keys.forces]
 
     # converged molecules skip the model, and the others are predicted as in the full batch
     inputs[keys.converged] = torch.tensor([False, True, True, False, False])
     inputs[keys.forces] = full
-    prediction = calculator._predict(inputs)
+    prediction = calculator._predict(inputs)[keys.forces]
 
     active = ~inputs[keys.converged][inputs[properties.idx_m]]
     torch.testing.assert_close(prediction[active], full[active])

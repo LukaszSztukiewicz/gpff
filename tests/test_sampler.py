@@ -67,11 +67,11 @@ def test_converged_molecules_skip_the_model():
     inputs = batch([5, 1, 7, 3, 9])
     inputs.update(compute_neighbors(inputs, fully_connected=True, device="cpu"))
     inputs[keys.converged] = torch.zeros(5, dtype=torch.bool)
-    full = calculator._predict(dict(inputs))
+    full = calculator._predict(dict(inputs))[keys.forces]
 
     inputs[keys.converged] = torch.tensor([False, True, True, False, False])
     inputs[keys.forces] = full
-    prediction = calculator._predict(inputs)
+    prediction = calculator._predict(inputs)[keys.forces]
 
     active = ~inputs[keys.converged][inputs[properties.idx_m]]
     torch.testing.assert_close(prediction[active], full[active])

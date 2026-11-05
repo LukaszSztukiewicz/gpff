@@ -206,6 +206,7 @@ class PaiNN(nn.Module):
         filter_hidden: Optional[int] = None,
         graph: Optional[nn.Module] = None,
         global_channel: bool = False,
+        embedding_key: str = properties.Z,
     ):
         """
         Args:
@@ -251,6 +252,8 @@ class PaiNN(nn.Module):
             global_channel: if True, every interaction block is followed by a
                 :class:`GlobalChannel` (a virtual node per molecule with the size and shape
                 of the molecule), which needs ``idx_m`` and ``n_atoms`` in the inputs.
+            embedding_key: input the nuclear embedding reads, e.g. noisy one-hot
+                atom types for a linear embedding instead of atomic numbers
         """
         super(PaiNN, self).__init__()
 
@@ -267,6 +270,7 @@ class PaiNN(nn.Module):
         if nuclear_embedding is None:
             nuclear_embedding = nn.Embedding(100, n_atom_basis)
         self.embedding = nuclear_embedding
+        self.embedding_key = embedding_key
         if electronic_embeddings is None:
             electronic_embeddings = []
         electronic_embeddings = nn.ModuleList(electronic_embeddings)
@@ -420,7 +424,8 @@ class PaiNN(nn.Module):
             update_scale = torch.rsqrt(degree.clamp(min=1))[:, None, None]
 
         # compute initial embeddings
-        q = self.embedding(atomic_numbers)
+        # models pickled before embedding_key existed embed the atomic numbers
+        q = self.embedding(inputs[getattr(self, "embedding_key", properties.Z)])
         for embedding in self.electronic_embeddings:
             q = q + embedding(q, inputs)
         q = q.unsqueeze(1)

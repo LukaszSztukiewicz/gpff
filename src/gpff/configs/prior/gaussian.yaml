@@ -1,2 +1,4 @@
 _target_: gpff.sample.priors.GaussianPrior
 sigma: 30.0
+# > 0 also draws noisy one-hot atom types (5 for a model of experiment=gpff_types)
+n_types: 0

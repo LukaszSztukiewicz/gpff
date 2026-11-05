@@ -81,6 +81,38 @@ instead of reading the wrong conformers, and the other way round. The source pic
 no energies: "first 5" is the order of the pickle, which the MiDi paper calls the 5 lowest
 energy conformers.
 
+To diffuse atom types together with positions on this dataset, use
+`experiment=gpff_types_geom_drugs`. It combines the categorical type head with
+the scalable PaiNN graph and radial-basis options. The vocabulary is
+H, B, C, N, O, F, Si, P, S, Cl, Br, I, Bi: all 13 elements recorded by the
+canonical dataset `f71e7ef19df1bd58`, with hydrogens included. The default view
+is `geom_drugs_revisited_top5`; use `data=geom_drugs_revisited_all` for all conformers.
+
+```bash
+gpff_train experiment=gpff_types_geom_drugs \
+  run.data_dir=data/geom_drugs/f71e7ef19df1bd58 \
+  model/representation/radial_basis=hybrid +callbacks=milestones
+```
+
+The corruption is Gaussian noise on scaled one-hot atom types, trained with
+cross-entropy against the clean elements. The absorbing-state design in
+`docs/absorbing_atom_types.md` remains a proposal. The model reads the noisy
+types, and permutation alignment matches positions and types jointly.
+The original `gpff_types` (MSE) and `gpff_types_categorical` (cross-entropy)
+experiments retain the five-element QM9 vocabulary and also accept the scalable
+radial-basis, filter and global-channel options.
+
+Generation must use the training vocabulary in the same order and a type prior
+of the same width. For the GEOM experiment, pass the following in addition to
+the model, database and matching split paths to `gpff_generate`:
+
+```bash
+gpff_generate model_path=/path/to/best_model \
+  datapath=/path/to/f71e7ef19df1bd58/geom_drugs.db \
+  split_path=/path/to/f71e7ef19df1bd58/split_top5.npz \
+  prior.n_types=13 '+sampler.atom_types=[1,5,6,7,8,9,14,15,16,17,35,53,83]'
+```
+
 Training logs performance metrics by default through the configured logger
 (including W&B): epoch/train/validation seconds, molecules per second, examples
 seen, CUDA allocated/reserved peaks in GiB, and batch-loss extrema/finite counts.
