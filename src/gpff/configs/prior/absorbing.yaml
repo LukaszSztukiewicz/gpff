@@ -1,0 +1,5 @@
+# t = 1 state of the joint process: positions from an isotropic normal and every
+# atom type MASK. Unlike prior=gaussian this overwrites properties.Z, so the
+# composition of the molecule the batch came from does not leak into the sample.
+_target_: gpff.sample.absorbing.AbsorbingPrior
+sigma: 30.0

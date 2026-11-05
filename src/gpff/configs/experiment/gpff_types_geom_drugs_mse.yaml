@@ -1,0 +1,17 @@
+# @package _global_
+# Continuous MSE type diffusion like typed-ostrich-type-scale-0.15, with the
+# canonical GEOM vocabulary and internal-comparison conformer view. Keeps the
+# reference's all-to-all graph and uniform 600-function distance basis.
+defaults:
+  - gpff_types
+  - override /data: geom_drugs_revisited_top5
+  - _self_
+
+globals:
+  atom_types: [1, 5, 6, 7, 8, 9, 14, 15, 16, 17, 35, 53, 83]
+  n_types: 13
+  type_scale: 0.15
+
+run:
+  experiment: gpff_types_geom_drugs_mse
+  tags: [gpff, gpff_types, geom_drugs, mse]

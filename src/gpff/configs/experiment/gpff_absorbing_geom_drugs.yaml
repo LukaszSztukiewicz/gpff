@@ -1,0 +1,15 @@
+# @package _global_
+# Absorbing-v1 like absorbing-lw0.25, with the canonical GEOM vocabulary and
+# internal-comparison conformer view. Keeps the reference's all-to-all graph.
+defaults:
+  - gpff_absorbing
+  - override /data: geom_drugs_revisited_top5
+  - _self_
+
+globals:
+  allowed_elements: [H, B, C, N, O, F, Si, P, S, Cl, Br, I, Bi]
+  type_loss_weight: 0.25
+
+run:
+  experiment: gpff_absorbing_geom_drugs
+  tags: [gpff, gpff_absorbing, geom_drugs]

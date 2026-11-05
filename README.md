@@ -95,12 +95,28 @@ gpff_train experiment=gpff_types_geom_drugs \
 ```
 
 The corruption is Gaussian noise on scaled one-hot atom types, trained with
-cross-entropy against the clean elements. The absorbing-state design in
-`docs/absorbing_atom_types.md` remains a proposal. The model reads the noisy
+cross-entropy against the clean elements. The model reads the noisy
 types, and permutation alignment matches positions and types jointly.
 The original `gpff_types` (MSE) and `gpff_types_categorical` (cross-entropy)
 experiments retain the five-element QM9 vocabulary and also accept the scalable
 radial-basis, filter and global-channel options.
+
+For the continuous MSE control, `experiment=gpff_types_geom_drugs_mse` preserves
+the all-to-all architecture of `typed-ostrich-type-scale-0.15`, with
+`type_scale=0.15`. `experiment=gpff_absorbing_geom_drugs` instead masks discrete
+atom types and uses the `absorbing-lw0.25` type loss weight. Its transform,
+vocabulary, type head and sampler come from the frozen `absorbing-v1` control;
+the shared calculator and config API are adapted to this branch. Both use the
+13-element GEOM vocabulary and default to the top5 view. Their force fields
+remain time-agnostic. To use the implemented Muon block optimizer and six
+interaction layers with the continuous control:
+
+```bash
+gpff_train experiment=gpff_types_geom_drugs_mse \
+  run.data_dir=data/geom_drugs/f71e7ef19df1bd58 \
+  task/optimizer=block_adam task.optimizer_args.block_update=muon \
+  'task.optimizer_args.betas=[0.9,0.999]' globals.n_interactions=6 +callbacks=milestones
+```
 
 Generation must use the training vocabulary in the same order and a type prior
 of the same width. For the GEOM experiment, pass the following in addition to

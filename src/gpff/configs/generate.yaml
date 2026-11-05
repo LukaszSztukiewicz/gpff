@@ -72,6 +72,7 @@ hydra:
         
         Available sampler options:
         - sampler=direct_denoising (default) - direct denoising sampler
+        - sampler=absorbing - direct denoising with absorbing-state atom types
         - sampler=shape_direct_denoising - direct denoising with prior shape enforcement
         - sampler=scaffold_direct_denoising - direct denoising with frozen scaffold atoms
         - sampler=shape_scaffold_direct_denoising - frozen scaffold atoms plus shape

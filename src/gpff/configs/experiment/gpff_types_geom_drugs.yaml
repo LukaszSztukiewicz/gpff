@@ -2,8 +2,8 @@
 # Joint position/type diffusion with the categorical head and a graph built in
 # PaiNN. The vocabulary covers every element of canonical GEOM-Drugs Revisited
 # f71e7ef19df1bd58, including its rare B, Si and Bi atoms (manifest counts.elements).
-# Types use Gaussian noise on scaled one-hot vectors; absorbing masking is a
-# proposal in docs/absorbing_atom_types.md, not the corruption used here.
+# Types use Gaussian noise on scaled one-hot vectors. For absorbing masking
+# use experiment=gpff_absorbing_geom_drugs instead.
 defaults:
   - gpff_types_categorical
   - /model/representation/graph: knn

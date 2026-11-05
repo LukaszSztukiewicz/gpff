@@ -233,7 +233,8 @@ class Calculator:
         n_active = int(active.sum()) if self.skip_converged else len(active)
         if n_active == len(active):
             outputs = self.model(batch)
-            return {name: outputs[name].detach() for name in (key, keys.h_0, keys.type_forces) if name in outputs}
+            return {name: outputs[name].detach()
+                    for name in (key, keys.h_0, keys.type_forces, "type_probabilities") if name in outputs}
 
         # the selection changes only when another molecule converges; reusing
         # it also hands the model the same neighbor list tensors every step
@@ -255,6 +256,10 @@ class Calculator:
                 outputs[keys.h_0][selection["atoms"]] = active_outputs[keys.h_0].detach()
             elif keys.type_forces in active_outputs:
                 outputs[keys.h_0][selection["atoms"]] += active_outputs[keys.type_forces].detach() / 2
+            if "type_probabilities" in active_outputs:
+                probabilities = active_outputs["type_probabilities"].detach()
+                outputs["type_probabilities"] = probabilities.new_zeros(len(prediction), probabilities.shape[-1])
+                outputs["type_probabilities"][selection["atoms"]] = probabilities
         # the batch keeps the last prediction of each converged molecule
         previous = batch.get(key)
         if previous is not None and previous.shape == prediction.shape:
@@ -335,6 +340,8 @@ class Calculator:
                     results[keys.h_0] = predictions[keys.h_0].detach()
                 elif keys.type_forces in predictions:
                     results[keys.h_0] = batch[keys.h] + predictions[keys.type_forces].detach() / 2
+            if "type_probabilities" in predictions:
+                results["type_probabilities"] = predictions["type_probabilities"]
 
         # update number of function evaluations
         batch[keys.nfe] += ~batch[keys.converged]
