@@ -68,6 +68,13 @@ class LearnedSigmaWeights(nn.Module):
     its share of the draws and improves at the same relative rate. :math:`u` starts at zero,
     so the weights from the weight generator only set where training starts. sigma enters the
     loss only, so a time-free model stays time-free.
+
+    EDM2's output layer is magnitude-preserving with forced weight normalization, has no bias
+    and starts random, which keeps :math:`|u|` small: its preconditioning makes the loss before
+    weighting O(1) at every noise level. The weighted loss here spans orders of magnitude over
+    sigma (as :math:`4\sigma^2` below sigma = 1 for the default weights), so the layer is unconstrained,
+    has a bias and starts at zero. Weights that are roughly flat in the weighted loss, such as
+    FlooredSigmaWeights, leave :math:`u` less to learn and let it converge sooner.
     """
 
     def __init__(
