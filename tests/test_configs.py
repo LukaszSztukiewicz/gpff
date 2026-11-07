@@ -86,6 +86,7 @@ def compose_transform(*overrides):
 
 
 def molecule(n_atoms=6):
+    torch.manual_seed(0)
     return {
         properties.R: torch.randn(n_atoms, 3, dtype=torch.float64),
         properties.Z: torch.tensor([6, 6, 1, 1, 1, 1][:n_atoms]),
@@ -110,7 +111,8 @@ def test_anchors_get_a_zero_force_label_and_a_finite_weight(weight_generator):
 
     outputs = transform(molecule())
     assert (outputs[keys.sigma_curr] == 0).all()
-    assert (outputs[keys.forces] == 0).all()
+    # the permutation alignment recenters x_t, which leaves a rounding error
+    torch.testing.assert_close(outputs[keys.forces], torch.zeros(6, 3, dtype=torch.float64), atol=1e-12, rtol=0)
     assert torch.isfinite(outputs[keys.forces_weight]).all()
 
 
