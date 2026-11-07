@@ -1,0 +1,23 @@
+# Logs the validation denoising error e(sigma) in units of the noise at fixed
+# noise levels (val/e_sigma_<sigma>) and its integral over log(sigma)
+# (val/e_log_sigma_integral); a perfect model approaches 1/(N-1) at small sigma.
+# For time-agnostic force models (experiment=gpff, gpff_no_permutation) only.
+# Off by default; enable with
+#   +callbacks=denoising_error
+# or, next to other optional callbacks (Hydra takes one +callbacks= override)
+#   '+callbacks=[milestones,denoising_error]'
+# It runs in the first validation after every `every_n_samples` training
+# samples, not every epoch: 5,000,000 is about 50 epochs of QM9 (98.9k training
+# molecules), so scale it for other datasets. Costs one forward pass per sigma
+# and validation batch in those epochs, plus once the CPU alignment of the
+# noisy validation molecules (cached afterwards). It is only logged: select
+# checkpoints by val/loss as usual.
+denoising_error:
+    _target_: gpff.diagnostics.DenoisingErrorCurve
+    every_n_samples: 5000000
+    sigmas: [0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0]
+    # the alignment of the training transform
+    align_permutation: ${globals.align_permutation}
+    align_rotation: ${globals.align_rotation}
+    seed: 0
+    cache_alignment: true

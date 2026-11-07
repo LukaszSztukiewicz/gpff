@@ -1,0 +1,19 @@
+# Logs how well the noise level estimate sigma_hat = std(F_hat/2), which direct
+# denoising and the adaptive samplers use as the noise level, matches the std
+# of its target x_0 - x_t on the validation set: the geometric mean of
+# sigma_hat / sigma_target per noise level bin (val/sigma_hat_ratio_<lo>_<hi>,
+# 1 is calibrated) and the bias and rms of its log
+# (val/sigma_hat_log_ratio_mean, val/sigma_hat_log_ratio_rms).
+# For time-agnostic force models (experiment=gpff, gpff_no_permutation) only.
+# Off by default; enable with
+#   +callbacks=sigma_calibration
+# or, next to other optional callbacks (Hydra takes one +callbacks= override)
+#   '+callbacks=[milestones,sigma_calibration]'
+# It runs in the first validation after every `every_n_samples` training
+# samples, not every epoch: 5,000,000 is about 50 epochs of QM9 (98.9k training
+# molecules), so scale it for other datasets. Costs one extra forward pass per
+# validation batch in those epochs.
+sigma_calibration:
+    _target_: gpff.diagnostics.SigmaCalibration
+    every_n_samples: 5000000
+    sigma_edges: [0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0]

@@ -18,9 +18,10 @@ gpff/
         │   ├── prepare_metadata.py  # gpff_prepare_metadata
         │   └── calculate_metrics.py # gpff_calculate_metrics
         ├── callbacks.py
+        ├── diagnostics.py          # force-field diagnostics every N training samples
         ├── keys.py
         ├── task.py
-        ├── analysis/               # validity, metrics, DB metadata
+        ├── analysis/               # validity, metrics, DB metadata, force-field diagnostics
         ├── configs/                # Hydra config tree
         ├── data/                   # data modules, datasets (QM9), transforms
         ├── model/                  # network heads (PaiNN, gated equivariant outputs)
@@ -93,6 +94,33 @@ For post-hoc EMA tuning, train with `'+callbacks=[milestones,posthoc_ema]'` (one
 override for both; Hydra rejects two `+callbacks=` options) and use
 `python -m gpff.cli.posthoc_ema` to reconstruct inference models afterward.
 See [the method, hydra workflow, and GPFF design notes](docs/posthoc_ema.md).
+
+Two opt-in callbacks log diagnostics of a time-agnostic force model
+(`experiment=gpff`, `gpff_no_permutation`) next to `val/loss`. They are built on
+`gpff.diagnostics.EveryNSamples`, which counts the training molecules seen and
+runs in the first validation after every `every_n_samples` of them rather than
+every epoch (the default 5,000,000 is about 50 epochs of QM9, 98.9k training
+molecules; scale it for other datasets). On the other epochs it costs one
+integer addition per training batch and no device synchronization; the count
+resumes from checkpoints.
+
+Hydra takes one `+callbacks=` override, so to add them to e.g. the milestones
+use the list form (quoted for the shell):
+`'+callbacks=[milestones,denoising_error,sigma_calibration]'`.
+
+- `denoising_error` logs the denoising error $e(\sigma)$ in units of
+  the noise at fixed noise levels, `val/e_sigma_<sigma>`, and its integral over
+  $\log \sigma$, `val/e_log_sigma_integral`. A perfect model approaches
+  $1/(N-1)$ at small $\sigma$. It re-noises the validation molecules (aligned
+  like the training transform; solved once, kept in host memory) and costs one
+  forward pass per $\sigma$ and validation batch.
+- `sigma_calibration` logs how well $\hat\sigma = \operatorname{std}(\hat F/2)$,
+  the noise level the adaptive samplers use, matches the std of its target
+  $x_0 - x_t$: `val/sigma_hat_ratio_<lo>_<hi>` (geometric mean of the ratio per
+  noise level bin, 1 is calibrated) and `val/sigma_hat_log_ratio_mean` and
+  `_rms`. It costs one extra forward pass per validation batch.
+
+Both are only logged; checkpoints are still selected by `val/loss`.
 
 Hydra configs live under `src/gpff/configs/`. Override with standard dotted
 overrides. Everything about model inference — the model itself, `device`,
