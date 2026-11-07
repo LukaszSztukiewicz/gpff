@@ -55,14 +55,55 @@ class VarianceExplodingGeometries(Geometries):
         destroy_signal: bool | str = False,
         mean_free_noise: bool = False,
         sample_uniformly: bool = False,
-    ):  
-
+        anchor_fraction: float = 0.0,
+        small_sigma_fraction: float = 0.0,
+        small_sigma_range: tuple[float, float] = (0.01, 0.1),
+    ):
+        """
+        Args:
+            anchor_fraction: share of the log-normal draws replaced by sigma = 0, so that
+                x_t = x_0 and the label is zero force at the reference structure. The weight
+                generator must be finite at sigma = 0, as FlooredSigmaWeights, SoftSigmaWeights and
+                SigmaWeights with max_clipping are.
+            small_sigma_fraction: share of the log-normal draws replaced by a log-uniform
+                draw from small_sigma_range
+        """
         super().__init__(mean_free_noise)
+        if min(anchor_fraction, small_sigma_fraction) < 0 or anchor_fraction + small_sigma_fraction > 1:
+            raise ValueError("anchor_fraction and small_sigma_fraction must be shares: not negative, at most 1 together")
+        if anchor_fraction + small_sigma_fraction > 0 and sample_uniformly:
+            raise ValueError("anchors and small-sigma draws replace log-normal draws, not sample_uniformly ones")
+        small_sigma_range = (float(small_sigma_range[0]), float(small_sigma_range[1]))
+        if small_sigma_fraction > 0 and not 0 < small_sigma_range[0] < small_sigma_range[1]:
+            raise ValueError(f"small_sigma_range must be an increasing positive range, got {small_sigma_range}")
         self.sigma_max = sigma_max
         self.sigma_mean = sigma_mean
         self.sigma_std = sigma_std
         self.destroy_signal = destroy_signal
         self.sample_uniformly = sample_uniformly
+        self.anchor_fraction = anchor_fraction
+        self.small_sigma_fraction = small_sigma_fraction
+        self.small_sigma_range = small_sigma_range
+
+    def _sample_sigma(self, like: torch.Tensor) -> torch.Tensor:
+        """
+        One noise level: log-normal, redrawn above sigma_max, with the shares anchor_fraction
+        and small_sigma_fraction of the draws replaced by 0 and by a draw from small_sigma_range.
+        """
+        kwargs = dict(size=(1,), device=like.device, dtype=like.dtype)
+        # the mixture draw is skipped when unused, which keeps the default random stream
+        if self.anchor_fraction + self.small_sigma_fraction > 0:
+            u = torch.rand(**kwargs)
+            if u < self.anchor_fraction:
+                return torch.zeros(**kwargs)
+            if u < self.anchor_fraction + self.small_sigma_fraction:
+                low, high = self.small_sigma_range
+                return low * (high / low) ** torch.rand(**kwargs)
+
+        sigma_t = torch.exp(torch.normal(mean=self.sigma_mean, std=self.sigma_std, **kwargs))
+        while sigma_t > self.sigma_max:
+            sigma_t = torch.exp(torch.normal(mean=self.sigma_mean, std=self.sigma_std, **kwargs))
+        return sigma_t
 
     def get_noisy_geometry(
         self, 
@@ -89,10 +130,8 @@ class VarianceExplodingGeometries(Geometries):
         elif self.sample_uniformly:
             sigma_t = torch.rand(size=(1,), device=x_0.device, dtype=x_0.dtype) * self.sigma_max + 1e-4
         else:
-            sigma_t = torch.exp(torch.normal(mean=self.sigma_mean, std=self.sigma_std, size=(1,), device=x_0.device, dtype=x_0.dtype))
-            while sigma_t > self.sigma_max:
-                sigma_t = torch.exp(torch.normal(mean=self.sigma_mean, std=self.sigma_std, size=(1,), device=x_0.device, dtype=x_0.dtype))
-        
+            sigma_t = self._sample_sigma(x_0)
+
         # calculate t
         if t is None:
             t = sigma_t/self.sigma_max

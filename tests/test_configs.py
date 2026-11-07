@@ -136,6 +136,7 @@ def compose_transform(*overrides):
 
 
 def molecule(n_atoms=6):
+    torch.manual_seed(0)
     return {
         properties.R: torch.randn(n_atoms, 3, dtype=torch.float64),
         properties.Z: torch.tensor([6, 6, 1, 1, 1, 1][:n_atoms]),
@@ -148,4 +149,18 @@ def test_sigma_weight_generator_configs_build_a_transform(weight_generator):
 
     outputs = transform(molecule())
     assert outputs[keys.forces_weight].shape == (6, 1)
+    assert torch.isfinite(outputs[keys.forces_weight]).all()
+
+
+@pytest.mark.parametrize("weight_generator", ["floored_sigma_weights", "soft_sigma_weights"])
+def test_anchors_get_a_zero_force_label_and_a_finite_weight(weight_generator):
+    transform = compose_transform(
+        f"generative_transform/pseudo_pes/weight_generator={weight_generator}",
+        "pseudo_pes.geometry_sampler.anchor_fraction=1.0",
+    )
+
+    outputs = transform(molecule())
+    assert (outputs[keys.sigma_curr] == 0).all()
+    # the permutation alignment recenters x_t, which leaves a rounding error
+    torch.testing.assert_close(outputs[keys.forces], torch.zeros(6, 3, dtype=torch.float64), atol=1e-12, rtol=0)
     assert torch.isfinite(outputs[keys.forces_weight]).all()
