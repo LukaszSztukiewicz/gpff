@@ -8,3 +8,10 @@ sigma_std: 1.2
 destroy_signal: false
 mean_free_noise: true
 sample_uniformly: false
+# Share of the draws replaced by sigma=0 anchors (x_t = x_0, zero-force label; needs a weight
+# generator that is finite at sigma=0, e.g. floored_sigma_weights, soft_sigma_weights or clipped
+# sigma_weights) and by log-uniform draws from small_sigma_range. Both off by default, which
+# keeps the random stream.
+anchor_fraction: 0.
+small_sigma_fraction: 0.
+small_sigma_range: [0.01, 0.1]

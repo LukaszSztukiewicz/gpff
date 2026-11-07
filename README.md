@@ -93,6 +93,13 @@ gpff_train experiment=gpff run.id=<run-name> run.path=runs/<project>/<date>
 gpff_train experiment=gpff generative_transform/pseudo_pes/weight_generator=floored_sigma_weights
 gpff_train experiment=gpff generative_transform/pseudo_pes/weight_generator=soft_sigma_weights
 
+# Replace shares of the noise draws by sigma = 0 anchors (x_t = x_0, zero-force label) and by
+# log-uniform draws from small_sigma_range (default [0.01, 0.1]). The weight has to be finite
+# at sigma = 0: the two above are, and so is the default clipped at 1, but SigmaWeights
+# without max_clipping is not:
+gpff_train experiment=gpff generative_transform/pseudo_pes/weight_generator=soft_sigma_weights \
+  pseudo_pes.geometry_sampler.anchor_fraction=0.05 pseudo_pes.geometry_sampler.small_sigma_fraction=0.2
+
 # Also keep the model after 100, 200, 500, 1k, 2k, 5k, 10k and 15k epochs in
 # milestones/ (epoch_<N>.ckpt for Lightning, epoch_<N>_model as the model_path
 # for gpff_generate), regardless of early stopping and the best epoch. Off by
