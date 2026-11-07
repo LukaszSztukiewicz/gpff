@@ -23,6 +23,7 @@ class PseudoPESTransform(trn.Transform):
         align_permutation: bool = False,
         align_rotation: bool = False,
         align_by_element: bool = True,
+        align_rotation_max_sigma: Optional[float] = None,
     ):
         """
         Args:
@@ -47,6 +48,9 @@ class PseudoPESTransform(trn.Transform):
                 moves elements between noisy positions, so for a model that reads the
                 clean elements the noisy molecules of training no longer match the
                 sampler's prior exactly, even at sigma_max.
+            align_rotation_max_sigma: align the rotation only below this noise level (VE
+                geometries), where the aligned force label keeps the expectation of the
+                unaligned one; None aligns at every noise level
         """
         super().__init__()
         self.geometry_sampler = geometry_sampler
@@ -55,6 +59,7 @@ class PseudoPESTransform(trn.Transform):
         self.align_permutation = align_permutation
         self.align_rotation = align_rotation
         self.align_by_element = align_by_element
+        self.align_rotation_max_sigma = align_rotation_max_sigma
 
     def forward(
         self,
@@ -95,8 +100,12 @@ class PseudoPESTransform(trn.Transform):
                 target_numbers=one_class,
             )
 
-        # align rotation of x_t to x_0
-        if self.align_rotation:
+        # align rotation of x_t to x_0. The rotation of x_t relative to x_0 cannot be read from
+        # x_t, so it is noise in the force label; alignment removes it, and only at small sigma
+        # does the aligned label keep the same expectation (align_rotation_max_sigma)
+        if self.align_rotation and (
+            self.align_rotation_max_sigma is None or sigma_t[0, 0] < self.align_rotation_max_sigma
+        ):
             x_t = align_rotation(positions=x_t, target_positions=x_0)
 
         inputs.update(
@@ -109,7 +118,9 @@ class PseudoPESTransform(trn.Transform):
             }
         )
         # alignment moves x_t away from x_0 + sigma_t * noise, so the drawn noise
-        # is a target only without it; the force labels below are exact either way
+        # is a target only without it (also when align_rotation_max_sigma skips this
+        # sample: collated samples need the same keys); the force labels below are exact
+        # either way
         if not (self.align_permutation or self.align_rotation):
             inputs[keys.noise] = noise
 

@@ -164,3 +164,12 @@ def test_anchors_get_a_zero_force_label_and_a_finite_weight(weight_generator):
     # the permutation alignment recenters x_t, which leaves a rounding error
     torch.testing.assert_close(outputs[keys.forces], torch.zeros(6, 3, dtype=torch.float64), atol=1e-12, rtol=0)
     assert torch.isfinite(outputs[keys.forces_weight]).all()
+
+
+def test_align_rotation_max_sigma_reaches_the_transform():
+    transform = compose_transform(
+        "globals.align_rotation=true", "generative_transform.align_rotation_max_sigma=1.0"
+    )
+
+    assert transform.align_rotation and transform.align_rotation_max_sigma == 1.0
+    assert compose_transform().align_rotation_max_sigma is None
