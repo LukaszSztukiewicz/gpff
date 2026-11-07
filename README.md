@@ -104,6 +104,16 @@ gpff_train experiment=gpff generative_transform/pseudo_pes/weight_generator=soft
 # larger sigma the aligned force label no longer has the expectation of the unaligned one:
 gpff_train experiment=gpff globals.align_rotation=true generative_transform.align_rotation_max_sigma=1.0
 
+# Learn a loss weight per noise level together with the model, as in EDM2; the weight
+# generator then only sets where training starts. The learned u(sigma) = log(mean loss
+# at sigma) is logged as forces_logvar/sigma_<s> after each validation. The train, val and
+# test loss include u and can be negative, so they are not comparable with runs without
+# it (early stopping, the best checkpoint and the LR scheduler follow them all the same).
+# The EMA callback averages only the model, so u is not averaged. With sigma = 0 anchors
+# add a tolerance, which caps the weight at 1/tolerance where the error can reach zero:
+gpff_train experiment=gpff 'globals.sigma_weighting={_target_:gpff.task.LearnedSigmaWeights}'
+gpff_train experiment=gpff 'globals.sigma_weighting={_target_:gpff.task.LearnedSigmaWeights,tolerance:1e-4}'
+
 # Also keep the model after 100, 200, 500, 1k, 2k, 5k, 10k and 15k epochs in
 # milestones/ (epoch_<N>.ckpt for Lightning, epoch_<N>_model as the model_path
 # for gpff_generate), regardless of early stopping and the best epoch. Off by
