@@ -9,6 +9,7 @@ from .alignment import (
     batch_compute_principal_variances,
     batch_match_principal_variances,
     compute_covariance_matrix,
+    remove_rigid_motion,
     sample_covariance_noise,
 )
 from .batching import atoms_to_dict, batch_to_atoms_list, dict_to_atoms, unbatch_to_dicts
@@ -25,6 +26,7 @@ __all__ = [
     "batch_compute_principal_variances",
     "batch_match_principal_variances",
     "compute_covariance_matrix",
+    "remove_rigid_motion",
     "sample_covariance_noise",
     "atoms_to_dict",
     "batch_to_atoms_list",

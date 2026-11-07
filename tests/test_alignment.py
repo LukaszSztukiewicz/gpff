@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from gpff.utils.alignment import align_permutation, apply_covariance, batch_apply_covariances
+from gpff.utils.alignment import align_permutation, apply_covariance, batch_apply_covariances, remove_rigid_motion
 
 
 def per_molecule(positions, idx_m, covariances, centers, molecule_ids, epsilon=1e-6):
@@ -85,3 +85,39 @@ def test_align_permutation_recovers_a_shuffled_copy(permuted_numbers):
     assert torch.equal(aligned_numbers, numbers)
     if permuted_numbers:
         torch.testing.assert_close(aligned, target, atol=0.05, rtol=0)
+
+
+def rigid_inputs():
+    """Molecules of 5, 7, 1 and 2 atoms: a single atom and a linear molecule have no full rotation."""
+    g = torch.Generator().manual_seed(0)
+    idx_m = torch.repeat_interleave(torch.arange(4), torch.tensor([5, 7, 1, 2]))
+    return torch.randn(len(idx_m), 3, generator=g, dtype=torch.float64), idx_m, g
+
+
+def net_force_and_torque(vectors, positions, idx_m):
+    zeros = torch.zeros(4, 3, dtype=vectors.dtype)
+    counts = torch.bincount(idx_m).unsqueeze(-1)
+    centroids = zeros.index_add(0, idx_m, positions) / counts
+    torque = zeros.index_add(0, idx_m, torch.cross(positions - centroids[idx_m], vectors, dim=1))
+    return zeros.index_add(0, idx_m, vectors), torque
+
+
+def test_remove_rigid_motion_removes_a_pure_rigid_motion():
+    positions, idx_m, g = rigid_inputs()
+    translation = torch.randn(4, 3, generator=g, dtype=torch.float64)
+    omega = torch.randn(4, 3, generator=g, dtype=torch.float64)
+    rigid = translation[idx_m] + torch.cross(omega[idx_m], positions, dim=1)
+
+    torch.testing.assert_close(remove_rigid_motion(rigid, positions, idx_m), torch.zeros_like(rigid))
+
+
+def test_remove_rigid_motion_leaves_no_net_force_or_torque():
+    positions, idx_m, g = rigid_inputs()
+    forces = torch.randn(positions.shape, generator=g, dtype=torch.float64)
+    free = remove_rigid_motion(forces, positions, idx_m)
+    net, torque = net_force_and_torque(free, positions, idx_m)
+
+    torch.testing.assert_close(net, torch.zeros_like(net))
+    torch.testing.assert_close(torque, torch.zeros_like(torque))
+    # only the rigid part goes: a second pass changes nothing
+    torch.testing.assert_close(remove_rigid_motion(free, positions, idx_m), free)
