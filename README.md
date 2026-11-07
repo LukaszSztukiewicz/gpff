@@ -100,6 +100,10 @@ gpff_train experiment=gpff generative_transform/pseudo_pes/weight_generator=soft
 gpff_train experiment=gpff generative_transform/pseudo_pes/weight_generator=soft_sigma_weights \
   pseudo_pes.geometry_sampler.anchor_fraction=0.05 pseudo_pes.geometry_sampler.small_sigma_fraction=0.2
 
+# Align the rotation of x_t to x_0 (globals.align_rotation=true) only below a noise level: at
+# larger sigma the aligned force label no longer has the expectation of the unaligned one:
+gpff_train experiment=gpff globals.align_rotation=true generative_transform.align_rotation_max_sigma=1.0
+
 # Also keep the model after 100, 200, 500, 1k, 2k, 5k, 10k and 15k epochs in
 # milestones/ (epoch_<N>.ckpt for Lightning, epoch_<N>_model as the model_path
 # for gpff_generate), regardless of early stopping and the best epoch. Off by
