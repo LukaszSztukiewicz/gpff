@@ -3,6 +3,7 @@ from .observers import *
 from .results import *
 from .schedules import *
 from .ancestral_sampling import *
+from .jump_optimizers import *
 from .direct_denoising import *
 from .shape_predictor import *
 from .priors import *

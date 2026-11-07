@@ -1,0 +1,18 @@
+# Adaptive DD: DDIM steps down an EDM grid from the prior's sigma to transport_sigma,
+# each molecule from its own sigma estimate (small relative steps while the shape
+# forms), then over-relaxed jumps x + refine_step * F/2 without the model's net force
+# and torque, until the largest atomic force is below f_max.
+defaults:
+  - direct_denoising
+  - _self_
+
+n_steps: 16
+stochastic_lambda: 0.0
+transport_sigma: 0.3
+transport_steps: 10
+transport_sigma_max: 30.0
+transport_rho: 5.0
+transport_gamma: 0.0
+refine_step: 1.5
+refine_rigid_free: true
+f_max: 0.01
