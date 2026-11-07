@@ -18,6 +18,7 @@ __all__ = [
     "batch_apply_covariances",
     "batch_compute_principal_variances",
     "batch_match_principal_variances",
+    "remove_rigid_motion",
     "align_rotation",
     "align_permutation",
     "align",
@@ -452,6 +453,35 @@ def batch_match_principal_variances(
     # Rotate into the principal frame, scale there, rotate back.
     reshaped = ((centered @ axes) * scale[:, None]) @ axes.mT + centroid[:, None]
     return torch.where(apply[inverse, None], reshaped[inverse, slot], positions)
+
+
+def remove_rigid_motion(vectors: torch.Tensor, positions: torch.Tensor, idx_m: torch.Tensor) -> torch.Tensor:
+    """
+    Remove the rigid-body part of per-atom vectors (e.g. forces) of each molecule:
+    their mean, and the rotation omega x (r - centroid) that fits them best in the
+    least-squares sense, I omega = sum (r - centroid) x v with I the inertia matrix.
+
+    Args:
+        vectors: (n_atoms, 3) per-atom vectors.
+        positions: (n_atoms, 3) positions.
+        idx_m: (n_atoms,) molecule index of each atom.
+
+    Returns:
+        (n_atoms, 3) vectors with zero net sum and zero net torque per molecule.
+    """
+    inverse, slot, counts, v, mask = _pad_by_molecule(vectors, idx_m)
+    r = _pad_by_molecule(positions, idx_m, (inverse, slot, counts, mask))[3]
+    n = counts.to(vectors.dtype)[:, None, None]
+    atom = mask[..., None]
+    v = (v - v.sum(1, keepdim=True) / n) * atom
+    r = (r - r.sum(1, keepdim=True) / n) * atom
+
+    torque = torch.cross(r, v, dim=-1).sum(1)
+    eye = torch.eye(3, dtype=vectors.dtype, device=vectors.device)
+    inertia = ((r * r).sum(-1)[..., None, None] * eye - r.unsqueeze(-1) * r.unsqueeze(-2)).sum(1)
+    # pinv: a linear molecule has no rotation about its axis
+    omega = (torch.linalg.pinv(inertia) @ torque.unsqueeze(-1)).squeeze(-1)
+    return (v - torch.cross(omega[:, None], r, dim=-1))[inverse, slot]
 
 
 def align_rotation(positions: np.ndarray | torch.Tensor, target_positions: np.ndarray | torch.Tensor) -> np.ndarray | torch.Tensor:
