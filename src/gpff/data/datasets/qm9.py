@@ -32,9 +32,10 @@ def build_filtered_qm9(
 
     A molecule is kept if ``gpff.analysis.get_rdkit_validity`` accepts it, i.e. if
     RDKit can infer a neutral, radical-free, single-fragment bond structure from
-    its geometry. The written database carries the same properties as the source
-    plus the index of each molecule in the source database ("original_index")
-    and the SMILES string as a key-value pair.
+    its geometry. The written database carries the same properties and
+    single-atom reference energies ("atomrefs") as the source, plus the index of
+    each molecule in the source database ("original_index") and the SMILES
+    string as a key-value pair.
 
     Args:
         raw_datapath: path to the unfiltered QM9 database.
@@ -104,6 +105,9 @@ def build_filtered_qm9(
             },
             "_property_unit_dict": property_unit_dict,
             "_distance_unit": source_metadata["_distance_unit"],
+            # in the source's units; gpff_reference_assets derives the
+            # energy_U0 atomrefs and atomization energies from them
+            "atomrefs": source_metadata.get("atomrefs", {}),
         }
 
     os.replace(partial_datapath, target_datapath)
