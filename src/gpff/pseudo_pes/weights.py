@@ -4,7 +4,7 @@ import abc
 import torch
 
 
-__all__ = ["LossWeights", "SigmaWeights", "NormWeights"]
+__all__ = ["LossWeights", "SigmaWeights", "FlooredSigmaWeights", "SoftSigmaWeights", "NormWeights"]
 
 
 class LossWeights(abc.ABC):
@@ -55,6 +55,68 @@ class SigmaWeights(LossWeights):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         energy_weight = 1 / sigma**4
         force_weight = 1 / sigma**2 * torch.ones_like(x_0[:, 0]).unsqueeze(-1)
+
+        return energy_weight, force_weight
+
+
+class FlooredSigmaWeights(LossWeights):
+    """
+    Force weight 1/(sigma^2 + sigma_floor^2): 1/sigma^2 well above sigma_floor, 1/sigma_floor^2 at
+    sigma = 0 and no corner in between. In noise-prediction terms the loss stays flat down to
+    sigma_floor and fades like sigma^2 below it, where the force labels become smaller than the
+    model's own error. It is the smooth version of SigmaWeights with max_clipping=1/sigma_floor^2;
+    SigmaWeights with max_clipping=1 instead flattens the weight below 1 A, so the loss there
+    already fades like sigma^2.
+    """
+
+    def __init__(self, sigma_floor: float = 0.03, **kwargs):
+        """
+        Args:
+            sigma_floor: noise level below which the weight levels off
+        """
+        super().__init__(**kwargs)
+        if sigma_floor <= 0:
+            raise ValueError(f"sigma_floor must be positive, got {sigma_floor}")
+        self.sigma_floor = sigma_floor
+
+    def _get_weights(
+        self, sigma: torch.Tensor, x_0: torch.Tensor, **kwargs
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        weight = 1 / (sigma**2 + self.sigma_floor**2)
+        energy_weight = weight**2
+        force_weight = weight * torch.ones_like(x_0[:, 0]).unsqueeze(-1)
+
+        return energy_weight, force_weight
+
+
+class SoftSigmaWeights(LossWeights):
+    """
+    Force weight 1/sigma^2 above sigma_knee and 1/(sigma * sigma_knee) below it, held constant
+    under sigma_floor. Below the knee the force error shrinks like sigma, so every noise level
+    sends a gradient of similar size instead of fading out as with SigmaWeights clipped at 1.
+    """
+
+    def __init__(self, sigma_knee: float = 1.0, sigma_floor: float = 0.03, **kwargs):
+        """
+        Args:
+            sigma_knee: noise level where the weight changes from 1/sigma^2 to 1/sigma
+            sigma_floor: noise level below which the weight stays constant
+        """
+        super().__init__(**kwargs)
+        if not 0 < sigma_floor <= sigma_knee:
+            raise ValueError(
+                f"need 0 < sigma_floor <= sigma_knee, got {sigma_floor} and {sigma_knee}"
+            )
+        self.sigma_knee = sigma_knee
+        self.sigma_floor = sigma_floor
+
+    def _get_weights(
+        self, sigma: torch.Tensor, x_0: torch.Tensor, **kwargs
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        sigma = sigma.clamp_min(self.sigma_floor)
+        weight = 1 / (sigma * sigma.clamp_min(self.sigma_knee))
+        energy_weight = weight**2
+        force_weight = weight * torch.ones_like(x_0[:, 0]).unsqueeze(-1)
 
         return energy_weight, force_weight
 

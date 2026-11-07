@@ -125,3 +125,27 @@ def test_geometry_sampler_config_builds_a_transform(geometry_sampler):
     inputs = {properties.R: torch.randn(6, 3, dtype=torch.float64), properties.Z: torch.tensor([6, 6, 1, 1, 1, 1])}
     outputs = transform(inputs)
     assert outputs[keys.forces].shape == (6, 3)
+
+
+def compose_transform(*overrides):
+    with initialize_config_dir(config_dir=str(CONFIG_DIR)):
+        config = compose(
+            "train", overrides=["experiment=gpff", "run.path=/runs", "run.data_dir=/data", *overrides]
+        )
+    return hydra.utils.instantiate(config.generative_transform)
+
+
+def molecule(n_atoms=6):
+    return {
+        properties.R: torch.randn(n_atoms, 3, dtype=torch.float64),
+        properties.Z: torch.tensor([6, 6, 1, 1, 1, 1][:n_atoms]),
+    }
+
+
+@pytest.mark.parametrize("weight_generator", ["floored_sigma_weights", "soft_sigma_weights"])
+def test_sigma_weight_generator_configs_build_a_transform(weight_generator):
+    transform = compose_transform(f"generative_transform/pseudo_pes/weight_generator={weight_generator}")
+
+    outputs = transform(molecule())
+    assert outputs[keys.forces_weight].shape == (6, 1)
+    assert torch.isfinite(outputs[keys.forces_weight]).all()
