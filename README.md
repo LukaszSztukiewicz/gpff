@@ -85,6 +85,14 @@ gpff_train -m experiment=gpff seed=0,1,2
 # Resume an interrupted run from its last checkpoint by passing its id and path:
 gpff_train experiment=gpff run.id=<run-name> run.path=runs/<project>/<date>
 
+# The default force weight is 1/sigma^2 clipped at 1, which flattens below 1 Å, so
+# the loss of nearly clean draws fades like sigma^2. Two weights that stay finite
+# at sigma = 0 and keep a gradient there (sigma_floor, default 0.03, sets where they level off):
+#   floored_sigma_weights: 1/(sigma^2 + sigma_floor^2)
+#   soft_sigma_weights:    1/sigma^2 above sigma_knee (default 1), 1/(sigma * sigma_knee) below it
+gpff_train experiment=gpff generative_transform/pseudo_pes/weight_generator=floored_sigma_weights
+gpff_train experiment=gpff generative_transform/pseudo_pes/weight_generator=soft_sigma_weights
+
 # Also keep the model after 100, 200, 500, 1k, 2k, 5k, 10k and 15k epochs in
 # milestones/ (epoch_<N>.ckpt for Lightning, epoch_<N>_model as the model_path
 # for gpff_generate), regardless of early stopping and the best epoch. Off by

@@ -1,0 +1,6 @@
+# @package pseudo_pes.weight_generator
+# Floored sigma weights: 1/(sigma^2 + sigma_floor^2), 1/sigma^2 above the floor and level below it
+_target_: gpff.pseudo_pes.weights.FlooredSigmaWeights
+sigma_floor: 0.03
+min_clipping: null
+max_clipping: null
