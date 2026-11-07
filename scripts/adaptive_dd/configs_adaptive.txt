@@ -1,0 +1,31 @@
+# name             gpff_generate overrides, fancy-monkey ep5000, deterministic DD (stochastic_lambda 0)
+# transport sweep on 39424e1: switch level s (transport_sigma, A) x ratio r; s10 = 1 A, the control
+tdd16_s10_r75      sampler=direct_denoising sampler.n_steps=16 sampler.stochastic_lambda=0.0 sampler.transport_sigma=1.0 sampler.transport_ratio=0.75
+tdd16_s10_r90      sampler=direct_denoising sampler.n_steps=16 sampler.stochastic_lambda=0.0 sampler.transport_sigma=1.0 sampler.transport_ratio=0.90
+tdd16_s03_r75      sampler=direct_denoising sampler.n_steps=16 sampler.stochastic_lambda=0.0 sampler.transport_sigma=0.3 sampler.transport_ratio=0.75
+tdd16_s03_r90      sampler=direct_denoising sampler.n_steps=16 sampler.stochastic_lambda=0.0 sampler.transport_sigma=0.3 sampler.transport_ratio=0.90
+tdd16_s01_r75      sampler=direct_denoising sampler.n_steps=16 sampler.stochastic_lambda=0.0 sampler.transport_sigma=0.1 sampler.transport_ratio=0.75
+tdd16_s01_r90      sampler=direct_denoising sampler.n_steps=16 sampler.stochastic_lambda=0.0 sampler.transport_sigma=0.1 sampler.transport_ratio=0.90
+tdd256_s10_r75     sampler=direct_denoising sampler.n_steps=256 sampler.stochastic_lambda=0.0 sampler.transport_sigma=1.0 sampler.transport_ratio=0.75
+tdd256_s10_r90     sampler=direct_denoising sampler.n_steps=256 sampler.stochastic_lambda=0.0 sampler.transport_sigma=1.0 sampler.transport_ratio=0.90
+tdd256_s03_r75     sampler=direct_denoising sampler.n_steps=256 sampler.stochastic_lambda=0.0 sampler.transport_sigma=0.3 sampler.transport_ratio=0.75
+tdd256_s03_r90     sampler=direct_denoising sampler.n_steps=256 sampler.stochastic_lambda=0.0 sampler.transport_sigma=0.3 sampler.transport_ratio=0.90
+tdd256_s01_r75     sampler=direct_denoising sampler.n_steps=256 sampler.stochastic_lambda=0.0 sampler.transport_sigma=0.1 sampler.transport_ratio=0.75
+tdd256_s01_r90     sampler=direct_denoising sampler.n_steps=256 sampler.stochastic_lambda=0.0 sampler.transport_sigma=0.1 sampler.transport_ratio=0.90
+# adaptive DD on 4c93744 (sampler=adaptive_direct_denoising: EDM grid of transport_steps levels from 30 A to
+# transport_sigma, then refine_step 1.5 jumps without net force/torque until f_max 0.01)
+add16_s03          sampler=adaptive_direct_denoising
+add16_s01          sampler=adaptive_direct_denoising sampler.transport_sigma=0.1
+add16_s03_plain    sampler=adaptive_direct_denoising sampler.refine_step=1.0 sampler.refine_rigid_free=false
+add32_s03          sampler=adaptive_direct_denoising sampler.n_steps=32 sampler.transport_steps=16
+asdd16_s03         sampler=adaptive_direct_denoising sampler.transport_gamma=1.0
+add256_s03         sampler=adaptive_direct_denoising sampler.n_steps=256 sampler.transport_steps=128
+add256_s01         sampler=adaptive_direct_denoising sampler.n_steps=256 sampler.transport_steps=128 sampler.transport_sigma=0.1
+asdd256_s03        sampler=adaptive_direct_denoising sampler.n_steps=256 sampler.transport_steps=128 sampler.transport_gamma=1.0
+# refine-phase noise (4c93744): SDD's noise schedule (stochastic_lambda) on the molecules past transport only
+add16_s03_n05      sampler=adaptive_direct_denoising sampler.stochastic_lambda=0.5
+add16_s03_n10      sampler=adaptive_direct_denoising sampler.stochastic_lambda=1.0
+add32_s03_n10      sampler=adaptive_direct_denoising sampler.n_steps=32 sampler.transport_steps=16 sampler.stochastic_lambda=1.0
+add256_s03_n05     sampler=adaptive_direct_denoising sampler.n_steps=256 sampler.transport_steps=128 sampler.stochastic_lambda=0.5
+add256_s03_n10     sampler=adaptive_direct_denoising sampler.n_steps=256 sampler.transport_steps=128 sampler.stochastic_lambda=1.0
+asdd256_s03_n10    sampler=adaptive_direct_denoising sampler.n_steps=256 sampler.transport_steps=128 sampler.transport_gamma=1.0 sampler.stochastic_lambda=1.0
