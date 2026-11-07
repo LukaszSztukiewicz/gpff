@@ -6,7 +6,7 @@ from ase.build import molecule
 from ase.db import connect
 from ase.units import Hartree
 
-from gpff.analysis import compute_elongation
+from gpff.analysis import analyze_with_rdkit, compute_elongation
 from gpff.cli import reference_assets
 from gpff.data.datasets.qm9 import build_filtered_qm9
 
@@ -58,6 +58,20 @@ def test_assets_are_derived_from_a_freshly_filtered_database(tmp_path, monkeypat
     assert assets["energy_U0_atomrefs_eV"][6] == pytest.approx(U0_ATOMREFS[6] * Hartree)
     smiles = (tmp_path / "assets" / "qm9_smiles_values.txt").read_text().splitlines()
     assert len(smiles) == len(MOLECULES) and all(smiles)
+
+
+def test_filtered_qm9_stores_the_smiles_the_samples_and_assets_use(tmp_path):
+    # the layout of the paper's database: explicit-hydrogen "smiles", plus the
+    # canonical form, under a named convention
+    write_raw_qm9(tmp_path / "qm9.db")
+    build_filtered_qm9(str(tmp_path / "qm9.db"), str(tmp_path / "qm9_filtered.db"), progress=False)
+
+    with connect(tmp_path / "qm9_filtered.db") as db:
+        assert db.metadata["smiles_format"] == "gpff_explicit_h_isomeric_v1"
+        for row in db.select():
+            analysis = analyze_with_rdkit(row.toatoms())
+            assert row.smiles == analysis["smiles"] and "[H]" in row.smiles
+            assert row.canonical_smiles == analysis["canonical_smiles"]
 
 
 def test_a_stored_array_is_used_as_it_is(tmp_path, monkeypatch):

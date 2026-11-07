@@ -21,6 +21,10 @@ RAW_QM9_FILENAME = "qm9.db"
 # (the first one predates the switch to `remove_uncharacterized=True`)
 KNOWN_FILTERED_SIZES = [121651, 123569]
 
+# names the filtered database's "smiles" convention: the isomeric SMILES with
+# explicit hydrogens of analyze_with_rdkit(remove_hs=False)
+SMILES_FORMAT = "gpff_explicit_h_isomeric_v1"
+
 
 def build_filtered_qm9(
     raw_datapath: str,
@@ -34,8 +38,11 @@ def build_filtered_qm9(
     RDKit can infer a neutral, radical-free, single-fragment bond structure from
     its geometry. The written database carries the same properties and
     single-atom reference energies ("atomrefs") as the source, plus the index of
-    each molecule in the source database ("original_index") and the SMILES
-    string as a key-value pair.
+    each molecule in the source database ("original_index") and two SMILES as
+    key-value pairs: "smiles", the isomeric SMILES with explicit hydrogens that
+    gpff_prepare_metadata and gpff_reference_assets compute, and
+    "canonical_smiles", its canonical form without them. The metadata names
+    that convention in "smiles_format", as the paper's database does.
 
     Args:
         raw_datapath: path to the unfiltered QM9 database.
@@ -87,9 +94,11 @@ def build_filtered_qm9(
 
             data = dict(row.data)
             data["original_index"] = np.array([index], dtype=int)
-            # the rows carry the SMILES without the explicit hydrogens
             target.write(
-                atoms, data=data, smiles=analysis.get("canonical_smiles", "")
+                atoms,
+                data=data,
+                smiles=analysis.get("smiles", ""),
+                canonical_smiles=analysis.get("canonical_smiles", ""),
             )
 
         target.metadata = {
@@ -108,6 +117,7 @@ def build_filtered_qm9(
             # in the source's units; gpff_reference_assets derives the
             # energy_U0 atomrefs and atomization energies from them
             "atomrefs": source_metadata.get("atomrefs", {}),
+            "smiles_format": SMILES_FORMAT,
         }
 
     os.replace(partial_datapath, target_datapath)
