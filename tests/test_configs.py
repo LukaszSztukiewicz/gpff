@@ -11,6 +11,7 @@ from schnetpack.utils import str2class
 
 import gpff.cli  # registers the resolvers the configs use
 from gpff import keys
+from gpff.sample.jump_optimizers import MDMin
 
 CONFIG_DIR = Path(gpff.cli.__file__).parents[1] / "configs"
 EXPERIMENTS = sorted(path.stem for path in (CONFIG_DIR / "experiment").glob("*.yaml"))
@@ -94,6 +95,17 @@ def test_generate_help_lists_every_sampler_config():
     help_text = (CONFIG_DIR / "generate.yaml").read_text()
     listed = set(re.findall(r"- sampler=(\w+)", help_text))
     assert listed == {path.stem for path in (CONFIG_DIR / "sampler").glob("*.yaml")}
+
+
+def test_adaptive_direct_denoising_config_builds_a_sampler_with_a_jump_optimizer():
+    overrides = ["sampler=adaptive_direct_denoising", "sampler.jump_optimizer={_target_:gpff.sample.jump_optimizers.MDMin}"]
+    with initialize_config_dir(config_dir=str(CONFIG_DIR)):
+        config = compose("generate", overrides=overrides)
+
+    calculator = hydra.utils.instantiate(config.sampler.calculator, model=None)
+    sampler = hydra.utils.instantiate(config.sampler, calculator=calculator)
+    assert isinstance(sampler.jump_optimizer, MDMin)
+    assert len(sampler.transport_levels) == config.sampler.transport_steps + 1
 
 
 def test_vp_geometry_sampler_config_builds_a_transform():

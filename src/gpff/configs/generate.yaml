@@ -72,6 +72,8 @@ hydra:
         
         Available sampler options:
         - sampler=direct_denoising (default) - direct denoising sampler
+        - sampler=adaptive_direct_denoising - direct denoising with transport steps down
+          an EDM grid of noise levels, then over-relaxed jumps until f_max
         - sampler=shape_direct_denoising - direct denoising with prior shape enforcement
         - sampler=scaffold_direct_denoising - direct denoising with frozen scaffold atoms
         - sampler=shape_scaffold_direct_denoising - frozen scaffold atoms plus shape

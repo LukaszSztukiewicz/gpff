@@ -207,6 +207,19 @@ gpff_generate \
   model_path=/path/to/best_model split_path=/path/to/split.npz \
   datapath=/path/to/qm9_filtered.db n_samples=10000
 
+# Direct denoising jumps to the predicted clean positions, which is only accurate at
+# low noise. sampler=adaptive_direct_denoising walks down an EDM grid of noise levels
+# first (transport, per molecule from its own sigma estimate), then takes over-relaxed
+# jumps without the model's net force and torque until the forces are below f_max.
+# The options are in configs/sampler/direct_denoising.yaml; a jump optimizer moves the
+# noise-free jumps (gpff.sample.jump_optimizers, measured in its docstring), e.g.
+gpff_generate \
+  sampler=direct_denoising sampler.n_steps=16 sampler.stochastic_lambda=0 \
+  sampler.transport_sigma=1.0 sampler.transport_ratio=0.25 \
+  'sampler.jump_optimizer={_target_:gpff.sample.jump_optimizers.MDMin}' \
+  model_path=/path/to/best_model split_path=/path/to/split.npz \
+  datapath=/path/to/qm9_filtered.db n_samples=10000
+
 # Evaluate a sampled DB in two phases, both writing into an evaluation folder
 # next to the database (unless --evaluation_dir says otherwise); the database
 # itself is only read. No reference database is used — the reference

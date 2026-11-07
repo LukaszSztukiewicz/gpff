@@ -10,4 +10,31 @@ observers:
     verbose: false
     show_progressbar: false
 stochastic_lambda: 1.0
+# final steps without noise; 1 is the last step only
+relax_steps: 1
 f_max: 0.0
+
+# Transport: molecules whose sigma estimate is above transport_sigma take DDIM steps
+# to transport_ratio * sigma instead of jumping to x_0 (and are not perturbed); null
+# jumps from the start. See adaptive_direct_denoising.yaml for a preset.
+transport_sigma: null
+transport_ratio: 0.5
+# if set, an EDM grid of transport_steps levels from transport_sigma_max down to
+# transport_sigma (exponent transport_rho) replaces transport_ratio, each molecule
+# stepping from its own sigma estimate
+transport_steps: null
+transport_sigma_max: 30.0
+transport_rho: 5.0
+# 0 to 1: DDPM-like noise in the DDIM steps
+transport_gamma: 0.0
+# 2: second-order multistep transport steps (DPM-Solver++ 2M)
+transport_order: 1
+
+# Refinement, below transport_sigma: jumps x + refine_step * F/2 (1 jumps to x_0,
+# more over-relaxes); refine_rigid_free removes each molecule's net force and torque
+# from F first
+refine_step: 1.0
+refine_rigid_free: false
+# optimizer for the jumps without noise, e.g.
+# {_target_: gpff.sample.jump_optimizers.MDMin}; null takes plain jumps
+jump_optimizer: null
