@@ -8,6 +8,9 @@ row data and key-value pairs kept, plus
     energy_before, energy_after  the method's energies in kcal/mol (nan if the
                                  structure could not be relaxed)
     steps                        minimizer steps taken (method mace only)
+    bond_orders                  whether UFF ran on the perceived bond orders
+                                 (method uff only); False for a geometry no
+                                 valid molecule fits, relaxed on its single bonds
     strain                       energy_before - energy_after, the energy the
                                  relaxation released
     relaxed, converged           whether the method ran, and whether it
@@ -24,15 +27,15 @@ rather than the molecule it chose. Run gpff_prepare_metadata and
 gpff_calculate_metrics on both databases to compare them.
 
 Relax the reference molecules too, with the same method, and score the relaxed
-samples against that relaxed reference. Every method has a bias of its own: UFF
-moves real QM9 geometries about 40 mA, so relaxed samples scored against the
-raw reference all land near that distance from it, whatever they looked like
-before. Against a reference the same method relaxed, only what the relaxation
-could not fix is left.
+samples against that relaxed reference. Every method has a bias of its own, so
+relaxed samples scored against the raw reference all land near the method's
+distance from it, whatever they looked like before. Against a reference the
+same method relaxed, only what the relaxation could not fix is left.
 
 Methods:
-    uff   RDKit's UFF on the bonds perceived from the geometry; never changes
-          the bond graph, needs no extra software, and is the cheapest
+    uff   RDKit's UFF on the bonds and bond orders perceived from the geometry
+          (the bonds alone where no bond orders fit); never changes the bond
+          graph, needs no extra software, and is the cheapest
     xtb   GFN2-xTB, by running the xtb program (--xtb_command, XTBPATH); takes
           no bonds, so they can form and break
     mace  a MACE model, many molecules at once on the GPU (--mace_model_path);
@@ -57,8 +60,13 @@ METHODS = ("uff", "xtb", "mace")
 def _relax_one(atoms, method: str, xtb_command: str) -> dict:
     """One structure through the single-structure methods."""
     if method == "uff":
-        # without bond orders RDKit also reads a geometry no valid molecule fits
-        return relax_with_uff(atoms, bond_orders=False)
+        # UFF types its atoms from the bonds, so the bond orders are perceived
+        # wherever they fit the geometry: on single bonds alone it pulls every
+        # double, triple and aromatic bond out to a single one (C=O to 1.39 A,
+        # benzene to 1.53 A). Only a geometry no valid molecule fits is relaxed
+        # on its connectivity.
+        result = relax_with_uff(atoms, bond_orders=True)
+        return result if result["relaxed"] else relax_with_uff(atoms, bond_orders=False)
     return relax_with_xtb(atoms, xtb_command=xtb_command)
 
 
@@ -131,8 +139,8 @@ def relax_database(
                     "strain": result["energy_before"] - result["energy_after"],
                     "relaxed": bool(result["relaxed"]),
                     "converged": bool(result["converged"]),
-                    # only the batched minimizer counts its steps
-                    **({"steps": result["steps"]} if "steps" in result else {}),
+                    # only the batched minimizer counts its steps, only uff takes bonds
+                    **{key: result[key] for key in ("steps", "bond_orders") if key in result},
                 },
                 **key_value_pairs,
             )

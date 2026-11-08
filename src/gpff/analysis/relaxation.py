@@ -61,7 +61,8 @@ def relax_with_uff(
         atoms: ASE Atoms object to relax.
         bond_orders: perceive bond orders (needs a valid molecule) or only the
             connectivity, see mol_from_atoms. Without bond orders RDKit types
-            the atoms from single bonds only.
+            the atoms from single bonds only, and UFF stretches every double,
+            triple and aromatic bond to a single one.
         max_iters: maximum number of minimizer iterations.
 
     Returns:
@@ -72,6 +73,7 @@ def relax_with_uff(
         - converged: whether the minimizer converged within max_iters
         - energy_before, energy_after: UFF energies in kcal/mol (np.nan if
           not relaxed)
+        - bond_orders: the bond_orders it was called with
     """
     result = {
         "atoms": atoms.copy(),
@@ -79,6 +81,7 @@ def relax_with_uff(
         "converged": False,
         "energy_before": np.nan,
         "energy_after": np.nan,
+        "bond_orders": bond_orders,
     }
     try:
         with BlockLogs():

@@ -69,6 +69,33 @@ def test_relaxing_shortens_the_stretched_bond(tmp_path):
     assert after < before
 
 
+def test_uff_keeps_double_bonds_and_relaxes_the_rest_on_their_connectivity(tmp_path):
+    acetaldehyde = molecule("CH3CHO")
+    symbols = acetaldehyde.get_chemical_symbols()
+    o = symbols.index("O")
+    c = min((i for i, s in enumerate(symbols) if s == "C"),
+            key=lambda i: acetaldehyde.get_distance(o, i))
+    # a methane with a fifth H on its carbon: no bond orders fit
+    crowded = molecule("CH4")
+    crowded += molecule("H2")[:1]
+    crowded.positions[-1] = crowded.positions[0] + [0.0, 0.0, -1.05]
+    samples = tmp_path / "samples.db"
+    with connect(samples) as db:
+        db.write(acetaldehyde)
+        db.write(crowded)
+    relaxed = tmp_path / "relaxed.db"
+
+    relax_database(samples, relaxed, method="uff", verbose=False)
+
+    with connect(relaxed) as db:
+        rows = list(db.select())
+    # on single bonds only, UFF pulls a C=O out to 1.39 A and calls that strain
+    assert rows[0].data["bond_orders"] and rows[0].data["relaxed"]
+    assert rows[0].toatoms().get_distance(o, c) == pytest.approx(1.22, abs=0.03)
+    assert rows[0].data["strain"] < 5
+    assert not rows[1].data["bond_orders"]
+
+
 def test_mean_strain_over_the_valid_molecules(tmp_path):
     samples = tmp_path / "samples.db"
     with connect(samples) as db:
