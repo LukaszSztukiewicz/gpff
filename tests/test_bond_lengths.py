@@ -126,6 +126,26 @@ def test_w1_of_a_shift_is_the_shift():
         assert row["spread_ratio"] == pytest.approx(1.0)
 
 
+def test_normalized_w1_keeps_reference_weights_and_reports_zero_spread_coverage():
+    reference = bond_table({
+        ("C-C", "broad"): np.tile([1., 3.], 100),
+        ("C-H", "narrow"): np.tile([1., 1.2], 50),
+        ("C=O", "constant"): np.full(100, 1.2),
+    })
+    observed = bond_table({
+        ("C-C", "broad"): np.tile([1.2, 3.2], 100),
+        ("C-H", "narrow"): np.tile([1.2, 1.4], 500),
+        ("C=O", "constant"): np.full(100, 1.4),
+    })
+    result = calculate_bond_length_w1(reference, observed)
+    assert result["w1"] == pytest.approx(0.2)
+    assert result["w1_over_std"] == pytest.approx((200 * 0.2 + 100 * 2.) / 300)
+    assert result["reference_weight_normalized"] == pytest.approx(0.75)
+    assert result["observed_fraction_normalized"] == pytest.approx(1200 / 1300)
+    assert np.isnan(result["labels"]["constant"]["w1_over_std"])
+    assert result["labels"]["constant"]["w1"] == pytest.approx(0.2)
+
+
 def test_swapped_peaks_are_invisible_pooled_but_not_per_environment():
     # half the C-C bonds conjugated at 1.46, half sp3 at 1.53; the observed set
     # swaps them, so its pooled C-C histogram is the reference's

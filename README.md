@@ -183,6 +183,20 @@ gpff_prepare_metadata --samples_db_path relaxed.db --targets rdkit_valid strain 
 gpff_calculate_metrics --samples_db_path relaxed.db --metrics mean_strain bond_length_w1 \
   --reference_bond_lengths_path assets/qm9_bond_lengths.npz
 
+# Paired outcomes: validity gained/lost, isomeric SMILES changes, strain
+# median/p90 and aligned RMSD in explicit initial/final-validity cohorts:
+gpff_relax_report --samples_db_path samples.db --relaxed_db_path relaxed.db \
+  --output_dir relaxation_report
+
+# Continue saved geometries with deterministic DD; records additional and
+# total NFE, force convergence, and optional per-step displacement traces:
+gpff_refine --model_path /path/to/model --samples_db_path samples.db \
+  --output_db_path refined.db --f_max 0.05 --max_steps 200 --trace_path shifts.npz
+
+# Diagnose oscillation and rigid-body drift at several damping factors:
+gpff_damping_probe --model_path /path/to/model --samples_db_path samples.db \
+  --output_dir damping_report --etas 1 0.5 1.5 --steps 60
+
 # Why molecules are invalid (failure_<cause> shares), valid+unique+novel, the
 # elongation W1 and, for models that generate the atom types, the composition
 # against the test molecules the samples came from (the reference element counts

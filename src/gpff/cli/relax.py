@@ -53,6 +53,7 @@ from tqdm import tqdm
 
 import gpff  # noqa: F401
 from gpff.analysis import relax_with_uff, relax_with_xtb
+from gpff.cli import _md5
 
 METHODS = ("uff", "xtb", "mace")
 
@@ -88,15 +89,34 @@ def relax_database(
     overwritten.
     """
     output_db_path = Path(output_db_path)
+    if method not in METHODS:
+        raise ValueError(f"Unknown relaxation method: {method}")
+    if batch_size < 1 or n_workers < 1:
+        raise ValueError("batch_size and n_workers must be positive.")
+    if method == "mace" and mace_model_path is None:
+        raise ValueError("method mace needs mace_model_path")
+    if Path(samples_db_path).resolve() == output_db_path.resolve():
+        raise ValueError("Source and output databases must be different files.")
+    if not Path(samples_db_path).is_file():
+        raise FileNotFoundError(samples_db_path)
+    source_md5 = _md5(samples_db_path)
+    settings = {"batch_size": batch_size, "n_workers": n_workers}
+    if method == "uff":
+        settings.update(max_iters=2000, bond_orders="perceived_then_connectivity_fallback")
+    elif method == "xtb":
+        settings.update(xtb_command=xtb_command, charge=0, uhf=0, max_iters=500, timeout=300)
+    else:
+        settings.update(model_path=str(Path(mace_model_path).resolve()),
+                        model_md5=_md5(mace_model_path), fmax=0.02, max_steps=500, dtype="float64")
     if output_db_path.exists():
         output_db_path.unlink()
 
     with connect(samples_db_path) as source:
         rows = [
-            (row.toatoms(), dict(row.data), dict(row.key_value_pairs)) for row in source.select()
+            (row.toatoms(), dict(row.data), dict(row.key_value_pairs), row.id) for row in source.select()
         ]
         metadata = source.metadata
-    structures = [atoms for atoms, _, _ in rows]
+    structures = [atoms for atoms, _, _, _ in rows]
 
     if method == "mace":
         if mace_model_path is None:
@@ -127,13 +147,14 @@ def relax_database(
 
     counts = {"n_structures": len(rows), "relaxed": 0, "converged": 0}
     with connect(output_db_path) as target:
-        for (_, data, key_value_pairs), result in zip(rows, results):
+        for (_, data, key_value_pairs, source_id), result in zip(rows, results):
             counts["relaxed"] += bool(result["relaxed"])
             counts["converged"] += bool(result["converged"])
             target.write(
                 result["atoms"],
                 data={
                     **data,
+                    "relaxation_source_id": source_id,
                     "energy_before": result["energy_before"],
                     "energy_after": result["energy_after"],
                     "strain": result["energy_before"] - result["energy_after"],
@@ -144,7 +165,12 @@ def relax_database(
                 },
                 **key_value_pairs,
             )
-        target.metadata = {**metadata, "relaxed_with": method}
+        target.metadata = {
+            **metadata, "relaxed_with": method,
+            "relaxation_source_md5": source_md5,
+            "relaxation_source_path": str(Path(samples_db_path).resolve()),
+            "relaxation_settings": settings,
+        }
     return counts
 
 

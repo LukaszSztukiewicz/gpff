@@ -8,6 +8,10 @@ One module per command, each registered in ``pyproject.toml``:
     gpff_calculate_metrics  gpff.cli.calculate_metrics:main
     gpff_reference_assets   gpff.cli.reference_assets:main
     gpff_report             gpff.cli.report:main
+    gpff_relax              gpff.cli.relax:main
+    gpff_relax_report       gpff.cli.relax_report:main
+    gpff_refine             gpff.cli.refine:main
+    gpff_damping_probe      gpff.cli.damping_probe:main
 
 This module holds only what every command shares. Cheap imports only
 so that running one command does not drag in another's dependencies.

@@ -230,8 +230,12 @@ def calculate_bond_length_w1(
         - labels: per label, by reference count: n_reference, n_observed,
           weight (share of the reference bonds), and, if compared, w1,
           median_shift (observed minus reference, in Angstroms) and
-          spread_ratio (observed over reference interquartile range);
+          spread_ratio (observed over reference interquartile range),
+          reference_std and w1_over_std (dimensionless W1 / reference std);
           np.nan where not compared
+        - w1_over_std: reference-weighted mean of the normalized distances;
+          zero-spread labels are excluded from this diagnostic only, with
+          coverage in reference_weight_normalized / observed_fraction_normalized
 
     Raises:
         ValueError: if the two tables' labels are of different LABELS_VERSIONs.
@@ -262,6 +266,8 @@ def calculate_bond_length_w1(
             "w1": np.nan,
             "median_shift": np.nan,
             "spread_ratio": np.nan,
+            "reference_std": float(reference_lengths.std()) if len(reference_lengths) else np.nan,
+            "w1_over_std": np.nan,
         }
         if min(len(reference_lengths), len(observed_lengths)) >= min_count:
             reference_iqr = _iqr(reference_lengths)
@@ -270,12 +276,27 @@ def calculate_bond_length_w1(
                 median_shift=float(np.median(observed_lengths) - np.median(reference_lengths)),
                 spread_ratio=_iqr(observed_lengths) / reference_iqr if reference_iqr > 0 else np.nan,
             )
+            if row["reference_std"] > 1e-12:
+                row["w1_over_std"] = row["w1"] / row["reference_std"]
         rows[label] = row
 
     compared = [row for row in rows.values() if not np.isnan(row["w1"])]
     n_reference_compared = sum(row["n_reference"] for row in compared)
     n_observed_compared = sum(row["n_observed"] for row in compared)
+    normalized = [row for row in compared if np.isfinite(row["w1_over_std"])]
+    n_reference_normalized = sum(row["n_reference"] for row in normalized)
+    n_observed_normalized = sum(row["n_observed"] for row in normalized)
     return {
+        "w1_over_std": (
+            sum(row["n_reference"] * row["w1_over_std"] for row in normalized)
+            / n_reference_normalized if normalized else float("nan")
+        ),
+        "reference_weight_normalized": (
+            n_reference_normalized / n_reference_total if n_reference_total else float("nan")
+        ),
+        "observed_fraction_normalized": (
+            n_observed_normalized / n_observed_total if n_observed_total else float("nan")
+        ),
         "w1": (
             sum(row["n_reference"] * row["w1"] for row in compared) / n_reference_compared
             if compared
