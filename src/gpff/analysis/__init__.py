@@ -22,7 +22,7 @@ from .collection import (
     collect_angles,
     collect_bonds,
     collect_element_counts,
-    numbers_from_element_counts,
+    labels_of,
 )
 from .composition import composition_metrics
 
@@ -44,8 +44,8 @@ __all__ = [
     "describe_bonds",
     "get_posebusters_validity",
     "get_rdkit_validity",
+    "labels_of",
     "mol_from_atoms",
-    "numbers_from_element_counts",
     "relax_with_uff",
     "relax_with_xtb",
 ]

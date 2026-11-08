@@ -1,13 +1,16 @@
 import sys
 
 import numpy as np
+import pytest
 from ase.build import molecule
 from ase.db import connect
 
+from gpff.analysis import labels_of
 from gpff.cli import reference_assets
 
 
-def test_the_walk_targets_are_written_one_row_per_molecule(tmp_path, monkeypatch):
+@pytest.mark.parametrize("workers", ["1", "2"])
+def test_the_walk_targets_are_written_one_row_per_molecule(tmp_path, monkeypatch, workers):
     db_path = tmp_path / "reference.db"
     with connect(db_path) as db:
         for name in ("CH3CH2OH", "CH3", "C6H6"):
@@ -16,7 +19,8 @@ def test_the_walk_targets_are_written_one_row_per_molecule(tmp_path, monkeypatch
 
     monkeypatch.setattr(sys, "argv", [
         "gpff_reference_assets", "--reference_db_path", str(db_path), "--assets_dir", str(assets),
-        "--quiet", "--targets", "smiles_values", "bond_lengths", "bond_angles", "element_counts",
+        "--quiet", "--structure_workers", workers,
+        "--targets", "smiles_values", "bond_lengths", "bond_angles", "element_counts",
     ])
     assert reference_assets.main() == 0
 
@@ -29,3 +33,5 @@ def test_the_walk_targets_are_written_one_row_per_molecule(tmp_path, monkeypatch
         # ethanol's 8 bonds and benzene's 12; the radical is invalid and has none
         assert sorted(set(bonds["molecule"].tolist())) == [0, 2]
         assert len(bonds["length"]) == 20
+        names, codes = labels_of(bonds, "environment")
+        assert (names[codes] == "C(sp2):C(sp2)").sum() == 6

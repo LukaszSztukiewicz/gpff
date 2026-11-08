@@ -9,7 +9,7 @@ from gpff.cli import record_provenance
 from gpff.cli import calculate_metrics
 from gpff.cli.calculate_metrics import (
     compute_metrics,
-    load_test_compositions,
+    load_test_counts,
     missing_reference_inputs,
 )
 
@@ -55,19 +55,30 @@ def test_elongation_w1_of_the_valid_molecules():
 
 def test_composition_against_the_test_molecules_the_samples_came_from():
     arrays = per_sample_arrays()
-    same = [np.array(m) for m in ([6, 6, 8], [6, 6, 8], [6, 7], [6, 6, 8])]
-    # the third sample has an N where its test molecule has an O
-    other = [np.array(m) for m in ([6, 6, 8], [6, 6, 8], [6, 8], [6, 6, 8])]
+    same = collect_element_counts([[6, 6, 8], [6, 6, 8], [6, 7], [6, 6, 8]])
+    # the third sample has an N where its test molecule has an O; a fifth test
+    # molecule no sample was generated from does not count
+    other = collect_element_counts([[6, 6, 8], [6, 6, 8], [6, 8], [6, 6, 8], [9]])
 
-    results = compute_metrics(arrays, ["composition"], {}, None, test_compositions=same)
+    results = compute_metrics(arrays, ["composition"], {}, None, test_counts=same)
     assert results["n_molecules"] == 4
     assert results["element_tv"] == pytest.approx(0.0)
     assert results["size_w1"] == pytest.approx(0.0)
     assert results["molecule_fraction_N"] == pytest.approx(0.25)
 
-    results = compute_metrics(arrays, ["composition"], {}, None, test_compositions=other)
-    # one of eleven atoms moved from O to N
+    results = compute_metrics(arrays, ["composition"], {}, None, test_counts=other)
+    # one of eleven atoms moved from O to N; F, which only the reference table
+    # has, is reported at 0
     assert results["element_tv"] == pytest.approx(1 / 11)
+    assert results["element_fraction_F"] == 0.0
+
+
+def test_an_element_count_table_of_other_samples_is_refused():
+    arrays = per_sample_arrays()
+    arrays["element_counts"] = collect_element_counts([[6, 6, 8]] * 5)
+
+    with pytest.raises(ValueError, match="differ in length"):
+        compute_metrics(arrays, ["rdkit_validity"], {}, None)
 
 
 def test_composition_needs_the_element_counts_and_the_split():
@@ -77,14 +88,16 @@ def test_composition_needs_the_element_counts_and_the_split():
     assert any("--split_path" in line for line in missing)
 
 
-def test_test_compositions_follow_the_split_order(tmp_path):
+def test_test_counts_follow_the_split_order(tmp_path):
     counts = collect_element_counts([[1], [6], [7], [8]])
     np.savez(tmp_path / "counts.npz", **counts)
     np.savez(tmp_path / "split.npz", train_idx=[0], val_idx=[1], test_idx=[3, 2])
 
-    compositions = load_test_compositions(tmp_path / "counts.npz", tmp_path / "split.npz")
+    test = load_test_counts(tmp_path / "counts.npz", tmp_path / "split.npz")
 
-    assert [m.tolist() for m in compositions] == [[8], [7]]
+    assert {symbol: column.tolist() for symbol, column in test.items()} == {
+        "H": [0, 0], "C": [0, 0], "N": [0, 1], "O": [1, 0]
+    }
 
 
 def test_provenance_keeps_one_entry_per_name(tmp_path):
@@ -100,6 +113,18 @@ def test_provenance_keeps_one_entry_per_name(tmp_path):
     assert "unused" not in provenance["results"]["a"]["inputs"]
     assert provenance["results"]["b"]["inputs"] == {}
     assert provenance["results"]["a"]["code"].endswith("gpff")
+
+
+def test_provenance_records_a_relative_input_by_its_absolute_path(tmp_path, monkeypatch):
+    np.save(tmp_path / "reference.npy", np.arange(3))
+    monkeypatch.chdir(tmp_path)
+
+    record_provenance(tmp_path / "evaluation", "results", ["a"], {"reference": "reference.npy"})
+    provenance = json.loads((tmp_path / "evaluation" / "provenance.json").read_text())
+
+    assert provenance["results"]["a"]["inputs"]["reference"]["path"] == str(
+        (tmp_path / "reference.npy").resolve()
+    )
 
 
 def test_the_command_line_computes_the_new_metrics_and_their_provenance(tmp_path, monkeypatch):

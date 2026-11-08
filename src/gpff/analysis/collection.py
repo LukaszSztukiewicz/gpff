@@ -22,7 +22,7 @@ __all__ = [
     "collect_angles",
     "collect_bonds",
     "collect_element_counts",
-    "numbers_from_element_counts",
+    "labels_of",
 ]
 
 
@@ -104,23 +104,50 @@ def calculate_js_divergence(
     return float(js_distance**2)
 
 
+# the version of the labels describe_bonds ("length") and describe_angles
+# ("angle") give, saved with every table: two versions label some bonds or
+# angles differently, so their tables cannot be compared. A table saved without
+# one is version 1. Angle labels 2 mark a small ring only for two bonds of one
+# and the same ring, not for two rings meeting at the central atom.
+LABELS_VERSION = {"length": 1, "angle": 2}
+
+
 def _collect(per_molecule: list[dict], labels: tuple[str, ...], value: str) -> dict[str, np.ndarray]:
     """Stack per-molecule label and value lists into one table, one entry per row.
 
     The table is a dict of equally long arrays: molecule (the molecule's
     position in the input list), one array per label column, and the measured
-    value. Invalid molecules contribute nothing.
+    value; invalid molecules contribute nothing. A label column holds each
+    row's index into <column>_labels, the column's distinct labels in sorted
+    order (labels_of reads both), which keeps a table of millions of rows small
+    and quick to group. labels_version is the LABELS_VERSION of the labels.
     """
-    counts = [len(record[value]) for record in per_molecule]
-    table = {"molecule": np.repeat(np.arange(len(per_molecule)), counts)}
+    counts = np.array([len(record[value]) for record in per_molecule], dtype=int)
+    table = {"molecule": np.repeat(np.arange(len(per_molecule), dtype=np.int32), counts)}
     for label in labels:
-        table[label] = np.array(
-            [entry for record in per_molecule for entry in record[label]], dtype=str
+        names, codes = np.unique(
+            np.array([entry for record in per_molecule for entry in record[label]], dtype=str),
+            return_inverse=True,
         )
+        table[label] = codes.reshape(-1).astype(np.int32)
+        table[f"{label}_labels"] = names
     table[value] = np.array(
         [entry for record in per_molecule for entry in record[value]], dtype=float
     )
+    table["labels_version"] = np.array(LABELS_VERSION[value])
     return table
+
+
+def labels_of(table: dict, column: str) -> tuple[np.ndarray, np.ndarray]:
+    """The distinct labels of a table's label column, and every row's index into them.
+
+    ``names[codes]`` are the rows' labels. Reads the coded columns _collect
+    writes as well as the strings of tables written before them.
+    """
+    if f"{column}_labels" in table:
+        return np.asarray(table[f"{column}_labels"]), np.asarray(table[column])
+    names, codes = np.unique(np.asarray(table[column], dtype=str), return_inverse=True)
+    return names, codes.reshape(-1)
 
 
 def collect_bonds(per_molecule_bonds: list[dict]) -> dict[str, np.ndarray]:
@@ -147,35 +174,24 @@ def collect_element_counts(per_molecule_numbers: list) -> dict[str, np.ndarray]:
     in each molecule. Unlike the bond table it has a row for every molecule,
     the invalid ones too.
     """
-    numbers = [np.asarray(molecule, dtype=int) for molecule in per_molecule_numbers]
-    present = sorted({int(z) for molecule in numbers for z in np.unique(molecule)})
-    return {
-        chemical_symbols[z]: np.array([int((molecule == z).sum()) for molecule in numbers])
-        for z in present
-    }
+    numbers = [np.asarray(molecule, dtype=int).reshape(-1) for molecule in per_molecule_numbers]
+    flat = np.concatenate(numbers) if numbers else np.zeros(0, dtype=int)
+    present, column = np.unique(flat, return_inverse=True)
+    molecule = np.repeat(np.arange(len(numbers)), np.array([len(m) for m in numbers], dtype=int))
+    counts = np.bincount(
+        molecule * len(present) + column.reshape(-1), minlength=len(numbers) * len(present)
+    ).reshape(len(numbers), len(present))
+    return {chemical_symbols[z]: counts[:, k] for k, z in enumerate(present.tolist())}
 
 
-def numbers_from_element_counts(table: dict) -> list[np.ndarray]:
-    """The atomic numbers of every molecule of an element count table.
-
-    The inverse of collect_element_counts, up to the order of the atoms, which
-    no composition metric depends on.
-    """
-    symbols = sorted(table, key=chemical_symbols.index)
-    if not symbols:
-        return []
-    numbers = np.array([chemical_symbols.index(symbol) for symbol in symbols])
-    counts = np.stack([np.asarray(table[symbol], dtype=int) for symbol in symbols], axis=1)
-    return [np.repeat(numbers, row) for row in counts]
-
-
-def _group_lengths(table: dict, by: str, value: str = "length") -> dict[str, np.ndarray]:
-    """The measured values of a table, grouped by one of its label columns."""
-    labels = np.asarray(table[by])
-    lengths = np.asarray(table[value], dtype=float)
-    order = np.argsort(labels, kind="stable")
-    unique, starts = np.unique(labels[order], return_index=True)
-    return dict(zip(unique.tolist(), np.split(lengths[order], starts[1:])))
+def _groups(table: dict, by: str, value: str) -> dict[str, np.ndarray]:
+    """The measured values of a table, grouped by the labels of one of its label columns."""
+    names, codes = labels_of(table, by)
+    values = np.asarray(table[value], dtype=float)
+    order = np.argsort(codes, kind="stable")
+    ends = np.cumsum(np.bincount(codes, minlength=len(names)))
+    parts = np.split(values[order], ends[:-1])
+    return {name: part for name, part in zip(names.tolist(), parts) if len(part)}
 
 
 def _iqr(values: np.ndarray) -> float:
@@ -216,9 +232,19 @@ def calculate_bond_length_w1(
           median_shift (observed minus reference, in Angstroms) and
           spread_ratio (observed over reference interquartile range);
           np.nan where not compared
+
+    Raises:
+        ValueError: if the two tables' labels are of different LABELS_VERSIONs.
     """
-    reference_groups = _group_lengths(reference, by, value)
-    observed_groups = _group_lengths(observed, by, value)
+    versions = {int(table.get("labels_version", 1)) for table in (reference, observed)}
+    if len(versions) > 1:
+        raise ValueError(
+            f"The reference and the observed {value} tables have labels of versions "
+            f"{sorted(versions)}: rebuild the older one with this code "
+            "(gpff_reference_assets or gpff_prepare_metadata)."
+        )
+    reference_groups = _groups(reference, by, value)
+    observed_groups = _groups(observed, by, value)
     n_reference_total = sum(len(lengths) for lengths in reference_groups.values())
     n_observed_total = sum(len(lengths) for lengths in observed_groups.values())
 

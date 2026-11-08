@@ -7,8 +7,10 @@ element_counts, elongation, ring_counts) and the results and breakdowns of
 gpff_calculate_metrics; what an evaluation lacks is left out of the figures,
 never filled in. The gallery also reads a few rows of the sample database.
 """
+import hashlib
 import json
 import re
+import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -136,6 +138,35 @@ def load_evaluation(evaluation_dir: Path) -> dict:
     return evaluation
 
 
+@lru_cache(maxsize=None)
+def _unchanged(path: str, md5: str) -> bool:
+    """Whether the file still has the md5 recorded for it; warns once if not."""
+    digest = hashlib.md5()
+    with open(path, "rb") as file:
+        for block in iter(lambda: file.read(1 << 20), b""):
+            digest.update(block)
+    if digest.hexdigest() == md5:
+        return True
+    print(f"WARNING: {path} changed since an evaluation used it; its figures leave it out.",
+          file=sys.stderr)
+    return False
+
+
+def _provenance_input(evaluation: dict, metric: str, argument: str):
+    """The file an evaluation recorded as `argument` of `metric` in its provenance.json.
+
+    None if it was not recorded, is gone, or no longer has the recorded md5.
+    """
+    entry = evaluation.get("provenance", {}).get("results", {}).get(metric, {})
+    entry = entry.get("inputs", {}).get(argument, {})
+    path = entry.get("path")
+    if not path or not Path(path).is_file():
+        return None
+    if "md5" in entry and not _unchanged(path, entry["md5"]):
+        return None
+    return Path(path)
+
+
 def reference_path(sets: dict, metric: str, argument: str):
     """The reference file `metric` was computed against, as provenance.json records it.
 
@@ -144,10 +175,9 @@ def reference_path(sets: dict, metric: str, argument: str):
     for data in sets.values():
         for evaluations in data.values():
             for evaluation in evaluations.values():
-                entry = evaluation.get("provenance", {}).get("results", {}).get(metric, {})
-                path = entry.get("inputs", {}).get(argument, {}).get("path")
-                if path and Path(path).exists():
-                    return Path(path)
+                path = _provenance_input(evaluation, metric, argument)
+                if path is not None:
+                    return path
     return None
 
 
@@ -530,15 +560,9 @@ COUNT_CAP = 3
 # formulas named in a panel of formula_scatter_figure
 SCATTER_LABELS = 3
 
-# the floor of a split depends on the reference only: {(files, n, symbols): floor}
+# the floor depends only on the test molecules a config's seeds were generated
+# from: {(reference files, samples per seed, symbols): floor}
 _FLOORS: dict = {}
-
-
-def _provenance_input(evaluation: dict, metric: str, argument: str):
-    """The existing file an evaluation recorded as `argument` of `metric`, or None."""
-    entry = evaluation.get("provenance", {}).get("results", {}).get(metric, {})
-    path = entry.get("inputs", {}).get(argument, {}).get("path")
-    return Path(path) if path and Path(path).exists() else None
 
 
 @lru_cache(maxsize=4)
@@ -638,7 +662,7 @@ def formula_stats(evaluations: dict):
     stats["unseen"] = float((~seen[gen_ids]).mean())
     stats["unseen_reference"] = float((~seen[test_ids]).mean())
 
-    key = (reference["key"], n, tuple(symbols))
+    key = (reference["key"], tuple(len(part) for part in tests), tuple(symbols))
     if key not in _FLOORS:
         _FLOORS[key] = (formula.oracle_floor(pool, test, FORMULA_DRAWS, FORMULA_SEED)
                         if len(pool) else None)

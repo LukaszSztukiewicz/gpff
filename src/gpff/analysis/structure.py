@@ -7,7 +7,6 @@ import signal
 from typing import Any, Dict
 
 import numpy as np
-import torch
 from ase import Atoms
 from ase.io import write
 from posebusters import PoseBusters
@@ -40,7 +39,7 @@ _HYBRIDIZATIONS = {
 
 # fork, so that a timed PoseBusters check costs no interpreter start-up and no
 # import of posebusters; it works whatever start method the caller's pool uses.
-# Python warns that forking a process with threads (torch is imported) can
+# Python warns that forking a process with threads (the caller has torch) can
 # deadlock the child, but a deadlocked child runs out of time like a slow one
 # and its molecule counts as invalid, so no job hangs on it.
 _FORK = multiprocessing.get_context("fork")
@@ -54,13 +53,32 @@ def _no_angles() -> Dict[str, list]:
     return {"angle_type": [], "environment": [], "angle": []}
 
 
-def _bond_order(atom: Chem.Atom) -> tuple:
-    """Sort key putting H last, then by element and hybridization."""
-    return (
-        atom.GetAtomicNum() == 1,
-        atom.GetAtomicNum(),
-        _HYBRIDIZATIONS.get(atom.GetHybridization(), ""),
-    )
+def _atom_labels(mol: Chem.Mol) -> tuple[list, list, list]:
+    """Per atom of a mol: its sort key, element symbol and hybridization name.
+
+    The key puts H last, then orders by atomic number and hybridization; the
+    name of a hybridization other than sp, sp2 and sp3 is RDKit's, lowercased.
+    """
+    keys, symbols, names = [], [], []
+    for atom in mol.GetAtoms():
+        number, hybridization = atom.GetAtomicNum(), atom.GetHybridization()
+        keys.append((number == 1, number, _HYBRIDIZATIONS.get(hybridization, "")))
+        symbols.append(atom.GetSymbol())
+        names.append(_HYBRIDIZATIONS.get(hybridization, str(hybridization).lower()))
+    return keys, symbols, names
+
+
+def _small_rings(mol: Chem.Mol) -> dict[int, list[set]]:
+    """For ring sizes 3 and 4, the rings of that size each bond lies in, by bond index."""
+    rings = {size: [set() for _ in range(mol.GetNumBonds())] for size in (3, 4)}
+    for k, ring in enumerate(mol.GetRingInfo().BondRings()):
+        for bond in ring if len(ring) in rings else ():
+            rings[len(ring)][bond].add(k)
+    return rings
+
+
+def _norms(vectors: np.ndarray) -> np.ndarray:
+    return np.sqrt((vectors * vectors).sum(axis=1))
 
 
 class _RDKitTimeout(Exception):
@@ -110,30 +128,26 @@ def describe_bonds(mol: Chem.Mol) -> Dict[str, list]:
         Dictionary of three equally long lists: bond_type, environment and
         length (in Angstroms), one entry per bond
     """
-    positions = mol.GetConformer().GetPositions()
+    keys, symbols, names = _atom_labels(mol)
+    labels = ["H" if key[0] else f"{symbol}({name})" for key, symbol, name in zip(keys, symbols, names)]
     bonds = _no_bonds()
+    pairs = []
     for bond in mol.GetBonds():
-        atoms = sorted((bond.GetBeginAtom(), bond.GetEndAtom()), key=_bond_order)
+        i, j = sorted((bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()), key=keys.__getitem__)
         symbol = _BOND_SYMBOLS.get(bond.GetBondType(), "~")
-        labels = []
-        for atom in atoms:
-            if atom.GetAtomicNum() == 1:
-                labels.append("H")
-            else:
-                hybridization = atom.GetHybridization()
-                name = _HYBRIDIZATIONS.get(hybridization, str(hybridization).lower())
-                labels.append(f"{atom.GetSymbol()}({name})")
-        environment = symbol.join(labels)
+        environment = f"{labels[i]}{symbol}{labels[j]}"
         # small rings strain their bonds; the smallest ring decides
         for ring_size in (3, 4):
             if bond.IsInRingSize(ring_size):
                 environment += f" r{ring_size}"
                 break
-
-        i, j = (atom.GetIdx() for atom in atoms)
-        bonds["bond_type"].append(symbol.join(atom.GetSymbol() for atom in atoms))
+        bonds["bond_type"].append(f"{symbols[i]}{symbol}{symbols[j]}")
         bonds["environment"].append(environment)
-        bonds["length"].append(float(np.linalg.norm(positions[i] - positions[j])))
+        pairs.append((i, j))
+    if pairs:
+        positions = mol.GetConformer().GetPositions()
+        i, j = np.array(pairs).T
+        bonds["length"] = _norms(positions[i] - positions[j]).tolist()
     return bonds
 
 
@@ -144,8 +158,10 @@ def describe_angles(mol: Chem.Mol) -> Dict[str, list]:
     elements with the bond symbols and the central atom in the middle (C-C=O,
     H-C-H). The environment adds the central atom's hybridization, which is what
     sets the angle it prefers (109.5, 120 or 180 degrees), and whether both
-    bonds lie in the same 3- or 4-membered ring, which forces it far below that.
-    The two arms are ordered as describe_bonds orders a bond's atoms.
+    bonds lie in one and the same 3- or 4-membered ring, which forces it far
+    below that; two bonds from two different small rings that share the
+    central atom (a fused or spiro junction) do not. The two arms are ordered as
+    describe_bonds orders a bond's atoms.
 
     Args:
         mol: RDKit molecule with bonds, a conformer and perceived hybridization
@@ -155,40 +171,38 @@ def describe_angles(mol: Chem.Mol) -> Dict[str, list]:
         Dictionary of three equally long lists: angle_type, environment and
         angle (in degrees), one entry per angle
     """
-    positions = mol.GetConformer().GetPositions()
+    keys, symbols, names = _atom_labels(mol)
+    rings = _small_rings(mol)
     angles = _no_angles()
+    triples = []
     for center in mol.GetAtoms():
+        c = center.GetIdx()
+        # (bond index, bond symbol, other atom), ordered by the other atom
         arms = sorted(
-            ((bond, bond.GetOtherAtom(center)) for bond in center.GetBonds()),
-            key=lambda arm: _bond_order(arm[1]),
+            ((bond.GetIdx(), _BOND_SYMBOLS.get(bond.GetBondType(), "~"), bond.GetOtherAtomIdx(c))
+             for bond in center.GetBonds()),
+            key=lambda arm: keys[arm[2]],
         )
-        hybridization = center.GetHybridization()
-        name = _HYBRIDIZATIONS.get(hybridization, str(hybridization).lower())
-        for (first, left), (second, right) in itertools.combinations(arms, 2):
-            symbols = [_BOND_SYMBOLS.get(bond.GetBondType(), "~") for bond in (first, second)]
+        middle = f"{symbols[c]}({names[c]})"
+        for (first, left_symbol, left), (second, right_symbol, right) in itertools.combinations(arms, 2):
             # the arms read outwards from the central atom, left one first
-            angle_type = (
-                f"{left.GetSymbol()}{symbols[0]}{center.GetSymbol()}"
-                f"{symbols[1]}{right.GetSymbol()}"
+            angles["angle_type"].append(
+                f"{symbols[left]}{left_symbol}{symbols[c]}{right_symbol}{symbols[right]}"
             )
-            environment = (
-                f"{left.GetSymbol()}{symbols[0]}{center.GetSymbol()}({name})"
-                f"{symbols[1]}{right.GetSymbol()}"
-            )
+            environment = f"{symbols[left]}{left_symbol}{middle}{right_symbol}{symbols[right]}"
             # an angle inside a small ring is the ring's, not the hybridization's
-            for ring_size in (3, 4):
-                if first.IsInRingSize(ring_size) and second.IsInRingSize(ring_size):
+            for ring_size, bond_rings in rings.items():
+                if bond_rings[first] & bond_rings[second]:
                     environment += f" r{ring_size}"
                     break
-
-            left_arm = positions[left.GetIdx()] - positions[center.GetIdx()]
-            right_arm = positions[right.GetIdx()] - positions[center.GetIdx()]
-            cosine = np.dot(left_arm, right_arm) / (
-                np.linalg.norm(left_arm) * np.linalg.norm(right_arm)
-            )
-            angles["angle_type"].append(angle_type)
             angles["environment"].append(environment)
-            angles["angle"].append(float(np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0)))))
+            triples.append((left, c, right))
+    if triples:
+        positions = mol.GetConformer().GetPositions()
+        left, c, right = np.array(triples).T
+        left_arm, right_arm = positions[left] - positions[c], positions[right] - positions[c]
+        cosine = (left_arm * right_arm).sum(axis=1) / (_norms(left_arm) * _norms(right_arm))
+        angles["angle"] = np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0))).tolist()
     return angles
 
 
@@ -276,9 +290,8 @@ def _analyze_with_rdkit(
             )
             failure = "error"
             n_fragments = len(Chem.GetMolFrags(mol))
-            # before the hydrogens go, so the X-H bonds and angles are described too
-            bonds = describe_bonds(mol)
-            angles = describe_angles(mol)
+            # the bonds and angles are described with the hydrogens, X-H included
+            mol_with_hs = mol
             if remove_hs:
                 mol = Chem.RemoveHs(mol)
 
@@ -299,34 +312,30 @@ def _analyze_with_rdkit(
                 canonical_smiles = Chem.CanonSmiles(smiles)
             # Determine validity
             # invalid if smiles could be found and no fragments exist
-            if canonical_smiles != "" and "." not in canonical_smiles:
-                valid = True
-            else:
-                valid = False
-            if valid:
-                failure = "valid"
-            elif radical_found:
-                failure = "radical"
-            elif "." in canonical_smiles:
-                failure = "fragments"
+            valid = canonical_smiles != "" and "." not in canonical_smiles
 
-            # get other statistics
+            # get other statistics; an error in them leaves failure at "error"
             if valid:
+                # before GetSymmSSSR, which can set the ring info anew
+                bonds = describe_bonds(mol_with_hs)
+                angles = describe_angles(mol_with_hs)
+
                 # get ring counts
-                sssr = Chem.GetSymmSSSR(mol)
-                rings = [len(sssr[i]) for i in range(len(sssr))]
-                n_rings = torch.bincount(
-                    torch.tensor(rings, dtype=torch.int), minlength=7
-                )
-                ring_counts = np.array([n_rings[3], n_rings[4], n_rings[5], n_rings[6]])
+                rings = [len(ring) for ring in Chem.GetSymmSSSR(mol)]
+                ring_counts = np.bincount(np.array(rings, dtype=int), minlength=7)[3:7]
 
                 # get elongation
                 elongation = compute_elongation(atoms)
+                failure = "valid"
             else:
                 ring_counts = np.array([np.nan, np.nan, np.nan, np.nan])
                 elongation = np.nan
                 bonds = _no_bonds()
                 angles = _no_angles()
+                if radical_found:
+                    failure = "radical"
+                elif "." in canonical_smiles:
+                    failure = "fragments"
 
         return {
             "rdkit_valid": valid,

@@ -7,7 +7,6 @@ from gpff.analysis import (
     FAILURES,
     analyze_with_rdkit,
     collect_element_counts,
-    numbers_from_element_counts,
 )
 from gpff.analysis import structure as structure_module
 from gpff.cli.calculate_metrics import load_metadata
@@ -89,9 +88,18 @@ def test_element_counts_have_a_row_per_molecule_and_a_column_per_element():
     assert table["H"].tolist() == [2, 0, 1]
     assert table["C"].tolist() == [1, 1, 0]
     assert table["O"].tolist() == [0, 1, 0]
-    assert [sorted(m.tolist()) for m in numbers_from_element_counts(table)] == [
-        [1, 1, 6], [6, 8], [1]
-    ]
+    assert collect_element_counts([]) == {}
+    assert collect_element_counts([[], [6]])["C"].tolist() == [0, 1]
+
+
+def test_an_error_after_the_validity_check_is_an_error(monkeypatch):
+    def fail(*args, **kwargs):
+        raise RuntimeError("elongation failed")
+
+    monkeypatch.setattr(structure_module, "compute_elongation", fail)
+    analysis = analyze_with_rdkit(molecule("CH3CH2OH"))
+
+    assert not analysis["rdkit_valid"] and analysis["failure"] == "error"
 
 
 def test_the_rdkit_pass_writes_failure_fragments_and_element_counts(tmp_path):

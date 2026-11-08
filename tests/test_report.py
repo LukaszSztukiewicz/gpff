@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 
@@ -10,9 +11,8 @@ from gpff.analysis import (
     calculate_bond_length_w1,
     collect_element_counts,
     composition_metrics,
-    numbers_from_element_counts,
 )
-from gpff.analysis import report
+from gpff.analysis import formula, report
 from gpff.cli import report as report_cli
 
 N_SAMPLES = 200
@@ -125,12 +125,16 @@ def test_a_run_keeps_one_color_and_its_sets_differ_in_style():
 def test_the_reference_path_comes_from_the_provenance(tmp_path):
     reference = tmp_path / "elongation.npy"
     np.save(reference, np.arange(3.0))
-    entry = {"inputs": {"reference_elongation_path": {"path": str(reference), "md5": "x"}}}
+    entry = {"inputs": {"reference_elongation_path": recorded(reference)}}
     sets = {"a": {"dd16": {"seed1": {"provenance": {"results": {"elongation_w1": entry}}}}},
             "b": {"dd16": {"seed1": {}}}}
 
     assert report.reference_path(sets, "elongation_w1", "reference_elongation_path") == reference
     assert report.reference_path(sets, "bond_length_w1", "reference_bond_lengths_path") is None
+
+    # a file rebuilt since the evaluation used it is not that evaluation's reference
+    entry["inputs"]["reference_elongation_path"]["md5"] = "0" * 32
+    assert report.reference_path(sets, "elongation_w1", "reference_elongation_path") is None
 
 
 def test_the_gallery_draws_every_cause_from_the_samples_database(tmp_path):
@@ -203,6 +207,11 @@ def test_vun_has_a_wilson_interval_over_the_pooled_samples():
     assert report_cli._share_of_samples({"seed1": {"results": {}}}, "vun") == "-"
 
 
+def recorded(path) -> dict:
+    """A provenance.json input entry of a file, as record_provenance writes it."""
+    return {"path": str(path), "md5": hashlib.md5(path.read_bytes()).hexdigest()}
+
+
 def toy_reference(tmp_path, n=600, seed=0) -> dict:
     """The element counts of toy molecules, every one with a possible formula, and a split."""
     rng = np.random.default_rng(seed)
@@ -227,8 +236,8 @@ def write_formulas(evaluation, reference: dict, copy: bool, seed: int) -> None:
         rows = np.random.default_rng(seed).integers(0, reference["n"], N_SAMPLES)
     table = {symbol: counts[rows] for symbol, counts in reference["table"].items()}
     np.savez(evaluation / "metadata" / "element_counts.npz", **table)
-    inputs = {"reference_element_counts_path": {"path": str(reference["counts_path"]), "md5": "x"},
-              "split_path": {"path": str(reference["split_path"]), "md5": "x"}}
+    inputs = {"reference_element_counts_path": recorded(reference["counts_path"]),
+              "split_path": recorded(reference["split_path"])}
     (evaluation / "provenance.json").write_text(
         json.dumps({"results": {"element_tv": {"inputs": inputs}}})
     )
@@ -268,14 +277,10 @@ def test_the_element_distance_is_that_of_the_composition_metrics(tmp_path):
 
     stats = report.formula_stats(evaluations)
 
-    generated = numbers_from_element_counts(evaluations["seed42069"]["element_counts"])
-    test = numbers_from_element_counts(
-        {symbol: counts[reference["test_idx"][:N_SAMPLES]]
-         for symbol, counts in reference["table"].items()}
-    )
-    expected = composition_metrics(
-        generated, np.array([len(m) for m in generated]), test, np.array([len(m) for m in test])
-    )
+    symbols = stats["symbols"]
+    generated = formula.count_matrix(evaluations["seed42069"]["element_counts"], symbols)
+    test = formula.count_matrix(reference["table"], symbols)[reference["test_idx"][:N_SAMPLES]]
+    expected = composition_metrics(generated, symbols, test)
     assert stats["element"]["tv"] == pytest.approx(expected["element_tv"])
     assert stats["distances"]["tv"] > stats["element"]["tv"]
 

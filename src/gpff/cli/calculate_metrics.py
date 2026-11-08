@@ -94,8 +94,8 @@ from gpff.analysis import (
     check_novelty,
     check_uniqueness,
     composition_metrics,
-    numbers_from_element_counts,
 )
+from gpff.analysis import formula
 from gpff.cli import record_provenance
 
 # splits a sampled molecule has to be absent from to count as novel: the model
@@ -304,39 +304,33 @@ def build_reference_smiles(
     return known
 
 
-def load_test_compositions(element_counts_path, split_path) -> list[np.ndarray]:
-    """The atomic numbers of the split's test molecules, in test order.
+def load_test_counts(element_counts_path, split_path) -> dict[str, np.ndarray]:
+    """The element count table of the split's test molecules, in test order.
 
-    gpff_generate samples row i from test molecule i, so the first n of them
-    are the compositions n samples were generated from.
+    gpff_generate samples row i from test molecule i, so its first n rows are
+    the compositions n samples were generated from.
     """
-    numbers = numbers_from_element_counts(load_bond_table(element_counts_path))
+    table = load_bond_table(element_counts_path)
     test_idx = load_split_indices(split_path, splits=("test",))
-    return [numbers[index] for index in test_idx]
+    return {symbol: counts[test_idx] for symbol, counts in table.items()}
 
 
-def _composition(arrays: dict, test_compositions: list[np.ndarray]) -> dict:
+def _composition(arrays: dict, test_counts: dict) -> dict:
     """composition_metrics of all samples against the test molecules they came from."""
-    numbers = numbers_from_element_counts(arrays["element_counts"])
-    reference = test_compositions[: len(numbers)]
+    samples = arrays["element_counts"]
     # every element of either set, so one only the model produces is reported too
-    elements = sorted({int(z) for molecule in numbers + reference for z in np.unique(molecule)})
-    metrics = composition_metrics(
-        numbers,
-        np.array([len(molecule) for molecule in numbers], dtype=int),
-        reference,
-        np.array([len(molecule) for molecule in reference], dtype=int),
-        elements=elements,
-    )
-    # n_molecules is in the results already
-    metrics.pop("n_molecules")
-    return metrics
+    symbols = formula.symbols_of(samples, test_counts)
+    counts = formula.count_matrix(samples, symbols)
+    reference = formula.count_matrix(test_counts, symbols)[: len(counts)]
+    return composition_metrics(counts, symbols, reference)
 
 
-def _table_w1(metric: str, reference_tables: dict, arrays: dict) -> dict:
-    """calculate_bond_length_w1 of one TABLE_METRICS metric, per label."""
-    array, _, value = TABLE_METRICS[metric]
-    return calculate_bond_length_w1(reference_tables[metric], arrays[array], value=value)
+def _rows(values) -> int | None:
+    """The rows of a per-sample array or element count table; None for a measurement
+    table, which has one row per bond or angle."""
+    if isinstance(values, dict):
+        return None if "molecule" in values or not values else len(next(iter(values.values())))
+    return len(values)
 
 
 def compute_metrics(
@@ -346,7 +340,8 @@ def compute_metrics(
     reference_smiles,
     progress=False,
     reference_tables=None,
-    test_compositions=None,
+    test_counts=None,
+    breakdowns=None,
 ) -> dict:
     """Reduce the per-sample arrays to one value per metric, in order.
 
@@ -356,10 +351,11 @@ def compute_metrics(
     similarity, the distribution distances and the TABLE_METRICS over the valid
     ones only. A metric with no valid molecules to reduce is np.nan; n_molecules
     is always reported. failures and composition report several values each,
-    under their own names.
+    under their own names. `test_counts` is the composition reference (see
+    load_test_counts), and a TABLE_METRICS metric's per-label breakdown goes
+    into the `breakdowns` dict, if one is given.
     """
-    # a measurement table (a dict) has one row per bond or angle, not per sample
-    lengths = {len(values) for values in arrays.values() if not isinstance(values, dict)}
+    lengths = {n for values in arrays.values() if (n := _rows(values)) is not None}
     if len(lengths) != 1:
         raise ValueError("The per-sample arrays differ in length.")
 
@@ -376,14 +372,18 @@ def compute_metrics(
                 results[f"failure_{cause}"] = float((arrays["failure"] == cause).mean())
             continue
         if name == "composition":
-            results.update(_composition(arrays, test_compositions))
+            results.update(_composition(arrays, test_counts))
             continue
         if name == "posebusters_validity":
             results[name] = float(arrays["posebusters_valid"].mean())
             continue
         if name in TABLE_METRICS:
             # the tables only hold the valid molecules' rows
-            results[name] = _table_w1(name, reference_tables, arrays)["w1"]
+            array, _, value = TABLE_METRICS[name]
+            breakdown = calculate_bond_length_w1(reference_tables[name], arrays[array], value=value)
+            results[name] = breakdown["w1"]
+            if breakdowns is not None:
+                breakdowns[name] = breakdown
             continue
 
         valid = arrays["rdkit_valid"]
@@ -551,11 +551,12 @@ def main() -> int:
         for name, (_, argument, _) in TABLE_METRICS.items()
         if name in metrics
     }
-    test_compositions = (
-        load_test_compositions(args.reference_element_counts_path, args.split_path)
+    test_counts = (
+        load_test_counts(args.reference_element_counts_path, args.split_path)
         if "composition" in metrics
         else None
     )
+    breakdowns: dict = {}
     try:
         values = compute_metrics(
             arrays,
@@ -564,7 +565,8 @@ def main() -> int:
             reference_smiles,
             progress=verbose,
             reference_tables=reference_tables,
-            test_compositions=test_compositions,
+            test_counts=test_counts,
+            breakdowns=breakdowns,
         )
     except KeyError as missing_array:
         print(
@@ -573,13 +575,15 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+    except ValueError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
     merge_results(results_path, values)
     record_provenance(
         evaluation_dir, "results", values, {name: getattr(args, name) for name in path_args}
     )
-    for name in reference_tables:
+    for name, breakdown in breakdowns.items():
         breakdown_path = evaluation_dir / f"{name}.json"
-        breakdown = _table_w1(name, reference_tables, arrays)
         breakdown_path.write_text(json.dumps(breakdown, indent=2) + "\n")
         print(f"Breakdown    : {breakdown_path}")
 

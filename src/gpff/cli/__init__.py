@@ -56,9 +56,9 @@ def record_provenance(evaluation_dir, section: str, names, inputs=None) -> None:
     section), replaced whenever it is computed again, so a results.json that
     several code versions wrote into can still be told apart name by name. An
     entry holds the path of the gpff package that ran (on the cluster, the
-    frozen_code snapshot), the RDKit and PoseBusters versions, the path and md5
-    of every input file given (`inputs`: argument name -> path or None), and the
-    time.
+    frozen_code snapshot), the RDKit and PoseBusters versions, the absolute path
+    and md5 of every input file given (`inputs`: argument name -> path or None),
+    and the time.
     """
     path = Path(evaluation_dir) / "provenance.json"
     provenance = json.loads(path.read_text()) if path.exists() else {}
@@ -67,7 +67,7 @@ def record_provenance(evaluation_dir, section: str, names, inputs=None) -> None:
         "rdkit": _version("rdkit"),
         "posebusters": _version("posebusters"),
         "inputs": {
-            name: {"path": str(input_path), "md5": _md5(input_path)}
+            name: {"path": str(Path(input_path).resolve()), "md5": _md5(input_path)}
             for name, input_path in (inputs or {}).items()
             if input_path is not None
         },

@@ -12,6 +12,7 @@ from gpff.analysis import (
     calculate_bond_length_w1,
     collect_angles,
     collect_bonds,
+    labels_of,
 )
 from gpff.cli.calculate_metrics import compute_metrics
 
@@ -81,7 +82,32 @@ def test_collect_bonds_keeps_molecule_index():
     table = collect_bonds([one_bond, no_bonds, one_bond])
 
     np.testing.assert_array_equal(table["molecule"], [0, 2])
-    np.testing.assert_array_equal(table["environment"], ["C(sp3)-H", "C(sp3)-H"])
+    names, codes = labels_of(table, "environment")
+    np.testing.assert_array_equal(names[codes], ["C(sp3)-H", "C(sp3)-H"])
+    assert collect_bonds([])["length"].shape == (0,)
+
+
+def test_a_coded_table_measures_what_its_strings_do(tmp_path):
+    # the strings are how tables were saved before the labels were coded
+    molecules = [analyze_with_rdkit(embedded_atoms(s))["bonds"] for s in ("CC=O", "C1CC1C#N")]
+    coded = collect_bonds(molecules)
+    strings = {key: value for key, value in coded.items()
+               if not key.endswith("_labels") and key != "labels_version"}
+    for column in ("bond_type", "environment"):
+        names, codes = labels_of(coded, column)
+        strings[column] = names[codes]
+    np.savez(tmp_path / "coded.npz", **coded)
+    with np.load(tmp_path / "coded.npz") as saved:
+        loaded = dict(saved)
+
+    assert calculate_bond_length_w1(strings, loaded, min_count=1)["w1"] == 0.0
+    shifted = dict(loaded, length=loaded["length"] + 0.01)
+    by_strings, by_codes = (calculate_bond_length_w1(reference, shifted, min_count=1)
+                            for reference in (strings, loaded))
+    assert {label: row["w1"] for label, row in by_strings["labels"].items()} == {
+        label: row["w1"] for label, row in by_codes["labels"].items()
+    }
+    assert by_codes["w1"] == pytest.approx(0.01)
 
 
 def test_w1_of_a_shift_is_the_shift():
@@ -222,7 +248,29 @@ def test_collect_angles_keeps_molecule_index():
     table = collect_angles([one_angle, no_angles, one_angle])
 
     np.testing.assert_array_equal(table["molecule"], [0, 2])
-    np.testing.assert_array_equal(table["environment"], ["H-C(sp3)-H", "H-C(sp3)-H"])
+    names, codes = labels_of(table, "environment")
+    np.testing.assert_array_equal(names[codes], ["H-C(sp3)-H", "H-C(sp3)-H"])
+
+
+def test_two_small_rings_meeting_at_an_atom_do_not_make_a_ring_angle():
+    # bicyclo[1.1.0]butane: at each bridgehead, the CH2 of one ring and the CH2
+    # of the other are some 100 degrees apart, inside no ring
+    angles = analyze_with_rdkit(embedded_atoms("C1C2C1C2"))["angles"]
+
+    ring = [a for e, a in zip(angles["environment"], angles["angle"]) if e == "C-C(sp3)-C r3"]
+    across = [a for e, a in zip(angles["environment"], angles["angle"]) if e == "C-C(sp3)-C"]
+    assert len(ring) == 6 and max(ring) < 70
+    assert len(across) == 2 and min(across) > 85
+
+
+def test_tables_of_two_label_versions_are_not_compared():
+    angles = [analyze_with_rdkit(embedded_atoms("C1CC1C#N"))["angles"]]
+    new = collect_angles(angles)
+    old = dict(new, labels_version=np.array(1))
+
+    assert calculate_angle_w1(new, new, min_count=1)["w1"] == 0.0
+    with pytest.raises(ValueError, match="versions"):
+        calculate_angle_w1(old, new, min_count=1)
 
 
 def test_angle_w1_of_a_shift_is_the_shift_in_degrees():
