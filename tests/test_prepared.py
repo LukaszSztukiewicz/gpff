@@ -5,7 +5,7 @@ from ase.db import connect
 from schnetpack import properties
 from schnetpack.data import AtomsDataModuleError
 
-from gpff.data.datasets import PreparedAtomsData
+from gpff.data.datasets import PreparedAtomsData, database_n_atoms
 
 # GEOM-Drugs rows are conformers of molecules of very different sizes
 SIZES = [3, 5, 8, 12, 4, 9, 6, 15]
@@ -60,6 +60,20 @@ def test_max_n_atoms_filters_every_split(database, cache_in_memory):
     assert sizes(module.train_dataset) == [3, 5, 8]
     assert sizes(module.val_dataset) == [4, 9]
     assert sizes(module.test_dataset) == [6]
+
+
+def test_the_sizes_are_read_from_the_database_by_dataset_index(database):
+    path, _ = database
+    module = make(database)
+    assert database_n_atoms(path).tolist() == sizes(module.dataset) == SIZES
+
+
+def test_row_ids_with_a_gap_are_an_error(database):
+    path, _ = database
+    with connect(path) as db:
+        db.delete([2])  # dataset index 1 would read row 2, which is gone
+    with pytest.raises(AtomsDataModuleError, match="row ids"):
+        database_n_atoms(path)
 
 
 def test_a_missing_database_is_an_error_and_is_not_built(tmp_path):

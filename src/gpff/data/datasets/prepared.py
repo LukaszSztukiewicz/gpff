@@ -1,11 +1,11 @@
 import logging
 import os
-import pickle
+import sqlite3
+from contextlib import closing
+from pathlib import Path
 from typing import Optional
 
-from tqdm import tqdm
-
-from schnetpack import properties
+import numpy as np
 from schnetpack.data import (
     AtomsDataFormat,
     AtomsDataModule,
@@ -16,26 +16,40 @@ from schnetpack.data import (
 
 from gpff.data.datasets.memory import InMemoryASEAtomsData
 
-__all__ = ["PreparedAtomsData"]
+__all__ = ["PreparedAtomsData", "database_n_atoms"]
 
 log = logging.getLogger(__name__)
+
+
+def database_n_atoms(datapath) -> np.ndarray:
+    """The number of atoms of every row of an ASE database, by dataset index.
+
+    Read in one statement from the ``natoms`` column that ASE keeps for its queries,
+    instead of from the rows themselves. A dataset index is the row id minus one
+    (``ASEAtomsData`` reads index i from row i + 1), so the ids must be 1..n.
+    """
+    uri = Path(datapath).resolve().as_uri() + "?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True)) as connection:
+        rows = connection.execute("SELECT id, natoms FROM systems ORDER BY id").fetchall()
+    ids, n_atoms = np.array(rows, dtype=np.int64).reshape(-1, 2).T
+    if not np.array_equal(ids, np.arange(1, len(ids) + 1)):
+        raise AtomsDataModuleError(f"The row ids of {datapath} are not 1..{len(ids)}.")
+    return n_atoms
 
 
 class PreparedAtomsData(AtomsDataModule):
     """
     Data module for an ASE database that already exists, e.g. one written by
-    ``gpff_prepare_dataset``. It never downloads or builds a database: a missing
-    ``datapath`` is an error. Also allows to only load molecules with a specified
-    number of atoms, or with at most a number of atoms.
+    ``gpff_prepare_geom_revisited``. It never downloads or builds a database: a missing
+    ``datapath`` is an error. It can keep only the molecules with at most a number of
+    atoms.
     """
 
     def __init__(
         self,
         datapath: str,
         batch_size: int,
-        n_atoms_allowed: Optional[int] = None,
         max_n_atoms: Optional[int] = None,
-        indices_path: str = "n_atoms_indices.pkl",
         cache_in_memory: bool = False,
         persistent_workers: bool = False,
         format: Optional[AtomsDataFormat] = AtomsDataFormat.ASE,
@@ -45,21 +59,16 @@ class PreparedAtomsData(AtomsDataModule):
         Args:
             datapath: path to the ASE database.
             batch_size: batch size.
-            n_atoms_allowed: the exact number of atoms in each molecule.
             max_n_atoms: keep only the molecules with at most this many atoms, in
                           every split (e.g. a size curriculum); the split file
                           is filtered, not replaced.
-            indices_path: path to pickle file containing indices of molecules
-                          with specific number of atoms.
             cache_in_memory: read the database into memory once in setup and
                           serve samples from there instead of from the database.
             persistent_workers: keep the DataLoader workers alive between epochs.
             format: format of the database.
         """
         super().__init__(datapath=datapath, batch_size=batch_size, format=format, **kwargs)
-        self.n_atoms_allowed = n_atoms_allowed
         self.max_n_atoms = max_n_atoms
-        self.indices_path = indices_path
         self.cache_in_memory = cache_in_memory
         self.persistent_workers = persistent_workers
 
@@ -67,13 +76,13 @@ class PreparedAtomsData(AtomsDataModule):
         if not os.path.exists(self.datapath):
             raise AtomsDataModuleError(
                 f"There is no database at {self.datapath}; build it first, "
-                "e.g. with gpff_prepare_dataset."
+                "e.g. with gpff_prepare_geom_revisited."
             )
 
     def setup(self, stage: Optional[str] = None):
         """
-        Overwrites the ``setup`` method to load molecules with given number of atoms.
-        Copied from MoreRed.
+        Overwrites the ``setup`` method to optionally serve the database from
+        memory and to keep only the molecules with at most ``max_n_atoms`` atoms.
         """
         if self.data_workdir is None:
             datapath = self.datapath
@@ -99,50 +108,20 @@ class PreparedAtomsData(AtomsDataModule):
                     load_properties=self.load_properties,
                 )
 
-            # use only molecules with specific number of atoms
-            if self.n_atoms_allowed is not None and self.n_atoms_allowed > 0:
-                # load indices
-                if os.path.exists(self.indices_path):
-                    with open(self.indices_path, "rb") as file:
-                        indices = pickle.load(file)
-                else:
-                    indices = {}
-
-                # get indices of molecules with specific number of atoms
-                if self.n_atoms_allowed in indices.keys():
-                    indices = indices[self.n_atoms_allowed]
-                else:
-                    tmp = []
-                    for i in tqdm(range(len(self.dataset)), f"getting molecules with {self.n_atoms_allowed} atoms"):
-                        if self.dataset[i][properties.n_atoms] == self.n_atoms_allowed:  # type: ignore
-                            tmp.append(i)
-                    indices[self.n_atoms_allowed] = tmp
-
-                    # persist indices
-                    with open(self.indices_path, "wb") as file:
-                        pickle.dump(indices, file)
-                    indices = indices[self.n_atoms_allowed]
-
-            # get all indices (with any number of atoms)
-            else:
-                indices = list(range(len(self.dataset)))
-
-            # subset dataset
-            self.dataset = self.dataset.subset(indices)
-
             # load and generate partitions if needed
             if self.train_idx is None:
                 self._load_partitions()
 
             # use only molecules with at most max_n_atoms atoms, in every split
             if self.max_n_atoms is not None:
-                n_atoms = [
-                    int(sample[properties.n_atoms])
-                    for sample in self.dataset.iter_properties(load_properties=[])
-                ]
-                self.train_idx, self.val_idx, self.test_idx = (
-                    [i for i in idx if n_atoms[i] <= self.max_n_atoms]
-                    for idx in (self.train_idx, self.val_idx, self.test_idx)
+                n_atoms = database_n_atoms(datapath)
+
+                def small(idx):
+                    idx = np.asarray(idx, dtype=np.int64)
+                    return idx[n_atoms[idx] <= self.max_n_atoms].tolist()
+
+                self.train_idx, self.val_idx, self.test_idx = map(
+                    small, (self.train_idx, self.val_idx, self.test_idx)
                 )
                 log.info(
                     f"Keeping the molecules with at most {self.max_n_atoms} atoms: "
