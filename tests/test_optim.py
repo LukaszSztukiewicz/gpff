@@ -400,19 +400,24 @@ def test_block_scope_needs_blocks_and_a_known_name():
         block_param_groups(layer.parameters(), layer, "scalar")
 
 
-def task(**kwargs):
+def potential(trunk_weight_norm=False, head_weight_norm=False):
     representation = PaiNN(
         n_atom_basis=8,
         n_interactions=2,
         radial_basis=GaussianRBF(n_rbf=6, cutoff=5.0),
         cutoff_fn=CosineCutoff(5.0),
         return_vector_representation=True,
+        weight_norm=trunk_weight_norm,
     )
-    model = NeuralNetworkPotential(
+    return NeuralNetworkPotential(
         representation=representation,
         input_modules=[PairwiseDistances()],
-        output_modules=[GatedEquivariant(n_in=8, n_layers=2)],
+        output_modules=[GatedEquivariant(n_in=8, n_layers=2, weight_norm=head_weight_norm)],
     )
+
+
+def task(model=None, **kwargs):
+    model = potential() if model is None else model
     return AtomisticTask(model=model, outputs=[], optimizer_args={"lr": 1e-3}, **kwargs)
 
 
@@ -425,6 +430,25 @@ def test_task_builds_the_optimizer_from_the_block_groups():
     assert [group["block"] for group in optimizer.param_groups] == [True, False]
     assert len(optimizer.param_groups[0]["params"]) == 2 + 2  # mu_channel_mix of 2 interactions, mix_vectors of 2 head blocks
     assert ids(p for group in optimizer.param_groups for p in group["params"]) == ids(blocked.parameters())
+
+
+# the trunk alone would leave the head's matrices in the block group, the head alone the trunk's
+@pytest.mark.parametrize("trunk, head", [(True, True), (True, False), (False, True)])
+@pytest.mark.parametrize("scope", ["all", "vector"])
+def test_block_scope_refuses_weight_norm(trunk, head, scope):
+    model = potential(trunk_weight_norm=trunk, head_weight_norm=head)
+    message = "weight_norm=true cannot be combined with task/optimizer=block_adam"
+
+    with pytest.raises(ValueError, match=message):
+        block_param_groups(model.parameters(), model, scope)
+    with pytest.raises(ValueError, match=message):
+        task(model=model, optimizer_cls=BlockAdamW, block_scope=scope)
+
+
+def test_weight_norm_without_block_scope_keeps_its_optimizer():
+    plain = task(model=potential(trunk_weight_norm=True, head_weight_norm=True), optimizer_cls=torch.optim.AdamW)
+
+    assert len(plain.configure_optimizers().param_groups) == 1
 
 
 def test_task_without_block_scope_keeps_its_optimizer():

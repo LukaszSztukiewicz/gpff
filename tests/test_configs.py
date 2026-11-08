@@ -5,6 +5,7 @@ import hydra
 import pytest
 import torch
 from hydra import compose, initialize_config_dir
+from hydra.errors import InstantiationException
 from schnetpack import properties
 from schnetpack.utils import str2class
 
@@ -40,6 +41,22 @@ def test_experiment_builds(experiment):
         scheduler_cls=str2class(config.task.scheduler_cls) if config.task.scheduler_cls else None,
     )
     hydra.utils.instantiate(config.data, train_sampler_cls=None)
+
+
+def test_block_adam_refuses_weight_norm_when_the_task_is_built():
+    with initialize_config_dir(config_dir=str(CONFIG_DIR)):
+        config = compose(
+            "train",
+            overrides=["experiment=gpff_stable", "task/optimizer=block_adam", "run.path=/runs", "run.data_dir=/data"],
+        )
+    assert config.globals.weight_norm
+
+    model = hydra.utils.instantiate(config.model)
+    # hydra wraps the ValueError of the task in an InstantiationException that quotes it
+    with pytest.raises((ValueError, InstantiationException), match="weight_norm=true cannot be combined"):
+        hydra.utils.instantiate(
+            config.task, model=model, optimizer_cls=str2class(config.task.optimizer_cls), scheduler_cls=None
+        )
 
 
 @pytest.mark.parametrize("experiment", ["dm_no_t", "dm_t_aware"])

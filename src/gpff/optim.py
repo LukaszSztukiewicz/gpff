@@ -21,7 +21,9 @@ from schnetpack.representation.painn import PaiNNInteraction, PaiNNMixing
 from torch import Tensor, nn
 from torch.optim import Optimizer
 
-__all__ = ["BlockAdamW", "block_param_groups"]
+from gpff.nn.normalized import NormalizedDense
+
+__all__ = ["BlockAdamW", "block_param_groups", "refuse_weight_norm"]
 
 # the equivariant blocks, with the name of their layer acting on vector features (None: no such layer)
 _BLOCKS = {PaiNNInteraction: None, PaiNNMixing: "mu_channel_mix", GatedEquivariantBlock: "mix_vectors"}
@@ -413,6 +415,29 @@ class BlockAdamW(Optimizer):
         return update
 
 
+def refuse_weight_norm(model: nn.Module) -> None:
+    """Raise if the equivariant blocks of ``model`` have weight-normalized layers (``weight_norm=true``).
+
+    Weight normalization already sets the update size of these matrices: it re-projects every one of them
+    after each optimizer step. Its layers are also no ``nn.Linear``, so ``block_param_groups`` would leave
+    them out of the block group without notice, or find no block matrix at all.
+    """
+    normalized = [
+        f"{block_name}.{name}"
+        for block_name, block in model.named_modules()
+        if isinstance(block, tuple(_BLOCKS))
+        for name, layer in block.named_modules()
+        if isinstance(layer, NormalizedDense)
+    ]
+    if normalized:
+        more = f" and {len(normalized) - 3} more" if len(normalized) > 3 else ""
+        raise ValueError(
+            "weight_norm=true cannot be combined with task/optimizer=block_adam (task.block_scope): both set the "
+            "update size of the weight matrices of the equivariant blocks. Use one of them, e.g. "
+            f"globals.weight_norm=false. Weight-normalized block layers: {', '.join(normalized[:3])}{more}"
+        )
+
+
 def block_param_groups(
     params: Iterable[Tensor], model: nn.Module, scope: str = "all", slices: bool = False
 ) -> List[dict]:
@@ -431,6 +456,7 @@ def block_param_groups(
     """
     if scope not in ("all", "vector"):
         raise ValueError(f"unknown block scope {scope!r}")
+    refuse_weight_norm(model)
     roles = {}  # id of a block matrix -> number of roles of its layer
     for module in model.modules():
         for block_cls, vector_layer in _BLOCKS.items():
