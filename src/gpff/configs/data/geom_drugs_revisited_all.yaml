@@ -1,24 +1,7 @@
 defaults:
-  - custom
+  - geom_drugs_revisited_top5
 
-_target_: gpff.data.datasets.PreparedAtomsData
-
-# GEOM-Drugs, MiDi split, cleaned as in GEOM-Drugs Revisited, all conformers
-# (up to 30 per molecule): for dataset folders built by `gpff_prepare_geom_revisited`
-# (data/geom_drugs/<id>, protocol geom_drugs_revisited in its manifest.json), and
-# only for them. The conformers are the rows listed in split_all.npz; the folder
-# has no split.npz, so a config for other GEOM-Drugs folders cannot be mixed up with
-# this one. data=geom_drugs_revisited_top5 trains on the first 5 of each molecule.
-# Everything but split_file is the same as in geom_drugs.yaml.
-datapath: ${run.data_dir}/geom_drugs.db
+# GEOM-Drugs, MiDi split, cleaned as in GEOM-Drugs Revisited, all conformers (up to 30
+# per molecule): data=geom_drugs_revisited_top5 (see there) with the rows listed in
+# split_all.npz of the same folder.
 split_file: ${run.data_dir}/split_all.npz
-num_train: null
-num_val: null
-# keep only the molecules with at most this many atoms, in every split
-max_n_atoms: null
-batch_size: 64
-num_workers: 16
-pin_memory: true
-persistent_workers: false
-cache_in_memory: false
-load_properties: null

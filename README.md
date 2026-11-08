@@ -74,10 +74,10 @@ gpff_train experiment=gpff data=geom_drugs_revisited_top5 run.data_dir=data/geom
 gpff_train experiment=gpff data=geom_drugs_revisited_all  run.data_dir=data/geom_drugs/<id>
 ```
 
-The folder has no `split.npz`, so `data=geom_drugs` (for the TFDS-based folders) fails on it
-instead of reading the wrong conformers, and the other way round. The source pickles carry
-no energies: "first 5" is the order of the pickle, which the MiDi paper calls the 5 lowest
-energy conformers.
+Both configs set no split sizes, so on a folder without their split file (such as the older
+TFDS-based GEOM-Drugs builds) they fail instead of drawing a random split. The source
+pickles carry no energies: "first 5" is the order of the pickle, which the MiDi paper calls
+the 5 lowest energy conformers.
 
 Training logs performance metrics by default through the configured logger
 (including W&B): epoch/train/validation seconds, molecules per second, examples

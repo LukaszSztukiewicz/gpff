@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 from ase import Atoms
 from ase.db import connect
-from omegaconf import OmegaConf
 from schnetpack import properties
 from schnetpack.data import AtomsDataModuleError
 
@@ -70,14 +69,3 @@ def test_a_missing_database_is_an_error_and_is_not_built(tmp_path):
     with pytest.raises(AtomsDataModuleError):
         module.prepare_data()
     assert not (tmp_path / "missing.db").exists()
-
-
-def test_the_geom_drugs_config_targets_the_prepared_data_module():
-    from importlib.resources import files
-
-    config = OmegaConf.to_container(
-        OmegaConf.load(files("gpff.configs").joinpath("data/geom_drugs.yaml")), resolve=False
-    )
-    assert config["_target_"] == "gpff.data.datasets.PreparedAtomsData"
-    assert config["split_file"] == "${run.data_dir}/split.npz"
-    assert config["max_n_atoms"] is None

@@ -3,13 +3,13 @@ defaults:
 
 _target_: gpff.data.datasets.PreparedAtomsData
 
-# GEOM-Drugs, MiDi split, cleaned as in GEOM-Drugs Revisited, the first 5 conformers
-# of each molecule: for dataset folders built by `gpff_prepare_geom_revisited`
-# (data/geom_drugs/<id>, protocol geom_drugs_revisited in its manifest.json), and
-# only for them. The conformers are the rows listed in split_top5.npz; the folder
-# has no split.npz, so a config for other GEOM-Drugs folders cannot be mixed up with
-# this one. data=geom_drugs_revisited_all trains on all conformers of the same folder.
-# Everything but split_file is the same as in geom_drugs.yaml.
+# GEOM-Drugs, MiDi split, cleaned as in GEOM-Drugs Revisited: for dataset folders built
+# by `gpff_prepare_geom_revisited` (data/geom_drugs/<id>, protocol geom_drugs_revisited
+# in its manifest.json), and only for them. This view trains on the first 5 conformers
+# of each molecule, the rows listed in split_top5.npz; data=geom_drugs_revisited_all
+# trains on all conformers of the same folder and differs only in split_file. The split
+# sizes are null, so a folder without the split file (e.g. a TFDS-based GEOM-Drugs
+# build, whose split is split.npz) is an error instead of a random split.
 datapath: ${run.data_dir}/geom_drugs.db
 split_file: ${run.data_dir}/split_top5.npz
 num_train: null

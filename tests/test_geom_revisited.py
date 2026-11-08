@@ -206,7 +206,7 @@ def test_the_two_views_list_rows_of_one_database(source, tmp_path):
         "split_file": "split_top5.npz", "top_k": 5, "n_train": 16, "n_val": 2, "n_test": 3
     }
     assert counts["views"]["all"]["n_train"] == 19
-    # there is no split.npz that a config for another GEOM-Drugs folder could pick up
+    # the database and the two views, and no split.npz of the TFDS-based builds
     assert sorted(path.name for path in target.iterdir()) == [
         "geom_drugs.db", "split_all.npz", "split_top5.npz"
     ]
@@ -311,14 +311,14 @@ def test_the_data_module_reads_both_views(source, tmp_path, view, sizes):
     assert (len(module.train_dataset), len(module.val_dataset), len(module.test_dataset)) == sizes
 
 
-def test_the_split_file_of_geom_drugs_does_not_exist_in_the_new_folder(source, tmp_path):
-    """The config of the other GEOM-Drugs folders reads split.npz: here it must fail,
-    not make a random split."""
+def test_a_split_file_the_folder_does_not_have_is_an_error_not_a_random_split(source, tmp_path):
+    """Without split sizes, a split file that does not exist must fail, not make a
+    random split (and write it into the dataset folder)."""
     target, _ = build(source, tmp_path)
     module = PreparedAtomsData(
         datapath=str(target / "geom_drugs.db"),
         batch_size=2,
-        split_file=str(target / "split.npz"),  # what data=geom_drugs asks for
+        split_file=str(target / "split.npz"),  # the split file of the TFDS-based builds
         num_train=None,
         num_val=None,
         load_properties=[],
@@ -363,20 +363,21 @@ def test_the_command_refuses_files_that_are_not_the_zenodo_ones_and_leaves_nothi
     assert list(root.iterdir()) == []
 
 
-@pytest.mark.parametrize(
-    "name, split_file",
-    [("geom_drugs_revisited_all", "split_all.npz"), ("geom_drugs_revisited_top5", "split_top5.npz")],
-)
-def test_the_revisited_configs_differ_from_geom_drugs_only_in_the_split_file(name, split_file):
-    def load(config):
-        return OmegaConf.to_container(
-            OmegaConf.load(CONFIG_DIR / "data" / f"{config}.yaml"), resolve=False
+def compose_data(name):
+    with initialize_config_dir(config_dir=str(CONFIG_DIR)):
+        config = compose(
+            "train",
+            overrides=["experiment=gpff", f"data={name}", "run.path=/runs", "run.data_dir=/data"],
         )
+    return config.data
 
-    config, base = load(name), load("geom_drugs")
-    assert config.pop("split_file") == f"${{run.data_dir}}/{split_file}"
-    assert base.pop("split_file") == "${run.data_dir}/split.npz"
-    assert config == base
+
+def test_the_two_revisited_views_differ_only_in_the_split_file():
+    all_view = OmegaConf.to_container(compose_data("geom_drugs_revisited_all"), resolve=True)
+    top5 = OmegaConf.to_container(compose_data("geom_drugs_revisited_top5"), resolve=True)
+    assert all_view.pop("split_file") == "/data/split_all.npz"
+    assert top5.pop("split_file") == "/data/split_top5.npz"
+    assert all_view == top5
 
 
 @pytest.mark.parametrize(
@@ -384,12 +385,10 @@ def test_the_revisited_configs_differ_from_geom_drugs_only_in_the_split_file(nam
     [("geom_drugs_revisited_all", "split_all.npz"), ("geom_drugs_revisited_top5", "split_top5.npz")],
 )
 def test_the_revisited_configs_compose_and_build_the_data_module(name, split_file):
-    with initialize_config_dir(config_dir=str(CONFIG_DIR)):
-        config = compose(
-            "train",
-            overrides=["experiment=gpff", f"data={name}", "run.path=/runs", "run.data_dir=/data"],
-        )
-    assert config.data.split_file == f"/data/{split_file}"
-    assert config.data.datapath == "/data/geom_drugs.db"
-    assert config.data.num_train is None and config.data.num_val is None
-    hydra.utils.instantiate(config.data, train_sampler_cls=None)
+    config = compose_data(name)
+    assert config.split_file == f"/data/{split_file}"
+    assert config.datapath == "/data/geom_drugs.db"
+    assert config.num_train is None and config.num_val is None
+    assert config.max_n_atoms is None
+    module = hydra.utils.instantiate(config, train_sampler_cls=None)
+    assert type(module) is PreparedAtomsData
