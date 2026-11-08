@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Optional, Union, List
+from typing import Callable, Dict, Optional, Union, List, Tuple
 import weakref
 
 import torch
@@ -11,7 +11,23 @@ from schnetpack.representation.painn import PaiNNInteraction, PaiNNMixing
 from gpff.nn.normalized import NormalizedDense, ScalarRMSNorm, normalize_linears, soft_unit_vectors
 
 
-__all__ = ["PaiNN", "VectorRMSNorm"]
+__all__ = ["PaiNN", "VectorRMSNorm", "centered_positions"]
+
+
+def centered_positions(inputs: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""The positions relative to the centroid of their molecule, (n_atoms, 3), and the mean
+    square distance of every molecule's atoms from it, :math:`\mathrm{mean}_i \lVert x_i - \bar x\rVert^2`,
+    (n_molecules, 1). For VE noise of level :math:`\sigma` added to a molecule of per-axis RMS
+    radius :math:`\rho_0`, the latter is about :math:`3 (\rho_0^2 + \sigma^2)`.
+    """
+    idx_m = inputs[properties.idx_m]
+    n_atoms = inputs[properties.n_atoms]
+    pos = inputs[properties.R]
+    count = n_atoms.unsqueeze(-1).to(pos.dtype)
+    centroid = snn.scatter_add(pos, idx_m, dim_size=n_atoms.shape[0]) / count
+    x = pos - centroid[idx_m]
+    ms = snn.scatter_add(x.pow(2).sum(-1, keepdim=True), idx_m, dim_size=n_atoms.shape[0]) / count
+    return x, ms
 
 
 class VectorRMSNorm(nn.Module):
@@ -151,6 +167,7 @@ class PaiNN(nn.Module):
     residual_scaling: bool = False
     normalized_products: bool = False
     radial_norm: bool = False
+    sigma_data: Optional[float] = None
 
     def __init__(
         self,
@@ -173,6 +190,7 @@ class PaiNN(nn.Module):
         residual_scaling: bool = False,
         normalized_products: bool = False,
         radial_norm: bool = False,
+        sigma_data: Optional[float] = None,
     ):
         """
         Args:
@@ -229,6 +247,20 @@ class PaiNN(nn.Module):
                 products, with magnitudes still supplied to the mixing MLP.
             radial_norm: unit-RMS radial features before the cutoff. Gaussian
                 bases are sparse, so their active energy does not scale with fan-in.
+            sigma_data: if set (in A), EDM's c_in and c_noise without the noise level as
+                input. Distances are measured in units of the molecule's length scale
+                s = sqrt(sigma_data^2 + max(rho^2 - sigma_data^2, 0)) = max(rho, sigma_data),
+                with rho the per-axis RMS radius of the input molecule. VE noise gives
+                rho^2 ~ rho_0^2 + sigma^2, so s is EDM's 1 / c_in = sqrt(sigma^2 + sigma_data^2)
+                with the positive-part estimate of sigma^2 read off the geometry. A molecule
+                no larger than sigma_data is seen in the fixed units sigma_data, so bond
+                lengths keep their absolute size, as under EDM's c_in at small sigma; a
+                larger noise cloud is seen in units of its own radius, so all large noise
+                levels look alike. log(s / sigma_data), zero for the former, is added to the
+                atom embeddings by a linear map that starts at zero (EDM's c_noise). Set
+                sigma_data to the largest per-axis RMS radius of the clean molecules: below
+                it, units that vary with the molecule would hide the absolute bond lengths.
+                The cutoff, the radial basis and norm_epsilon are then in units of s.
         """
         super(PaiNN, self).__init__()
         if prenorm not in (False, True, "rms"):
@@ -295,6 +327,14 @@ class PaiNN(nn.Module):
         if weight_norm:
             normalize_linears(self)
 
+        self.sigma_data = sigma_data
+        if sigma_data is not None:
+            if not sigma_data > 0:
+                raise ValueError(f"sigma_data must be positive, got {sigma_data}")
+            # no bias: a molecule seen in units of sigma_data gets no embedding at all
+            self.noise_embedding = nn.Linear(1, n_atom_basis, bias=False)
+            nn.init.zeros_(self.noise_embedding.weight)
+
         # one norm per block input (interaction, mixing) and one for the output
         self.prenorm = prenorm
         if prenorm:
@@ -355,6 +395,14 @@ class PaiNN(nn.Module):
         idx_j = inputs[properties.idx_j]
         n_atoms = atomic_numbers.shape[0]
 
+        # EDM's c_in: the pairs of a molecule in units of its length scale
+        if self.sigma_data is not None:
+            idx_m = inputs[properties.idx_m]
+            _, ms = centered_positions(inputs)
+            # clamped before the root, so a molecule at the floor gets no gradient through it
+            scale = torch.sqrt(torch.clamp(ms / 3, min=self.sigma_data**2))
+            r_ij = r_ij / scale[idx_m[idx_i]]
+
         # A filter depends on |r_ij| alone, so the pair (j, i) shares the filter
         # of (i, j). If every pair is listed in both directions (like in the
         # fully connected lists gpff trains and samples with), compute the
@@ -408,6 +456,9 @@ class PaiNN(nn.Module):
         q = self.embedding(atomic_numbers)
         for embedding in self.electronic_embeddings:
             q = q + embedding(q, inputs)
+        # EDM's c_noise: the absolute scale the units hide, zero below sigma_data
+        if self.sigma_data is not None:
+            q = q + self.noise_embedding(torch.log(scale / self.sigma_data))[idx_m]
         q = q.unsqueeze(1)
 
         # compute interaction blocks and update atomic embeddings

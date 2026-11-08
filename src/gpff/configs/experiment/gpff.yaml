@@ -31,6 +31,18 @@ globals:
   # bound on the network's share of the force: the radius of a clean molecule
   # (QM9: 7.4 A) plus what the skip term leaves at intermediate sigma, ~2x
   x0_radius: 15.0
+  # EDM's c_skip and c_out for the force, from the skip weight and the molecule's radius
+  # (see GatedEquivariant). An alternative to bounded_forces. Pair it with a higher cap of the
+  # sigma weights (pseudo_pes.weight_generator.max_clipping=1000, the paper's) to keep the
+  # plain head's balance over the noise levels
+  preconditioned_forces: false
+  # EDM's c_in and c_noise: if set (A), the representation measures distances in units of
+  # max(rho, sigma_data), rho the per-axis RMS radius of the input molecule (see PaiNN). Use the
+  # largest clean radius of the dataset: QM9 b36d9cd218f5998d 2.48 A (median 1.37), GEOM-Drugs
+  # f71e7ef19df1bd58 about 4.2 A (20k sampled rows). The cutoff and the radial basis are then in
+  # these units: for QM9, sigma_data=2.5 with globals.cutoff=10 globals.n_rbf=100 keeps the 0.25 A
+  # spacing of 600 over 150 A for clean molecules (no pair farther apart than 6 units)
+  sigma_data: null
 
   # Transform alignment
   align_permutation: true
@@ -70,6 +82,7 @@ model:
     residual_scaling: ${globals.residual_scaling}
     normalized_products: ${globals.normalized_products}
     radial_norm: ${globals.radial_norm}
+    sigma_data: ${globals.sigma_data}
   output_modules:
     - _target_: gpff.model.heads.GatedEquivariant
       n_in: ${globals.n_atom_basis}
@@ -82,6 +95,7 @@ model:
       output_gain: ${globals.output_gain}
       zero_net_force: ${globals.zero_net_force}
       normalized_products: ${globals.normalized_products}
+      preconditioned: ${globals.preconditioned_forces}
 
 data:
   transforms:

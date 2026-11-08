@@ -173,3 +173,27 @@ def test_align_rotation_max_sigma_reaches_the_transform():
 
     assert transform.align_rotation and transform.align_rotation_max_sigma == 1.0
     assert compose_transform().align_rotation_max_sigma is None
+
+
+def test_edm_preconditioning_recipe_builds():
+    with initialize_config_dir(config_dir=str(CONFIG_DIR)):
+        config = compose(
+            "train",
+            overrides=[
+                "experiment=gpff",
+                "run.path=/runs",
+                "run.data_dir=/data",
+                "globals.preconditioned_forces=true",
+                "globals.sigma_data=2.5",
+                "globals.cutoff=10",
+                "globals.n_rbf=100",
+                "pseudo_pes.weight_generator.max_clipping=1000",
+            ],
+        )
+
+    model = hydra.utils.instantiate(config.model)
+    assert model.representation.sigma_data == 2.5
+    assert model.representation.cutoff == 10
+    assert model.representation.radial_basis.n_rbf == 100
+    assert model.output_modules[0].preconditioned and not model.output_modules[0].bounded
+    assert hydra.utils.instantiate(config.generative_transform).weight_generator.max_clipping == 1000

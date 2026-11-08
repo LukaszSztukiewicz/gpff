@@ -8,6 +8,7 @@ import schnetpack.properties as properties
 from schnetpack.atomistic import Atomwise as SPKAtomwise
 
 from gpff import keys
+from gpff.model.painn import centered_positions
 from gpff.nn.normalized import normalize_linears, soft_unit_vectors
 
 
@@ -35,6 +36,7 @@ class GatedEquivariant(nn.Module):
     # class-level default, so models pickled before the option existed still load
     bounded: bool = False
     zero_net_force: bool = False
+    preconditioned: bool = False
 
     def __init__(
         self,
@@ -50,6 +52,7 @@ class GatedEquivariant(nn.Module):
         output_gain: Optional[float] = None,
         zero_net_force: bool = False,
         normalized_products: bool = False,
+        preconditioned: bool = False,
     ):
         """
         Args:
@@ -84,6 +87,21 @@ class GatedEquivariant(nn.Module):
                 molecule-uniform force weights, not a torque constraint.
             normalized_products: feed smooth direction coordinates into each gate,
                 preventing multiplicative magnitude feedback through the readout.
+            preconditioned: EDM's c_skip and c_out (Karras et al. 2022, Eq. 7) for the
+                pseudo force 2 (D(x) - x), without the noise level as input:
+                F_i = -2 alpha (x_i - x_mean) + rho / cosh(z / 2) v_i,
+                with alpha = sigmoid(z) the skip weight of ``bounded``, rho the per-axis RMS
+                radius of the input molecule and v the vector output, not clamped.
+                rho / cosh(z / 2) = 2 rho sqrt(alpha (1 - alpha)) is EDM's 2 c_out: with
+                alpha at its least-squares value sigma^2 / (sigma^2 + sigma_data^2) (EDM's
+                1 - c_skip) and rho^2 = sigma^2 + sigma_data^2 it is
+                2 sigma sigma_data / sqrt(sigma^2 + sigma_data^2), so v has a unit-variance
+                target at every noise level, and no length of the dataset enters. c_out
+                reads z without its gradient: the skip term alone trains alpha, c_out only
+                rescales v. EDM weights the loss by 1 / c_out^2; with the sigma weights
+                capped at 1, the error of v at sigma << 1 counts about 4 sigma^2 times as
+                much as with the plain head, so raise the cap (the paper's 1000) to keep the
+                plain head's balance over the noise levels. An alternative to ``bounded``.
         """
 
         super().__init__()
@@ -110,10 +128,14 @@ class GatedEquivariant(nn.Module):
             self.output_gain = nn.Parameter(torch.tensor(float(output_gain)))
 
         self.bounded = bounded
-        if bounded:
+        self.preconditioned = preconditioned
+        if bounded and preconditioned:
+            raise ValueError("bounded and preconditioned forces are alternatives")
+        if bounded or preconditioned:
             if n_out != 1:
-                raise ValueError("bounded forces need n_out=1")
-            self.x0_radius = x0_radius
+                raise ValueError("bounded and preconditioned forces need n_out=1")
+            if bounded:
+                self.x0_radius = x0_radius
             # starts as the plain head (alpha ~ 0.02)
             self.skip_logit_bias = nn.Parameter(torch.tensor(-4.0))
             self.skip_logit_radius_weight = nn.Parameter(torch.tensor(0.0))
@@ -130,6 +152,8 @@ class GatedEquivariant(nn.Module):
             x = x * gain
         if self.bounded:
             x = self._bounded_forces(inputs, s, x)
+        elif self.preconditioned:
+            x = self._preconditioned_forces(inputs, s, x)
         if self.zero_net_force:
             n = inputs[properties.n_atoms]
             idx_m = inputs[properties.idx_m]
@@ -139,24 +163,35 @@ class GatedEquivariant(nn.Module):
 
         return inputs
 
-    def _bounded_forces(self, inputs: Dict[str, torch.Tensor], s: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+    def _skip_logit(self, inputs: Dict[str, torch.Tensor], s: torch.Tensor):
+        """The positions relative to the centroid, the molecules' mean square radius and the logit z of
+        the skip weight alpha = sigmoid(z), one per molecule."""
         idx_m = inputs[properties.idx_m]
         n_atoms = inputs[properties.n_atoms]
-        pos = inputs[properties.R]
-        count = n_atoms.unsqueeze(-1).to(pos.dtype)
-        centroid = snn.scatter_add(pos, idx_m, dim_size=n_atoms.shape[0]) / count
-        x = pos - centroid[idx_m]
-        logit = snn.scatter_add(s, idx_m, dim_size=n_atoms.shape[0]) / count
+        x, ms = centered_positions(inputs)
+        logit = snn.scatter_add(s, idx_m, dim_size=n_atoms.shape[0]) / n_atoms.unsqueeze(-1).to(s.dtype)
         # the mean square radius is about 3 (sigma_data^2 + sigma^2), so it gives alpha the
         # noise level at large sigma directly (James-Stein); models pickled before the
         # radius term have no weight for it
         radius_weight = getattr(self, "skip_logit_radius_weight", None)
         if radius_weight is not None:
-            ms = snn.scatter_add(x.pow(2).sum(-1, keepdim=True), idx_m, dim_size=n_atoms.shape[0]) / count
             logit = logit + radius_weight * torch.log1p(ms)
-        alpha = torch.sigmoid(logit + self.skip_logit_bias)[idx_m]
+        return x, ms, logit + self.skip_logit_bias
+
+    def _bounded_forces(self, inputs: Dict[str, torch.Tensor], s: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+        x, _, logit = self._skip_logit(inputs, s)
+        alpha = torch.sigmoid(logit)[inputs[properties.idx_m]]
         v = v * torch.rsqrt(1 + v.pow(2).sum(-1, keepdim=True) / (2 * self.x0_radius) ** 2)
         return -2 * alpha * x + v
+
+    def _preconditioned_forces(self, inputs: Dict[str, torch.Tensor], s: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+        idx_m = inputs[properties.idx_m]
+        x, ms, logit = self._skip_logit(inputs, s)
+        alpha = torch.sigmoid(logit)
+        # 2 c_out = 2 rho sqrt(alpha (1 - alpha)), exact in the tails of the sigmoid
+        rho = torch.sqrt(ms / 3 + 1e-8)
+        c_out = rho / torch.cosh(logit.detach() / 2)
+        return -2 * alpha[idx_m] * x + c_out[idx_m] * v
 
 
 class Atomwise(SPKAtomwise):
