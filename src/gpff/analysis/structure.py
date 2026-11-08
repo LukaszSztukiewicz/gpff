@@ -72,8 +72,9 @@ def _small_rings(mol: Chem.Mol) -> dict[int, list[set]]:
     """For ring sizes 3 and 4, the rings of that size each bond lies in, by bond index."""
     rings = {size: [set() for _ in range(mol.GetNumBonds())] for size in (3, 4)}
     for k, ring in enumerate(mol.GetRingInfo().BondRings()):
-        for bond in ring if len(ring) in rings else ():
-            rings[len(ring)][bond].add(k)
+        if len(ring) in rings:
+            for bond in ring:
+                rings[len(ring)][bond].add(k)
     return rings
 
 
@@ -129,7 +130,10 @@ def describe_bonds(mol: Chem.Mol) -> Dict[str, list]:
         length (in Angstroms), one entry per bond
     """
     keys, symbols, names = _atom_labels(mol)
-    labels = ["H" if key[0] else f"{symbol}({name})" for key, symbol, name in zip(keys, symbols, names)]
+    # H alone, a heavy atom with its hybridization
+    labels = [
+        "H" if key[0] else f"{symbol}({name})" for key, symbol, name in zip(keys, symbols, names)
+    ]
     bonds = _no_bonds()
     pairs = []
     for bond in mol.GetBonds():
@@ -184,7 +188,9 @@ def describe_angles(mol: Chem.Mol) -> Dict[str, list]:
             key=lambda arm: keys[arm[2]],
         )
         middle = f"{symbols[c]}({names[c]})"
-        for (first, left_symbol, left), (second, right_symbol, right) in itertools.combinations(arms, 2):
+        for (first, left_symbol, left), (second, right_symbol, right) in itertools.combinations(
+            arms, 2
+        ):
             # the arms read outwards from the central atom, left one first
             angles["angle_type"].append(
                 f"{symbols[left]}{left_symbol}{symbols[c]}{right_symbol}{symbols[right]}"
