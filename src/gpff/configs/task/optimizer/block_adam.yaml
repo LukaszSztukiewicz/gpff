@@ -25,6 +25,9 @@ optimizer_args:
   # 1e-2 (the LLM value 0.1 would pull these small weights far below their init).
   block_update: rms
   momentum: 0.95  # muon only
+  # muon only: newton_schulz (Muon's polynomial) | polar_express (Amsel et al.: one minimax polynomial per iteration,
+  # singular values closer to one for the same 5 iterations)
+  orthogonalization: newton_schulz
   precondition_frequency: 10  # soap only: steps between two refreshes of the eigenbases (the costly part)
   shampoo_beta: null  # soap only: decay of the averages of G G^T and G^T G; null: betas[1]
   # soap only: rotate only the smaller side of every matrix (the right one if equal): the 3F x F matrices of the

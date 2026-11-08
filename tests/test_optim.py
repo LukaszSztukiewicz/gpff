@@ -19,6 +19,7 @@ from gpff.optim import (
     block_param_groups,
     eigenbasis,
     newton_schulz,
+    polar_express,
     refreshed_basis,
     rms_norm,
     spectral_norm,
@@ -128,11 +129,50 @@ def test_first_muon_step_is_the_scaled_orthogonalized_gradient():
     torch.testing.assert_close(before - weight.detach(), expected)
 
 
+def spread_matrix(n=16, low=2e-3):
+    """A matrix with singular values spread from low to 1 (log-spaced): after the division by its Frobenius norm
+    (about 1.4) they are inside the interval [1e-3, 1] that Polar Express is made for."""
+    g = torch.Generator().manual_seed(0)
+    u, _ = torch.linalg.qr(torch.randn(n, n, generator=g, dtype=torch.float64))
+    v, _ = torch.linalg.qr(torch.randn(n, n, generator=g, dtype=torch.float64))
+    return u @ torch.diag(torch.logspace(math.log10(low), 0, n, dtype=torch.float64)) @ v.T
+
+
+def test_polar_express_puts_the_singular_values_closer_to_one_than_newton_schulz():
+    matrix = spread_matrix()
+
+    def worst(orthogonalize):  # the largest distance of a singular value from one, of a square and a tall matrix
+        return max((torch.linalg.svdvals(orthogonalize(m)) - 1).abs().max().item() for m in (matrix, matrix[:, :10]))
+
+    newton, polar = worst(newton_schulz), worst(polar_express)
+    assert polar < newton, (newton, polar)
+    # its later iterations are Newton-Schulz's exact quintic: it converges to the polar factor
+    converged = torch.linalg.svdvals(polar_express(matrix, steps=10))
+    torch.testing.assert_close(converged, torch.ones_like(converged), atol=1e-6, rtol=0)
+    torch.testing.assert_close(polar_express(10 * matrix), polar_express(matrix))
+
+
+def test_first_muon_step_with_polar_express_is_the_scaled_polar_express_of_the_gradient():
+    g = torch.Generator().manual_seed(0)
+    weight = nn.Parameter(torch.randn(12, 8, generator=g, dtype=torch.float64))
+    weight.grad = torch.randn(12, 8, generator=g, dtype=torch.float64)
+    before, grad = weight.detach().clone(), weight.grad.clone()
+    optimizer = BlockAdamW(
+        [{"params": [weight], "block": True}], lr=LR, block_update="muon", orthogonalization="polar_express"
+    )
+
+    optimizer.step()
+
+    torch.testing.assert_close(before - weight.detach(), LR * 0.2 * math.sqrt(12) * polar_express(grad))
+    with pytest.raises(ValueError, match="orthogonalization"):
+        BlockAdamW([weight], block_update="muon", orthogonalization="svd")
+
+
 def test_the_matrix_functions_of_a_batch_are_those_of_each_matrix():
     g = torch.Generator().manual_seed(0)
     for shape in ((3, 5, 8), (3, 8, 5)):
         batch = torch.randn(shape, generator=g, dtype=torch.float64)
-        for function in (rms_norm, spectral_norm, newton_schulz):
+        for function in (rms_norm, spectral_norm, newton_schulz, polar_express):
             torch.testing.assert_close(function(batch), torch.stack([function(matrix) for matrix in batch]))
 
 

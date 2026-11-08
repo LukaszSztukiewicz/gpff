@@ -10,6 +10,7 @@ Manolache & Niepert, "Equivariance Breaks the Learning Rate" (NeurIPS 2026 works
 Vyas et al., "SOAP: Improving and Stabilizing Shampoo using Adam" (ICLR 2025).
 """
 import math
+from functools import partial
 from typing import Iterable, List, Optional
 
 import torch
@@ -47,16 +48,34 @@ def spectral_norm(update: Tensor) -> Tensor:
     return frobenius * torch.linalg.matrix_norm(gram) ** (1 / 8)
 
 
-def newton_schulz(matrix: Tensor, steps: int = 5) -> Tensor:
-    """Muon's orthogonalization: the matrix with the singular vectors of ``matrix`` and singular values near one."""
-    a, b, c = 3.4445, -4.7750, 2.0315
+# Muon's quintic (Jordan et al. 2024): the same polynomial a x + b x^3 + c x^5 at every iteration
+_NEWTON_SCHULZ = (3.4445, -4.7750, 2.0315)
+# Polar Express (Amsel et al., ICLR 2026, Implementation 1): the minimax-optimal quintic of each iteration for
+# singular values in [1e-3, 1]; iterations past the list repeat its last polynomial, Newton-Schulz's
+# (15 x - 10 x^3 + 3 x^5) / 8. Every polynomial but the last takes x / 1.01, their safety factor for rounding.
+_POLAR_EXPRESS = [
+    (8.28721201814563, -23.595886519098837, 17.300387312530933),
+    (4.107059111542203, -2.9478499167379106, 0.5448431082926601),
+    (3.9486908534822946, -2.908902115962949, 0.5518191394370137),
+    (3.3184196573706015, -2.488488024314874, 0.51004894012372),
+    (2.300652019954817, -1.6689039845747493, 0.4188073119525673),
+    (1.891301407787398, -1.2679958271945868, 0.37680408948524835),
+    (1.8750014808534479, -1.2500016453999487, 0.3750001645474248),
+    (1.875, -1.25, 0.375),
+]
+_POLAR_EXPRESS = [(a / 1.01, b / 1.01**3, c / 1.01**5) for a, b, c in _POLAR_EXPRESS[:-1]] + _POLAR_EXPRESS[-1:]
+
+
+def _odd_quintics(matrix: Tensor, coefficients, margin: float = 1.0) -> Tensor:
+    """The quintics ``coefficients`` applied in turn to the singular values of ``matrix``, divided first by its
+    Frobenius norm times ``margin``, so that they are at most one."""
     single = matrix.ndim == 2
     x = matrix[None] if single else matrix
-    x = x / torch.linalg.matrix_norm(x, keepdim=True).clamp_min(1e-7)
+    x = x / (torch.linalg.matrix_norm(x, keepdim=True) * margin).clamp_min(1e-7)
     tall = x.shape[-2] > x.shape[-1]
     if tall:
         x = x.mT
-    for _ in range(steps):
+    for a, b, c in coefficients:
         gram = x @ x.mT
         # a * x + (b * gram + c * gram @ gram) @ x, as two fused matrix products
         x = torch.baddbmm(x, torch.baddbmm(gram, gram, gram, beta=b, alpha=c), x, beta=a)
@@ -64,7 +83,19 @@ def newton_schulz(matrix: Tensor, steps: int = 5) -> Tensor:
     return x[0] if single else x
 
 
+def newton_schulz(matrix: Tensor, steps: int = 5) -> Tensor:
+    """Muon's orthogonalization: the matrix with the singular vectors of ``matrix`` and singular values near one."""
+    return _odd_quintics(matrix, [_NEWTON_SCHULZ] * steps)
+
+
+def polar_express(matrix: Tensor, steps: int = 5) -> Tensor:
+    """Polar Express's orthogonalization: as ``newton_schulz``, with the singular values closer to one."""
+    coefficients = _POLAR_EXPRESS[:steps] + _POLAR_EXPRESS[-1:] * max(steps - len(_POLAR_EXPRESS), 0)
+    return _odd_quintics(matrix, coefficients, margin=1.01)
+
+
 _NORMS = {"rms": rms_norm, "spectral": spectral_norm}
+_ORTHOGONALIZATIONS = {"newton_schulz": newton_schulz, "polar_express": polar_express}
 
 
 def normalized(update: Tensor, norm: str) -> Tensor:
@@ -72,9 +103,9 @@ def normalized(update: Tensor, norm: str) -> Tensor:
     return update / _NORMS[norm](update).clamp_min(torch.finfo(update.dtype).tiny)[..., None, None]
 
 
-def orthogonalized(matrix: Tensor) -> Tensor:
-    """Muon's update of a momentum matrix: Newton-Schulz, scaled to the RMS of an AdamW update."""
-    return newton_schulz(matrix) * (_ADAMW_RMS * math.sqrt(max(matrix.shape[-2:])))
+def orthogonalized(matrix: Tensor, method: str = "newton_schulz") -> Tensor:
+    """Muon's update of a momentum matrix: orthogonalized by ``method``, scaled to the RMS of an AdamW update."""
+    return _ORTHOGONALIZATIONS[method](matrix) * (_ADAMW_RMS * math.sqrt(max(matrix.shape[-2:])))
 
 
 def roles_of(matrix: Tensor, roles: int) -> Tensor:
@@ -147,6 +178,8 @@ class BlockAdamW(Optimizer):
       zero updates stay zero.
     * ``"muon"``: Muon's update, Nesterov ``momentum`` and Newton-Schulz orthogonalization (no Adam moments),
       scaled to the RMS of an AdamW update, so ``lr`` is comparable to AdamW's.
+      ``orthogonalization`` is ``"newton_schulz"`` (Muon's, the default) or ``"polar_express"`` (Amsel et al.:
+      a polynomial per iteration, singular values closer to one for the same 5 iterations).
     * ``"soap"``: Adam in the eigenbasis of Shampoo's preconditioner, as in the reference implementation of
       SOAP. Every matrix keeps the averages (``shampoo_beta``, default ``betas[1]``) of ``G G^T`` and ``G^T G``
       over its gradients ``G``, and Adam's moments are those of ``G`` rotated into their eigenvectors, which are
@@ -184,9 +217,12 @@ class BlockAdamW(Optimizer):
         precondition_frequency: int = 10,
         shampoo_beta: Optional[float] = None,
         one_sided: bool = False,
+        orthogonalization: str = "newton_schulz",
     ):
         if block_update not in ("adam", "muon", "soap", *_NORMS):
             raise ValueError(f"unknown block_update {block_update!r}")
+        if orthogonalization not in _ORTHOGONALIZATIONS:
+            raise ValueError(f"unknown orthogonalization {orthogonalization!r}")
         if precondition_frequency < 1:
             raise ValueError("precondition_frequency has to be at least 1")
         if shampoo_beta is not None and not 0 <= shampoo_beta < 1:
@@ -195,6 +231,7 @@ class BlockAdamW(Optimizer):
             lr=lr, betas=tuple(betas), eps=eps, weight_decay=weight_decay,
             block=False, block_update=block_update, momentum=momentum, roles=1,
             precondition_frequency=precondition_frequency, shampoo_beta=shampoo_beta, one_sided=one_sided,
+            orthogonalization=orthogonalization,
         )
         super().__init__(params, defaults)
 
@@ -267,7 +304,8 @@ class BlockAdamW(Optimizer):
             return []
         grads, buffers = [p.grad for p in params], [self.state[p]["momentum_buffer"] for p in params]
         torch._foreach_lerp_(buffers, grads, 1 - group["momentum"])
-        return _batched(orthogonalized, torch._foreach_lerp(grads, buffers, group["momentum"]), group["roles"])
+        orthogonalize = partial(orthogonalized, method=group["orthogonalization"])
+        return _batched(orthogonalize, torch._foreach_lerp(grads, buffers, group["momentum"]), group["roles"])
 
     def _soap_updates(self, params: List[Tensor], group: dict) -> List[Optional[Tensor]]:
         """SOAP's updates, None for the first gradient of a matrix. The state of a matrix holds one matrix per role:
