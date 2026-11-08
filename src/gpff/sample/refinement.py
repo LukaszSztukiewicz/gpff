@@ -31,8 +31,8 @@ class MaxShift(SamplerObserver):
     """Largest atomic step per molecule; NaN when that molecule was already stopped."""
 
     def on_start(self, sampler, batch):
-        self.previous = batch[properties.R].detach().cpu()
-        self.previous_nfe = batch[keys.nfe].detach().cpu()
+        self.previous = batch[properties.R].detach().cpu().clone()
+        self.previous_nfe = batch[keys.nfe].detach().cpu().clone()
         self.shifts = []
 
     def on_step_end(self, batch, step):
