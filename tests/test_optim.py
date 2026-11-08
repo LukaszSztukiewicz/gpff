@@ -14,7 +14,15 @@ from torch import nn
 
 from gpff.model.heads import GatedEquivariant
 from gpff.model.painn import PaiNN
-from gpff.optim import BlockAdamW, block_param_groups, newton_schulz, rms_norm, spectral_norm
+from gpff.optim import (
+    BlockAdamW,
+    block_param_groups,
+    eigenbasis,
+    newton_schulz,
+    refreshed_basis,
+    rms_norm,
+    spectral_norm,
+)
 from gpff.task import AtomisticTask
 
 LR = 1e-2
@@ -152,7 +160,7 @@ def step_fused_and_separate(block_update, roles=3, group_roles=None, rows=6, col
     return fused.detach(), torch.cat([p.detach() for p in separate])
 
 
-@pytest.mark.parametrize("block_update", ["adam", "rms", "spectral", "muon"])
+@pytest.mark.parametrize("block_update", ["adam", "rms", "spectral", "muon", "soap"])
 @pytest.mark.parametrize("rows", [6, 12])  # roles wider and taller than they are long
 def test_a_fused_layer_steps_like_separate_layers_for_its_roles(block_update, rows):
     fused, separate = step_fused_and_separate(block_update, rows=rows)
@@ -160,7 +168,7 @@ def test_a_fused_layer_steps_like_separate_layers_for_its_roles(block_update, ro
     torch.testing.assert_close(fused, separate)
 
 
-@pytest.mark.parametrize("block_update", ["rms", "spectral", "muon"])
+@pytest.mark.parametrize("block_update", ["rms", "spectral", "muon", "soap"])
 def test_stepping_the_roles_apart_differs_from_stepping_their_stack(block_update):
     apart, _ = step_fused_and_separate(block_update)
     stack, separate = step_fused_and_separate(block_update, group_roles=1)
@@ -196,7 +204,8 @@ def test_the_roles_of_a_group_have_to_split_its_rows():
 
 
 @pytest.mark.parametrize(
-    "block_update, roles", [(update, roles) for update in ("adam", "rms", "spectral", "muon") for roles in (1, 2)]
+    "block_update, roles",
+    [(update, roles) for update in ("adam", "rms", "spectral", "muon", "soap") for roles in (1, 2)],
 )
 def test_every_update_fits_a_linear_regression(block_update, roles):
     g = torch.Generator().manual_seed(0)
@@ -377,3 +386,279 @@ def test_task_steps_the_roles_of_the_fused_layers_apart_on_request():
 def test_slices_need_the_blocks():
     with pytest.raises(ValueError, match="block_slices"):
         task(optimizer_cls=BlockAdamW, block_slices=True)
+
+
+def soap(weights, **kwargs):
+    return BlockAdamW([{"params": list(weights), "block": True}], block_update="soap", **kwargs)
+
+
+def identity(n):
+    return torch.eye(n, dtype=torch.float64)
+
+
+def test_the_first_soap_gradient_only_starts_the_preconditioner():
+    g = torch.Generator().manual_seed(0)
+    weight = nn.Parameter(torch.randn(5, 7, generator=g, dtype=torch.float64))
+    before = weight.detach().clone()
+    optimizer = soap([weight], lr=LR, weight_decay=0.5)
+
+    weight.grad = torch.randn(5, 7, generator=g, dtype=torch.float64)
+    optimizer.step()
+
+    assert torch.equal(weight.detach(), before)  # no step and no decay, as in the reference implementation
+    state = optimizer.state[weight]
+    for gram, basis in [(state[f"gram_{side}"][0], state[f"basis_{side}"][0]) for side in ("left", "right")]:
+        torch.testing.assert_close(basis.T @ basis, identity(len(basis)))
+        rotated = basis.T @ gram @ basis
+        torch.testing.assert_close(rotated, torch.diag(rotated.diagonal()), atol=1e-12, rtol=0)  # an eigenbasis
+        assert (rotated.diagonal()[:-1] - rotated.diagonal()[1:] >= -1e-12).all()  # by decreasing eigenvalue
+
+    weight.grad = torch.zeros_like(weight)
+    optimizer.step()
+    torch.testing.assert_close(weight.detach(), before * (1 - LR * 0.5))  # from the second gradient on it decays
+
+
+def test_the_gram_matrices_average_with_shampoo_beta():
+    g = torch.Generator().manual_seed(0)
+    grads = [torch.randn(3, 5, generator=g, dtype=torch.float64) for _ in range(2)]
+    for shampoo_beta, beta in ((0.5, 0.5), (None, 0.99)):  # by default betas[1]
+        weight = nn.Parameter(torch.randn(3, 5, generator=g, dtype=torch.float64))
+        optimizer = soap([weight], lr=LR, betas=(0.9, 0.99), shampoo_beta=shampoo_beta)
+        expected_left = expected_right = 0
+        for grad in grads:
+            weight.grad = grad
+            optimizer.step()
+            expected_left = beta * expected_left + (1 - beta) * grad @ grad.T
+            expected_right = beta * expected_right + (1 - beta) * grad.T @ grad
+
+        state = optimizer.state[weight]
+        torch.testing.assert_close(state["gram_left"][0], expected_left)
+        torch.testing.assert_close(state["gram_right"][0], expected_right)
+
+
+@pytest.mark.parametrize("one_sided", [False, True])
+@pytest.mark.parametrize("precondition_frequency", [1, 2, 100])
+def test_soap_is_adam_when_the_gradients_are_diagonal(precondition_frequency, one_sided):
+    # the eigenbasis of diagonal Gram matrices is a permutation of the coordinates: SOAP's moments are Adam's
+    g = torch.Generator().manual_seed(0)
+    start = torch.randn(5, 5, generator=g, dtype=torch.float64)
+    weight, reference = nn.Parameter(start.clone()), nn.Parameter(start.clone())
+    kwargs = dict(lr=LR, betas=(0.9, 0.99), eps=1e-8)
+    optimizer = soap([weight], precondition_frequency=precondition_frequency, one_sided=one_sided, **kwargs)
+    adam = torch.optim.AdamW([reference], weight_decay=0.0, **kwargs)
+
+    for k in range(9):
+        grad = torch.diag(torch.randn(5, generator=g, dtype=torch.float64) * 3)
+        weight.grad = grad
+        optimizer.step()
+        if k > 0:  # the first gradient only starts the preconditioner
+            reference.grad = grad.clone()
+            adam.step()
+
+    assert not torch.equal(weight.detach(), start)
+    torch.testing.assert_close(weight.detach(), reference.detach())
+
+
+def test_soap_commutes_with_rotating_the_weight_space():
+    # W -> U W V maps gradients to U G V, the Gram matrices to U G G^T U^T and V^T G^T G V, and so SOAP's update
+    # to U update V
+    g = torch.Generator().manual_seed(0)
+    u, _ = torch.linalg.qr(torch.randn(6, 6, generator=g, dtype=torch.float64))
+    v, _ = torch.linalg.qr(torch.randn(6, 6, generator=g, dtype=torch.float64))
+    start = torch.randn(6, 6, generator=g, dtype=torch.float64)
+    weight, rotated = nn.Parameter(start.clone()), nn.Parameter(u @ start @ v)
+    optimizers = [soap([w], lr=LR, precondition_frequency=2) for w in (weight, rotated)]
+    spread = torch.diag(torch.tensor([1, 2, 4, 8, 16, 32], dtype=torch.float64))  # well separated eigenvalues
+
+    for _ in range(9):  # four refreshes of the bases
+        grad = torch.randn(6, 6, generator=g, dtype=torch.float64) @ spread
+        weight.grad, rotated.grad = grad, u @ grad @ v
+        for optimizer in optimizers:
+            optimizer.step()
+
+    assert (weight.detach() - start).abs().max() > 1e-3
+    torch.testing.assert_close(rotated.detach(), u @ weight.detach() @ v, rtol=1e-6, atol=1e-8)
+
+
+@pytest.mark.parametrize("shape", [(6, 4), (4, 6)])
+def test_one_sided_soap_commutes_with_rotating_the_smaller_side_of_the_weight(shape):
+    # the smaller side of the weight is the one with a basis: W -> W Q (or Q W) maps the gradients and the Gram matrix
+    # the same way, and so SOAP's update. The other side is not rotated, and the coordinates of Adam stay.
+    g = torch.Generator().manual_seed(0)
+    q, _ = torch.linalg.qr(torch.randn(4, 4, generator=g, dtype=torch.float64))
+    spread = torch.diag(torch.tensor([1, 2, 4, 8], dtype=torch.float64))  # well separated eigenvalues
+    if shape[0] > shape[1]:
+        turn, scaled = (lambda x: x @ q), (lambda x: x @ spread)
+    else:
+        turn, scaled = (lambda x: q @ x), (lambda x: spread @ x)
+    start = torch.randn(shape, generator=g, dtype=torch.float64)
+    weight, rotated = nn.Parameter(start.clone()), nn.Parameter(turn(start))
+    optimizers = [soap([w], lr=LR, precondition_frequency=2, one_sided=True) for w in (weight, rotated)]
+
+    for _ in range(9):  # four refreshes of the basis
+        grad = scaled(torch.randn(shape, generator=g, dtype=torch.float64))
+        weight.grad, rotated.grad = grad, turn(grad)
+        for optimizer in optimizers:
+            optimizer.step()
+
+    assert (weight.detach() - start).abs().max() > 1e-3
+    torch.testing.assert_close(rotated.detach(), turn(weight.detach()), rtol=1e-6, atol=1e-8)
+
+
+@pytest.mark.parametrize("shape, side", [((4, 9), "left"), ((9, 4), "right"), ((5, 5), "right")])
+def test_one_sided_soap_keeps_the_state_of_the_smaller_side_only(shape, side):
+    other = "right" if side == "left" else "left"
+    g = torch.Generator().manual_seed(0)
+    weight = nn.Parameter(torch.randn(shape, generator=g, dtype=torch.float64))
+    optimizer = soap([weight], lr=LR, precondition_frequency=2, one_sided=True)
+
+    for _ in range(5):
+        weight.grad = torch.randn(shape, generator=g, dtype=torch.float64)
+        optimizer.step()
+
+    state = optimizer.state[weight]
+    assert state[f"basis_{side}"].shape == (1,) + (min(shape),) * 2 == state[f"gram_{side}"].shape
+    assert f"basis_{other}" not in state and f"gram_{other}" not in state
+    assert torch.isfinite(weight).all()
+
+
+@pytest.mark.parametrize("one_sided", [False, True])
+def test_soap_preconditions_the_roles_of_a_fused_layer_apart(one_sided):
+    fused, separate = step_fused_and_separate("soap", steps=7, precondition_frequency=2, one_sided=one_sided)
+
+    torch.testing.assert_close(fused, separate)
+
+
+def test_refreshing_the_basis_sorts_it_and_the_second_moment_with_it():
+    g = torch.Generator().manual_seed(0)
+    q, _ = torch.linalg.qr(torch.randn(6, 6, generator=g, dtype=torch.float64))
+    eigenvalues = 2.0 ** torch.arange(6, dtype=torch.float64)
+    gram = q @ torch.diag(eigenvalues) @ q.T
+    order = torch.tensor([3, 0, 5, 1, 4, 2])
+    second_moment = eigenvalues[order][:, None].expand(6, 4).clone()  # each row follows the eigenvalue of its column
+
+    new_basis, new_moment = refreshed_basis(gram, q[:, order], second_moment, dim=0)
+
+    torch.testing.assert_close(new_basis.T @ new_basis, identity(6))
+    torch.testing.assert_close(new_moment[:, 0], eigenvalues.flip(0))  # now by decreasing eigenvalue
+    torch.testing.assert_close((new_basis.T @ q.flip(1)).abs(), identity(6))  # and still the eigenvectors, up to sign
+    torch.testing.assert_close((eigenbasis(gram).T @ q.flip(1)).abs(), identity(6))
+
+
+@pytest.mark.parametrize("dim", [0, 1])
+def test_refreshing_a_batch_of_bases_is_refreshing_each_of_them(dim):
+    g = torch.Generator().manual_seed(0)
+    a = torch.randn(3, 5, 5, generator=g, dtype=torch.float64)
+    gram = a @ a.mT
+    basis = torch.linalg.qr(torch.randn(3, 5, 5, generator=g, dtype=torch.float64)).Q
+    second_moment = torch.rand(3, 5, 5, generator=g, dtype=torch.float64)
+
+    batched = refreshed_basis(gram, basis, second_moment, dim)
+
+    for k in range(3):
+        for got, want in zip(batched, refreshed_basis(gram[k], basis[k], second_moment[k], dim)):
+            torch.testing.assert_close(got[k], want)
+
+
+def test_repeated_refreshes_converge_to_the_eigenbasis():
+    g = torch.Generator().manual_seed(0)
+    q, _ = torch.linalg.qr(torch.randn(6, 6, generator=g, dtype=torch.float64))
+    gram = q @ torch.diag(2.0 ** torch.arange(6, dtype=torch.float64)) @ q.T
+    basis, _ = torch.linalg.qr(torch.randn(6, 6, generator=g, dtype=torch.float64))
+    second_moment = torch.zeros(6, 6, dtype=torch.float64)
+
+    for _ in range(60):
+        basis, second_moment = refreshed_basis(gram, basis, second_moment, dim=1)
+
+    torch.testing.assert_close((basis.T @ q.flip(1)).abs(), identity(6), atol=1e-6, rtol=0)
+
+
+@pytest.mark.parametrize("one_sided", [False, True])
+def test_soap_resumes_exactly_from_its_state(one_sided):
+    g = torch.Generator().manual_seed(0)
+    start = torch.randn(4, 6, generator=g, dtype=torch.float64)
+    grads = [torch.randn(4, 6, generator=g, dtype=torch.float64) for _ in range(12)]
+
+    def run(weight, optimizer, grads):
+        for grad in grads:
+            weight.grad = grad.clone()
+            optimizer.step()
+
+    options = dict(lr=LR, precondition_frequency=3, one_sided=one_sided)
+    straight = nn.Parameter(start.clone())
+    run(straight, soap([straight], **options), grads)
+
+    interrupted = nn.Parameter(start.clone())
+    optimizer = soap([interrupted], **options)
+    run(interrupted, optimizer, grads[:5])
+    saved = copy.deepcopy(optimizer.state_dict())
+    resumed = nn.Parameter(interrupted.detach().clone())
+    # the options come back with the state: an optimizer built with the other one_sided resumes the same run
+    optimizer = soap([resumed], lr=LR, precondition_frequency=3, one_sided=not one_sided)
+    optimizer.load_state_dict(saved)
+    run(resumed, optimizer, grads[5:])
+
+    torch.testing.assert_close(resumed.detach(), straight.detach(), rtol=0, atol=0)
+
+
+def test_soap_leaves_a_weight_alone_while_its_gradients_are_zero():
+    weight = nn.Parameter(torch.randn(6, 4, dtype=torch.float64))
+    before = weight.detach().clone()
+    optimizer = soap([weight], lr=LR, precondition_frequency=2)
+
+    for _ in range(5):
+        weight.grad = torch.zeros_like(weight)
+        optimizer.step()
+
+    assert torch.equal(weight.detach(), before)
+
+
+@pytest.mark.parametrize("one_sided", [False, True])
+@pytest.mark.parametrize("shape", [(12, 4), (4, 12)])
+def test_soap_stays_finite_with_orthogonal_bases_on_gradients_of_rank_one(shape, one_sided):
+    g = torch.Generator().manual_seed(0)
+    weight = nn.Parameter(torch.randn(*shape, generator=g, dtype=torch.float64))
+    optimizer = soap([weight], lr=LR, precondition_frequency=3, one_sided=one_sided)
+
+    for _ in range(20):  # Gram matrices of rank one: most of their eigenvectors are arbitrary
+        weight.grad = torch.randn(shape[0], 1, generator=g, dtype=torch.float64) @ torch.randn(
+            1, shape[1], generator=g, dtype=torch.float64
+        )
+        optimizer.step()
+
+    assert torch.isfinite(weight).all()
+    state = optimizer.state[weight]
+    bases = [state[key][0] for key in ("basis_left", "basis_right") if key in state]
+    assert len(bases) == (1 if one_sided else 2)
+    for basis in bases:
+        torch.testing.assert_close(basis.T @ basis, identity(len(basis)))
+
+
+@pytest.mark.parametrize("slices", [False, True])
+def test_soap_steps_every_block_matrix_of_the_network(slices):
+    net = Net()
+    groups = block_param_groups(net.parameters(), net, "all", slices=slices)
+    optimizer = BlockAdamW(groups, lr=LR, block_update="soap", precondition_frequency=2)
+    before = {id(p): p.detach().clone() for p in net.parameters()}
+
+    for _ in range(6):
+        for p in net.parameters():
+            p.grad = torch.randn_like(p)
+        optimizer.step()
+
+    for p in net.parameters():
+        assert torch.isfinite(p).all()
+        assert not torch.equal(p.detach(), before[id(p)])
+    for group in optimizer.param_groups:
+        for p in group["params"]:
+            assert ("basis_left" in optimizer.state[p]) == group["block"]
+            if group["block"]:
+                assert optimizer.state[p]["basis_left"].shape[0] == group["roles"]
+
+
+def test_soap_options_are_checked():
+    weight = nn.Parameter(torch.zeros(6, 2))
+    with pytest.raises(ValueError, match="precondition_frequency"):
+        BlockAdamW([weight], block_update="soap", precondition_frequency=0)
+    with pytest.raises(ValueError, match="shampoo_beta"):
+        BlockAdamW([weight], block_update="soap", shampoo_beta=1.0)
