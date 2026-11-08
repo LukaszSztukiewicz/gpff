@@ -1,0 +1,30 @@
+# @package _global_
+# Candidate recipe, not a measured optimum. All components can be ablated.
+defaults:
+  - gpff
+  - _self_
+
+globals:
+  lr: 1e-3
+  prenorm: rms
+  degree_norm: true
+  weight_norm: true
+  residual_scaling: true
+  normalized_products: true
+  radial_norm: true
+  output_gain: 1.0
+  zero_net_force: true
+  bounded_forces: false
+
+run:
+  experiment: gpff_stable
+  tags: [gpff, edm_stabilization]
+
+data:
+  batch_size: 128
+
+task:
+  # Qualify the architecture at constant LR, without hiding divergent batches.
+  scheduler_cls: null
+  warmup_steps: 0
+  skip_exploding_batches: false

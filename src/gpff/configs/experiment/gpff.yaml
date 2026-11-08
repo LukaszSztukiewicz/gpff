@@ -21,6 +21,13 @@ globals:
   # their distance; zero-initialized, so training starts as without gates
   neighbor_gate: false
   bounded_forces: false
+  # Independent EDM2-inspired stabilizers; existing runs retain their defaults.
+  weight_norm: false
+  residual_scaling: false
+  normalized_products: false
+  radial_norm: false
+  output_gain: null
+  zero_net_force: false
   # bound on the network's share of the force: the radius of a clean molecule
   # (QM9: 7.4 A) plus what the skip term leaves at intermediate sigma, ~2x
   x0_radius: 15.0
@@ -56,6 +63,10 @@ model:
     prenorm: ${globals.prenorm}
     degree_norm: ${globals.degree_norm}
     neighbor_gate: ${globals.neighbor_gate}
+    weight_norm: ${globals.weight_norm}
+    residual_scaling: ${globals.residual_scaling}
+    normalized_products: ${globals.normalized_products}
+    radial_norm: ${globals.radial_norm}
   output_modules:
     - _target_: gpff.model.heads.GatedEquivariant
       n_in: ${globals.n_atom_basis}
@@ -64,6 +75,10 @@ model:
       output_key: ${key:forces}
       bounded: ${globals.bounded_forces}
       x0_radius: ${globals.x0_radius}
+      weight_norm: ${globals.weight_norm}
+      output_gain: ${globals.output_gain}
+      zero_net_force: ${globals.zero_net_force}
+      normalized_products: ${globals.normalized_products}
 
 data:
   transforms:

@@ -12,6 +12,7 @@ from schnetpack.task import ModelOutput as SPKModelOutput
 from schnetpack.task import AtomisticTask as SPKAtomisticTask
 from schnetpack.task import UnsupervisedModelOutput
 from schnetpack.model.base import AtomisticModel
+from gpff.nn.normalized import project_weights
 
 from gpff.optim import block_param_groups
 
@@ -167,6 +168,12 @@ class AtomisticTask(SPKAtomisticTask):
         if block_scope is not None:
             # schnetpack builds the optimizer from self.parameters(): group them instead
             self.optimizer_cls = partial(_with_blocks, optimizer_cls, self.model, block_scope, block_slices)
+
+    def optimizer_step(self, epoch=None, batch_idx=None, optimizer=None, optimizer_closure=None):
+        super().optimizer_step(epoch, batch_idx, optimizer, optimizer_closure)
+        # Outside forward/backward, once per optimizer step (also with accumulation).
+        # EMA observes projected parameters, and the model can be compiled/reused.
+        project_weights(self.model)
 
     def setup(self, stage=None):
         """
