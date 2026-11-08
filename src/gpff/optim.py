@@ -50,22 +50,55 @@ def spectral_norm(update: Tensor) -> Tensor:
 def newton_schulz(matrix: Tensor, steps: int = 5) -> Tensor:
     """Muon's orthogonalization: the matrix with the singular vectors of ``matrix`` and singular values near one."""
     a, b, c = 3.4445, -4.7750, 2.0315
-    x = matrix / torch.linalg.matrix_norm(matrix, keepdim=True).clamp_min(1e-7)
+    single = matrix.ndim == 2
+    x = matrix[None] if single else matrix
+    x = x / torch.linalg.matrix_norm(x, keepdim=True).clamp_min(1e-7)
     tall = x.shape[-2] > x.shape[-1]
     if tall:
         x = x.mT
     for _ in range(steps):
         gram = x @ x.mT
-        x = a * x + (b * gram + c * gram @ gram) @ x
-    return x.mT if tall else x
+        # a * x + (b * gram + c * gram @ gram) @ x, as two fused matrix products
+        x = torch.baddbmm(x, torch.baddbmm(gram, gram, gram, beta=b, alpha=c), x, beta=a)
+    x = x.mT if tall else x
+    return x[0] if single else x
 
 
 _NORMS = {"rms": rms_norm, "spectral": spectral_norm}
 
 
+def normalized(update: Tensor, norm: str) -> Tensor:
+    """``update`` divided by its RMS or spectral norm (zero stays zero)."""
+    return update / _NORMS[norm](update).clamp_min(torch.finfo(update.dtype).tiny)[..., None, None]
+
+
+def orthogonalized(matrix: Tensor) -> Tensor:
+    """Muon's update of a momentum matrix: Newton-Schulz, scaled to the RMS of an AdamW update."""
+    return newton_schulz(matrix) * (_ADAMW_RMS * math.sqrt(max(matrix.shape[-2:])))
+
+
 def roles_of(matrix: Tensor, roles: int) -> Tensor:
     """The ``roles`` equal slices of the rows of ``matrix``, as a batch of matrices."""
     return matrix.reshape(roles, matrix.shape[0] // roles, matrix.shape[1])
+
+
+def _groups(keys) -> List[List[int]]:
+    """The indices of ``keys`` grouped by equal key, in order of first appearance."""
+    groups = {}
+    for i, key in enumerate(keys):
+        groups.setdefault(key, []).append(i)
+    return list(groups.values())
+
+
+def _batched(function, matrices: List[Tensor], roles: int) -> List[Tensor]:
+    """``function`` of every role of every matrix on its own, as one call per shape: the results, with the shapes
+    of ``matrices``."""
+    results = [None] * len(matrices)
+    for indices in _groups(m.shape for m in matrices):
+        batch = function(torch.cat([roles_of(matrices[i], roles) for i in indices]))
+        for i, result in zip(indices, batch.split(roles)):
+            results[i] = result.reshape(matrices[i].shape)
+    return results
 
 
 def eigenbasis(gram: Tensor) -> Tensor:
@@ -100,6 +133,10 @@ def _rotate_back(x: Tensor, left: Optional[Tensor], right: Optional[Tensor]) -> 
     return x if right is None else x @ right.mT
 
 
+# the Gram matrices of SOAP's sides, of a batch of gradients
+_SIDES = {"left": lambda grad: grad @ grad.mT, "right": lambda grad: grad.mT @ grad}
+
+
 class BlockAdamW(Optimizer):
     """AdamW; the matrices of parameter groups with ``block=True`` (see ``block_param_groups``) take
     ``block_update`` steps instead:
@@ -128,6 +165,11 @@ class BlockAdamW(Optimizer):
     of them on its own, as if the roles were separate layers: the size of a role's step does not depend on the
     gradients of the other roles, and SOAP preconditions each role with its own bases. ``"adam"`` is entrywise,
     so roles do not change it.
+
+    A network has a few dozen small block matrices, so a step is bound by the launch of GPU kernels, not by
+    their arithmetic. The step therefore works on lists of tensors (``torch._foreach_*``) and runs the matrix
+    operations of all matrices (and roles) of one shape as one batched call. The parameters of a block group have
+    to share their dtype and device.
     """
 
     def __init__(
@@ -163,6 +205,8 @@ class BlockAdamW(Optimizer):
             raise ValueError("the parameters of a block group have to be weight matrices")
         if group["roles"] < 1 or (group["block"] and any(p.shape[0] % group["roles"] for p in group["params"])):
             raise ValueError("the rows of a block matrix have to split into the roles of its group")
+        if group["block"] and len({(p.dtype, p.device) for p in group["params"]}) > 1:
+            raise ValueError("the parameters of a block group have to share their dtype and device")
 
     @torch.no_grad()
     def step(self, closure=None):
@@ -171,89 +215,129 @@ class BlockAdamW(Optimizer):
             with torch.enable_grad():
                 loss = closure()
         for group in self.param_groups:
-            lr = group["lr"]
+            params = [p for p in group["params"] if p.grad is not None]
             mode = group["block_update"] if group["block"] else "adam"
-            for p in group["params"]:
-                if p.grad is None:
-                    continue
-                if mode == "muon":
-                    update = self._muon_update(p, group)
-                elif mode == "soap":
-                    update = self._soap_update(p, group)
-                    if update is None:
-                        continue
-                else:
-                    update = self._adam_update(p, group)
-                    if mode in _NORMS:
-                        split = roles_of(update, group["roles"])
-                        norm = _NORMS[mode](split).clamp_min(torch.finfo(update.dtype).tiny)
-                        update = (split / norm[:, None, None]).reshape(p.shape)
-                if group["weight_decay"]:
-                    p.mul_(1 - lr * group["weight_decay"])
-                p.add_(update, alpha=-lr)
+            if mode == "muon":
+                updates = self._muon_updates(params, group)
+            elif mode == "soap":
+                updates = self._soap_updates(params, group)
+            else:
+                updates = self._adam_updates(params, group)
+                if mode in _NORMS:
+                    updates = _batched(lambda batch: normalized(batch, mode), updates, group["roles"])
+            # SOAP's first gradient of a matrix only starts its preconditioner: no step, no decay
+            stepped = [i for i, update in enumerate(updates) if update is not None]
+            if not stepped:
+                continue
+            params, updates = [params[i] for i in stepped], [updates[i] for i in stepped]
+            if group["weight_decay"]:
+                torch._foreach_mul_(params, 1 - group["lr"] * group["weight_decay"])
+            torch._foreach_add_(params, updates, alpha=-group["lr"])
         return loss
 
-    def _adam_update(self, p: Tensor, group: dict) -> Tensor:
-        state = self.state[p]
-        if not state:
-            state["step"] = 0
-            state["exp_avg"] = torch.zeros_like(p)
-            state["exp_avg_sq"] = torch.zeros_like(p)
+    def _adam_updates(self, params: List[Tensor], group: dict) -> List[Tensor]:
+        states = [self.state[p] for p in params]
+        for p, state in zip(params, states):
+            if not state:
+                state["step"] = 0
+                state["exp_avg"] = torch.zeros_like(p)
+                state["exp_avg_sq"] = torch.zeros_like(p)
+            state["step"] += 1
+        if not params:
+            return []
         beta1, beta2 = group["betas"]
-        state["step"] += 1
-        exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
-        exp_avg.lerp_(p.grad, 1 - beta1)
-        exp_avg_sq.mul_(beta2).addcmul_(p.grad, p.grad, value=1 - beta2)
-        denominator = (exp_avg_sq / (1 - beta2 ** state["step"])).sqrt_().add_(group["eps"])
-        return exp_avg / (1 - beta1 ** state["step"]) / denominator
+        grads = [p.grad for p in params]
+        exp_avgs, exp_avg_sqs = [s["exp_avg"] for s in states], [s["exp_avg_sq"] for s in states]
+        torch._foreach_lerp_(exp_avgs, grads, 1 - beta1)
+        torch._foreach_mul_(exp_avg_sqs, beta2)
+        torch._foreach_addcmul_(exp_avg_sqs, grads, grads, value=1 - beta2)
+        # the bias corrections of every parameter's own step (a parameter without a gradient falls behind)
+        denominators = torch._foreach_div(exp_avg_sqs, [1 - beta2 ** s["step"] for s in states])
+        torch._foreach_sqrt_(denominators)
+        torch._foreach_add_(denominators, group["eps"])
+        updates = torch._foreach_div(exp_avgs, [1 - beta1 ** s["step"] for s in states])
+        torch._foreach_div_(updates, denominators)
+        return updates
 
-    def _muon_update(self, p: Tensor, group: dict) -> Tensor:
-        state = self.state[p]
-        if not state:
-            state["momentum_buffer"] = torch.zeros_like(p)
-        buffer = state["momentum_buffer"]
-        buffer.lerp_(p.grad, 1 - group["momentum"])
-        update = newton_schulz(roles_of(p.grad.lerp(buffer, group["momentum"]), group["roles"]))
-        return update.reshape(p.shape) * (_ADAMW_RMS * math.sqrt(max(update.shape[-2:])))
+    def _muon_updates(self, params: List[Tensor], group: dict) -> List[Tensor]:
+        for p in params:
+            if not self.state[p]:
+                self.state[p]["momentum_buffer"] = torch.zeros_like(p)
+        if not params:
+            return []
+        grads, buffers = [p.grad for p in params], [self.state[p]["momentum_buffer"] for p in params]
+        torch._foreach_lerp_(buffers, grads, 1 - group["momentum"])
+        return _batched(orthogonalized, torch._foreach_lerp(grads, buffers, group["momentum"]), group["roles"])
 
-    def _soap_update(self, p: Tensor, group: dict) -> Optional[Tensor]:
-        """SOAP's update of ``p``, or None for its first gradient. The state holds one matrix per role:
+    def _soap_updates(self, params: List[Tensor], group: dict) -> List[Optional[Tensor]]:
+        """SOAP's updates, None for the first gradient of a matrix. The state of a matrix holds one matrix per role:
         ``exp_avg`` in the coordinates of the weight, ``exp_avg_sq`` in the eigenbases, and the Gram matrices and
         eigenbases of the rotated sides (``gram_left``, ``basis_left``, ``gram_right``, ``basis_right``)."""
-        state = self.state[p]
-        beta1, beta2 = group["betas"]
-        gram_beta = beta2 if group["shampoo_beta"] is None else group["shampoo_beta"]
-        grad = roles_of(p.grad, group["roles"])
-        sides = {"left": lambda g: g @ g.mT, "right": lambda g: g.mT @ g}
-        if not state:
-            roles, rows, columns = grad.shape
-            state["step"] = 0
-            state["exp_avg"] = torch.zeros_like(grad)
-            state["exp_avg_sq"] = torch.zeros_like(grad)
-            for side, rotated in (("left", rows < columns), ("right", columns <= rows)):
-                if rotated or not group["one_sided"]:
-                    state[f"gram_{side}"] = (1 - gram_beta) * sides[side](grad)
-                    state[f"basis_{side}"] = eigenbasis(state[f"gram_{side}"])
-            return None
+        gram_beta = group["betas"][1] if group["shampoo_beta"] is None else group["shampoo_beta"]
+        grads = [roles_of(p.grad, group["roles"]) for p in params]
+        states = [self.state[p] for p in params]
+        updates = [None] * len(params)
+        started = []
+        for i, (state, grad) in enumerate(zip(states, grads)):
+            if state:
+                started.append(i)
+            else:
+                self._start_soap(state, grad, group["one_sided"], gram_beta)
+        # one batch per shape, step and rotated sides
+        keys = [(grads[i].shape, states[i]["step"], *(f"basis_{s}" in states[i] for s in _SIDES)) for i in started]
+        for batch in _groups(keys):
+            indices = [started[k] for k in batch]
+            update = self._soap_step([states[i] for i in indices], [grads[i] for i in indices], group, gram_beta)
+            for i, matrix in zip(indices, update.split(group["roles"])):
+                updates[i] = matrix.reshape(params[i].shape)
+        return updates
 
-        state["step"] += 1
-        left, right = state.get("basis_left"), state.get("basis_right")
-        exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
-        rotated = _rotate(grad, left, right)
-        exp_avg.lerp_(grad, 1 - beta1)
-        exp_avg_sq.mul_(beta2).addcmul_(rotated, rotated, value=1 - beta2)
-        denominator = (exp_avg_sq / (1 - beta2 ** state["step"])).sqrt_().add_(group["eps"])
-        update = _rotate(exp_avg, left, right) / (1 - beta1 ** state["step"]) / denominator
-        update = _rotate_back(update, left, right).reshape(p.shape)
+    @staticmethod
+    def _start_soap(state: dict, grad: Tensor, one_sided: bool, gram_beta: float) -> None:
+        rows, columns = grad.shape[-2:]
+        state["step"] = 0
+        state["exp_avg"] = torch.zeros_like(grad)
+        state["exp_avg_sq"] = torch.zeros_like(grad)
+        for side, smaller in (("left", rows < columns), ("right", columns <= rows)):
+            if smaller or not one_sided:
+                state[f"gram_{side}"] = (1 - gram_beta) * _SIDES[side](grad)
+                state[f"basis_{side}"] = eigenbasis(state[f"gram_{side}"])
+
+    @staticmethod
+    def _soap_step(states: List[dict], grads: List[Tensor], group: dict, gram_beta: float) -> Tensor:
+        """The update of matrices of one shape, step and rotated sides, as one batch of their roles."""
+        beta1, beta2 = group["betas"]
+        roles = group["roles"]
+        for state in states:
+            state["step"] += 1
+        step = states[0]["step"]
+        grad = torch.cat(grads)
+        bases = {
+            side: torch.cat([s[f"basis_{side}"] for s in states]) if f"basis_{side}" in states[0] else None
+            for side in _SIDES
+        }
+        exp_avgs, exp_avg_sqs = [s["exp_avg"] for s in states], [s["exp_avg_sq"] for s in states]
+        rotated = _rotate(grad, bases["left"], bases["right"]).split(roles)
+        torch._foreach_lerp_(exp_avgs, grads, 1 - beta1)
+        torch._foreach_mul_(exp_avg_sqs, beta2)
+        torch._foreach_addcmul_(exp_avg_sqs, rotated, rotated, value=1 - beta2)
+        second = torch.cat(exp_avg_sqs)
+        denominator = (second / (1 - beta2**step)).sqrt_().add_(group["eps"])
+        update = _rotate(torch.cat(exp_avgs), bases["left"], bases["right"]) / (1 - beta1**step) / denominator
+        update = _rotate_back(update, bases["left"], bases["right"])
 
         # the gradient joins the preconditioner after its step, as in the reference implementation
-        for side, dim in (("left", 0), ("right", 1)):
-            if f"gram_{side}" in state:
-                state[f"gram_{side}"].lerp_(sides[side](grad), 1 - gram_beta)
-                if state["step"] % group["precondition_frequency"] == 0:
-                    state[f"basis_{side}"], state["exp_avg_sq"] = refreshed_basis(
-                        state[f"gram_{side}"], state[f"basis_{side}"], state["exp_avg_sq"], dim
-                    )
+        refresh = step % group["precondition_frequency"] == 0
+        for (side, gram_of), dim in zip(_SIDES.items(), (0, 1)):
+            if bases[side] is None:
+                continue
+            grams = [s[f"gram_{side}"] for s in states]
+            torch._foreach_lerp_(grams, gram_of(grad).split(roles), 1 - gram_beta)
+            if refresh:
+                basis, second = refreshed_basis(torch.cat(grams), bases[side], second, dim)
+                torch._foreach_copy_([s[f"basis_{side}"] for s in states], basis.split(roles))
+        if refresh:
+            torch._foreach_copy_(exp_avg_sqs, second.split(roles))
         return update
 
 

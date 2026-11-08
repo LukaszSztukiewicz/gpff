@@ -662,3 +662,34 @@ def test_soap_options_are_checked():
         BlockAdamW([weight], block_update="soap", precondition_frequency=0)
     with pytest.raises(ValueError, match="shampoo_beta"):
         BlockAdamW([weight], block_update="soap", shampoo_beta=1.0)
+
+
+@pytest.mark.parametrize("block_update", ["adam", "rms", "spectral", "muon", "soap"])
+@pytest.mark.parametrize("roles", [1, 2])
+def test_matrices_stepped_together_step_as_if_alone(block_update, roles):
+    # a group batches its matrices of one shape; a gradient missing at some steps puts its matrix behind the others
+    g = torch.Generator().manual_seed(0)
+    shapes = [(8, 4), (8, 4), (4, 6), (8, 4), (4, 6)]
+    starts = [torch.randn(shape, generator=g, dtype=torch.float64) for shape in shapes]
+    together, alone = [nn.Parameter(s.clone()) for s in starts], [nn.Parameter(s.clone()) for s in starts]
+    kwargs = dict(lr=LR, block_update=block_update, weight_decay=0.1, precondition_frequency=2)
+    optimizers = [BlockAdamW([{"params": together, "block": True, "roles": roles}], **kwargs)]
+    optimizers += [BlockAdamW([{"params": [p], "block": True, "roles": roles}], **kwargs) for p in alone]
+
+    for step in range(7):
+        for k, (a, b) in enumerate(zip(together, alone)):
+            missing = k == 1 and step in (0, 3)
+            a.grad = None if missing else torch.randn(a.shape, generator=g, dtype=torch.float64)
+            b.grad = None if missing else a.grad.clone()
+        for optimizer in optimizers:
+            optimizer.step()
+
+    for a, b, start in zip(together, alone, starts):
+        assert not torch.equal(a.detach(), start)
+        torch.testing.assert_close(a.detach(), b.detach())
+
+
+def test_the_matrices_of_a_block_group_share_their_dtype():
+    with pytest.raises(ValueError, match="dtype"):
+        mixed = [nn.Parameter(torch.zeros(2, 2)), nn.Parameter(torch.zeros(2, 2, dtype=torch.float64))]
+        BlockAdamW([{"params": mixed, "block": True}])
