@@ -79,7 +79,7 @@ def test_spectral_step_norm_is_at_most_lr_and_the_direction_is_adams():
     torch.testing.assert_close(step / step.norm(), adam / adam.norm())
 
 
-@pytest.mark.parametrize("block_update", ["rms", "spectral", "muon"])
+@pytest.mark.parametrize("block_update", ["rms", "spectral", "muon", "normuon"])
 def test_zero_gradient_leaves_a_block_unchanged(block_update):
     weight = nn.Parameter(torch.randn(6, 4, dtype=torch.float64))
     weight.grad = torch.zeros_like(weight)
@@ -168,6 +168,28 @@ def test_first_muon_step_with_polar_express_is_the_scaled_polar_express_of_the_g
         BlockAdamW([weight], block_update="muon", orthogonalization="svd")
 
 
+def test_first_normuon_step_moves_every_row_alike_by_the_size_of_muons_step():
+    g = torch.Generator().manual_seed(0)
+    start = torch.randn(12, 8, generator=g, dtype=torch.float64)
+    scales = torch.logspace(-1, 1, 12, dtype=torch.float64)[:, None]  # rows of gradients of very different size
+    grad = torch.randn(12, 8, generator=g, dtype=torch.float64) * scales
+    steps = {}
+    for update in ("muon", "normuon"):
+        weight = nn.Parameter(start.clone())
+        weight.grad = grad.clone()
+        optimizer = BlockAdamW([{"params": [weight], "block": True}], lr=LR, block_update=update, row_beta=0.9)
+        optimizer.step()
+        steps[update] = start - weight.detach()
+
+    muon_rows, normuon_rows = (steps[u].pow(2).mean(dim=1).sqrt() for u in ("muon", "normuon"))
+    assert muon_rows.max() > 1.5 * muon_rows.min()  # Muon moves some neurons much more than others
+    torch.testing.assert_close(normuon_rows, normuon_rows.mean().expand(12))  # NorMuon moves them alike
+    torch.testing.assert_close(steps["normuon"].norm(), steps["muon"].norm())  # by the size of Muon's step
+    assert optimizer.state[weight]["row_second_moment"].shape == (12, 1)
+    with pytest.raises(ValueError, match="row_beta"):
+        BlockAdamW([weight], block_update="normuon", row_beta=1.0)
+
+
 def test_the_matrix_functions_of_a_batch_are_those_of_each_matrix():
     g = torch.Generator().manual_seed(0)
     for shape in ((3, 5, 8), (3, 8, 5)):
@@ -200,7 +222,7 @@ def step_fused_and_separate(block_update, roles=3, group_roles=None, rows=6, col
     return fused.detach(), torch.cat([p.detach() for p in separate])
 
 
-@pytest.mark.parametrize("block_update", ["adam", "rms", "spectral", "muon", "soap"])
+@pytest.mark.parametrize("block_update", ["adam", "rms", "spectral", "muon", "normuon", "soap"])
 @pytest.mark.parametrize("rows", [6, 12])  # roles wider and taller than they are long
 def test_a_fused_layer_steps_like_separate_layers_for_its_roles(block_update, rows):
     fused, separate = step_fused_and_separate(block_update, rows=rows)
@@ -208,7 +230,7 @@ def test_a_fused_layer_steps_like_separate_layers_for_its_roles(block_update, ro
     torch.testing.assert_close(fused, separate)
 
 
-@pytest.mark.parametrize("block_update", ["rms", "spectral", "muon", "soap"])
+@pytest.mark.parametrize("block_update", ["rms", "spectral", "muon", "normuon", "soap"])
 def test_stepping_the_roles_apart_differs_from_stepping_their_stack(block_update):
     apart, _ = step_fused_and_separate(block_update)
     stack, separate = step_fused_and_separate(block_update, group_roles=1)
@@ -245,7 +267,7 @@ def test_the_roles_of_a_group_have_to_split_its_rows():
 
 @pytest.mark.parametrize(
     "block_update, roles",
-    [(update, roles) for update in ("adam", "rms", "spectral", "muon", "soap") for roles in (1, 2)],
+    [(update, roles) for update in ("adam", "rms", "spectral", "muon", "normuon", "soap") for roles in (1, 2)],
 )
 def test_every_update_fits_a_linear_regression(block_update, roles):
     g = torch.Generator().manual_seed(0)
@@ -347,7 +369,7 @@ def test_slices_with_the_vector_scope_are_the_two_roles_of_the_vector_layers():
     assert ids(blocks["params"]) == ids([net.mixing.mu_channel_mix.weight] + [b.mix_vectors.weight for b in net.head])
 
 
-@pytest.mark.parametrize("block_update", ["adam", "rms", "muon"])
+@pytest.mark.parametrize("block_update", ["adam", "rms", "muon", "normuon"])
 def test_weight_decay_shrinks_only_the_block_matrices(block_update):
     net = Net()
     blocks, rest = block_param_groups(net.parameters(), net, "all")
@@ -704,7 +726,7 @@ def test_soap_options_are_checked():
         BlockAdamW([weight], block_update="soap", shampoo_beta=1.0)
 
 
-@pytest.mark.parametrize("block_update", ["adam", "rms", "spectral", "muon", "soap"])
+@pytest.mark.parametrize("block_update", ["adam", "rms", "spectral", "muon", "normuon", "soap"])
 @pytest.mark.parametrize("roles", [1, 2])
 def test_matrices_stepped_together_step_as_if_alone(block_update, roles):
     # a group batches its matrices of one shape; a gradient missing at some steps puts its matrix behind the others

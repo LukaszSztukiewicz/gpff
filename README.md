@@ -105,12 +105,13 @@ gpff_train experiment=gpff data.load_properties=[] data.cache_in_memory=true \
 # (gpff.optim): AdamW's update divided by its RMS or spectral norm, or Muon's
 # or SOAP's update. The learning rate then sets the size of each matrix's update, so it
 # needs its own search; starting points are in configs/task/optimizer/block_adam.yaml.
-# task.optimizer_args.block_update is rms, spectral, muon, soap (Adam in the eigenbasis of Shampoo's preconditioner,
-# refreshed every task.optimizer_args.precondition_frequency steps; one_sided=true rotates only the smaller side)
-# or adam (control);
+# task.optimizer_args.block_update is rms, spectral, muon, normuon (Muon with every row normalized by its
+# running RMS), soap (Adam in the eigenbasis of Shampoo's preconditioner, refreshed every
+# task.optimizer_args.precondition_frequency steps; one_sided=true rotates only the smaller side) or adam (control);
 # task.block_scope is all matrices of the blocks or only the vector ones (all, vector).
 # task.block_slices=true steps the roles of the fused layers (2 or 3 outputs computed by one weight) on their own.
-# task.optimizer_args.orthogonalization=polar_express gives muon Polar Express's orthogonalization (default newton_schulz).
+# task.optimizer_args.orthogonalization=polar_express gives muon and normuon Polar Express's orthogonalization
+# (default newton_schulz).
 # task.optimizer_args.weight_decay (default 0, off) decays those matrices only:
 gpff_train experiment=gpff task/optimizer=block_adam task.optimizer_args.block_update=rms globals.lr=1e-5
 

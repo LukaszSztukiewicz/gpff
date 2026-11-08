@@ -4,10 +4,12 @@ An equivariant layer mixes channels with one matrix that is shared over the 2l +
 components of a feature (in PaiNN: the 3 components of a vector). Adam rescales every
 entry on its own, so one learning rate still gives these matrices very different step
 sizes. ``BlockAdamW`` rescales the update of each such matrix ("block") so that the
-learning rate is its size, or replaces it by Muon's or SOAP's update.
+learning rate is its size, or replaces it by Muon's, NorMuon's or SOAP's update.
 
 Manolache & Niepert, "Equivariance Breaks the Learning Rate" (NeurIPS 2026 workshop).
 Vyas et al., "SOAP: Improving and Stabilizing Shampoo using Adam" (ICLR 2025).
+Li et al., "NorMuon: Making Muon more efficient and scalable" (2025).
+Amsel et al., "The Polar Express: Optimal Matrix Sign Methods and Their Application to the Muon Algorithm" (ICLR 2026).
 """
 import math
 from functools import partial
@@ -108,6 +110,18 @@ def orthogonalized(matrix: Tensor, method: str = "newton_schulz") -> Tensor:
     return _ORTHOGONALIZATIONS[method](matrix) * (_ADAMW_RMS * math.sqrt(max(matrix.shape[-2:])))
 
 
+def row_normalized(matrix: Tensor, second_moment: Tensor, beta: float, method: str = "newton_schulz") -> Tensor:
+    """NorMuon's update of a momentum matrix: orthogonalized by ``method``, every row divided by the root of its
+    running mean square (``second_moment``, one per row, updated in place with decay ``beta``), then scaled back to
+    the norm it had before, so that its size is Muon's (as in the authors' code)."""
+    update = _ORTHOGONALIZATIONS[method](matrix)
+    second_moment.lerp_(update.pow(2).mean(dim=-1, keepdim=True), 1 - beta)
+    rows = update / (second_moment.sqrt() + 1e-10)
+    norm = partial(torch.linalg.matrix_norm, keepdim=True)
+    rows = rows * (norm(update) / (norm(rows) + 1e-10))
+    return rows * (_ADAMW_RMS * math.sqrt(max(matrix.shape[-2:])))
+
+
 def roles_of(matrix: Tensor, roles: int) -> Tensor:
     """The ``roles`` equal slices of the rows of ``matrix``, as a batch of matrices."""
     return matrix.reshape(roles, matrix.shape[0] // roles, matrix.shape[1])
@@ -121,12 +135,19 @@ def _groups(keys) -> List[List[int]]:
     return list(groups.values())
 
 
-def _batched(function, matrices: List[Tensor], roles: int) -> List[Tensor]:
+def _batched(function, matrices: List[Tensor], roles: int, states: Optional[List[Tensor]] = None) -> List[Tensor]:
     """``function`` of every role of every matrix on its own, as one call per shape: the results, with the shapes
-    of ``matrices``."""
+    of ``matrices``. With ``states`` (one tensor per matrix with a row per row of it), ``function`` also takes
+    their batch and updates it in place, and they take its values."""
     results = [None] * len(matrices)
     for indices in _groups(m.shape for m in matrices):
-        batch = function(torch.cat([roles_of(matrices[i], roles) for i in indices]))
+        inputs = [torch.cat([roles_of(matrices[i], roles) for i in indices])]
+        if states is not None:
+            inputs.append(torch.cat([roles_of(states[i], roles) for i in indices]))
+        batch = function(*inputs)
+        if states is not None:
+            parts = [s.reshape(states[i].shape) for i, s in zip(indices, inputs[1].split(roles))]
+            torch._foreach_copy_([states[i] for i in indices], parts)
         for i, result in zip(indices, batch.split(roles)):
             results[i] = result.reshape(matrices[i].shape)
     return results
@@ -180,6 +201,8 @@ class BlockAdamW(Optimizer):
       scaled to the RMS of an AdamW update, so ``lr`` is comparable to AdamW's.
       ``orthogonalization`` is ``"newton_schulz"`` (Muon's, the default) or ``"polar_express"`` (Amsel et al.:
       a polynomial per iteration, singular values closer to one for the same 5 iterations).
+    * ``"normuon"``: NorMuon (Li et al. 2025), Muon's update with every row (output neuron) divided by the root of
+      its running mean square (decay ``row_beta``), then scaled back to Muon's size: no neuron dominates the step.
     * ``"soap"``: Adam in the eigenbasis of Shampoo's preconditioner, as in the reference implementation of
       SOAP. Every matrix keeps the averages (``shampoo_beta``, default ``betas[1]``) of ``G G^T`` and ``G^T G``
       over its gradients ``G``, and Adam's moments are those of ``G`` rotated into their eigenvectors, which are
@@ -218,11 +241,14 @@ class BlockAdamW(Optimizer):
         shampoo_beta: Optional[float] = None,
         one_sided: bool = False,
         orthogonalization: str = "newton_schulz",
+        row_beta: float = 0.95,
     ):
-        if block_update not in ("adam", "muon", "soap", *_NORMS):
+        if block_update not in ("adam", "muon", "normuon", "soap", *_NORMS):
             raise ValueError(f"unknown block_update {block_update!r}")
         if orthogonalization not in _ORTHOGONALIZATIONS:
             raise ValueError(f"unknown orthogonalization {orthogonalization!r}")
+        if not 0 <= row_beta < 1:
+            raise ValueError("row_beta has to be in [0, 1)")
         if precondition_frequency < 1:
             raise ValueError("precondition_frequency has to be at least 1")
         if shampoo_beta is not None and not 0 <= shampoo_beta < 1:
@@ -231,7 +257,7 @@ class BlockAdamW(Optimizer):
             lr=lr, betas=tuple(betas), eps=eps, weight_decay=weight_decay,
             block=False, block_update=block_update, momentum=momentum, roles=1,
             precondition_frequency=precondition_frequency, shampoo_beta=shampoo_beta, one_sided=one_sided,
-            orthogonalization=orthogonalization,
+            orthogonalization=orthogonalization, row_beta=row_beta,
         )
         super().__init__(params, defaults)
 
@@ -254,8 +280,8 @@ class BlockAdamW(Optimizer):
         for group in self.param_groups:
             params = [p for p in group["params"] if p.grad is not None]
             mode = group["block_update"] if group["block"] else "adam"
-            if mode == "muon":
-                updates = self._muon_updates(params, group)
+            if mode in ("muon", "normuon"):
+                updates = self._muon_updates(params, group, rows=mode == "normuon")
             elif mode == "soap":
                 updates = self._soap_updates(params, group)
             else:
@@ -296,16 +322,24 @@ class BlockAdamW(Optimizer):
         torch._foreach_div_(updates, denominators)
         return updates
 
-    def _muon_updates(self, params: List[Tensor], group: dict) -> List[Tensor]:
+    def _muon_updates(self, params: List[Tensor], group: dict, rows: bool = False) -> List[Tensor]:
+        """Muon's updates, or with ``rows`` NorMuon's."""
         for p in params:
             if not self.state[p]:
                 self.state[p]["momentum_buffer"] = torch.zeros_like(p)
+                if rows:
+                    self.state[p]["row_second_moment"] = p.new_zeros(p.shape[0], 1)
         if not params:
             return []
         grads, buffers = [p.grad for p in params], [self.state[p]["momentum_buffer"] for p in params]
         torch._foreach_lerp_(buffers, grads, 1 - group["momentum"])
-        orthogonalize = partial(orthogonalized, method=group["orthogonalization"])
-        return _batched(orthogonalize, torch._foreach_lerp(grads, buffers, group["momentum"]), group["roles"])
+        nesterov = torch._foreach_lerp(grads, buffers, group["momentum"])
+        if not rows:
+            orthogonalize = partial(orthogonalized, method=group["orthogonalization"])
+            return _batched(orthogonalize, nesterov, group["roles"])
+        normalize = partial(row_normalized, beta=group["row_beta"], method=group["orthogonalization"])
+        seconds = [self.state[p]["row_second_moment"] for p in params]
+        return _batched(normalize, nesterov, group["roles"], states=seconds)
 
     def _soap_updates(self, params: List[Tensor], group: dict) -> List[Optional[Tensor]]:
         """SOAP's updates, None for the first gradient of a matrix. The state of a matrix holds one matrix per role:
