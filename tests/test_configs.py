@@ -37,7 +37,7 @@ def test_experiment_builds(experiment):
         config.task,
         model=model,
         optimizer_cls=str2class(config.task.optimizer_cls),
-        scheduler_cls=str2class(config.task.scheduler_cls),
+        scheduler_cls=str2class(config.task.scheduler_cls) if config.task.scheduler_cls else None,
     )
     hydra.utils.instantiate(config.data, train_sampler_cls=None)
 
