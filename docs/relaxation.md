@@ -4,6 +4,11 @@ Run these commands in the same container, code snapshot and dataset protocol
 as the experiment. GPU commands require a GPU allocation. None of the commands
 downloads models or installs packages.
 
+With an existing container and a snapshot supplied through `PYTHONPATH`, the
+new console scripts may not be registered in the container. Use
+`python -m gpff.cli.relax_report`, `python -m gpff.cli.refine` and
+`python -m gpff.cli.damping_probe` with the same arguments in that case.
+
 ## Paired physical relaxation
 
 ```sh
@@ -110,4 +115,4 @@ per-molecule freezing and step-limit accounting without MACE installed.
 
 The original scripts and reports are retained in
 [`studies/uff_relaxation_20261031`](../studies/uff_relaxation_20261031/README.md),
-with the original branch history reachable through its archival merge.
+with the original single-structure relaxation module saved alongside them.
