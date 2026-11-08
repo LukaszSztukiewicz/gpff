@@ -166,20 +166,30 @@ fixed or tuned jointly with EMA.
 ## Validation
 
 Validated on hydra, in the py313-torch214-gcc container under CPU Slurm jobs
-on 2026-10-30, using frozen snapshot `138cc47-posthoc-ema-v2`:
+on 2026-11-08, using frozen snapshot `01018b1-posthoc-ema` (on dev-wip
+`fe0e489`):
 
-* Job 5159714: **25 passed** across `tests/test_posthoc_ema.py` and
-  `tests/test_callbacks.py`. Checks include numerical integration, direct
+* Job 5195209: **39 passed** across `tests/test_posthoc_ema.py`,
+  `tests/test_callbacks.py`, `tests/test_configs.py` and
+  `tests/test_checkpoint.py`. Checks include numerical integration, direct
   averaging of a complete weight history, exact source-profile reconstruction,
-  bit-identical resume, conventional-EMA coexistence, accumulation and skipped
-  batches, float16 storage, Hydra composition, and real PaiNN export/reload
-  through schnetpack (also with `model.compile(backend="eager")`).
-* Job 5159727: the actual `gpff_train` entry point completed two tiny QM9
-  epochs (four optimizer updates), validation/test, milestone saves, and
-  CLI reconstruction at width 0.15. The isolated run is
-  `~/gpff/scratch/posthoc-ema-validation/smoke-v2` on hydra. Its profile error
-  is about 0.106: four updates exercise the plumbing, not reconstruction
-  accuracy at realistic training lengths.
+  bit-identical resume, a resume from an earlier checkpoint (later snapshots set
+  aside, same reconstruction as an uninterrupted run), epoch-end snapshots and
+  `--epoch`, float64 averages that keep moving at 3M updates,
+  conventional-EMA coexistence, accumulation and skipped batches, float16
+  storage, Hydra composition with the milestone epochs, and real PaiNN
+  export/reload through schnetpack (also with `model.compile(backend="eager")`).
+* Job 5195210: the actual `gpff_train` entry point with
+  `'+callbacks=[milestones,posthoc_ema]'`, milestones at epochs 1 and 2 and a
+  snapshot every 3 updates, trained three tiny QM9 epochs (6 updates). It then
+  resumed from the epoch-1 milestone to four epochs, which moved the 3 later
+  snapshots to `abandoned/`. CLI reconstruction at `--epoch 2` gave update 4
+  both before and after the resume. The run is
+  `~/gpff/scratch/posthoc-ema-review/smoke.UdIIbZ/smoke` on hydra. Its profile
+  errors (0.10–0.15 at width 0.15) only reflect the few updates.
+
+Numerical checks of the float32/float64 averages and of reconstruction versus
+cadence are in `~/gpff/scratch/posthoc-ema-review/check.py`.
 
 These checks validate implementation behavior; a molecular-quality EMA sweep
 has not been run.
