@@ -43,20 +43,40 @@ def test_experiment_builds(experiment):
     hydra.utils.instantiate(config.data, train_sampler_cls=None)
 
 
-def test_block_adam_refuses_weight_norm_when_the_task_is_built():
+def build_block_adam_task(experiment, block_update, *overrides):
+    """What gpff_train instantiates of the model and the task with task/optimizer=block_adam, before any data."""
     with initialize_config_dir(config_dir=str(CONFIG_DIR)):
         config = compose(
             "train",
-            overrides=["experiment=gpff_stable", "task/optimizer=block_adam", "run.path=/runs", "run.data_dir=/data"],
+            overrides=[
+                f"experiment={experiment}",
+                "task/optimizer=block_adam",
+                f"task.optimizer_args.block_update={block_update}",
+                "run.path=/runs",
+                "run.data_dir=/data",
+                *overrides,
+            ],
         )
-    assert config.globals.weight_norm
-
     model = hydra.utils.instantiate(config.model)
+    task = hydra.utils.instantiate(
+        config.task, model=model, optimizer_cls=str2class(config.task.optimizer_cls), scheduler_cls=None
+    )
+    return config, task
+
+
+@pytest.mark.parametrize("block_update", ["rms", "muon", "normuon", "muonh"])
+def test_block_adam_takes_the_weight_normalized_blocks_of_the_stable_recipe(block_update):
+    config, task = build_block_adam_task("gpff_stable", block_update)
+
+    assert config.globals.weight_norm
+    blocks = [group for group in task.configure_optimizers().param_groups if group["block"]]
+    assert blocks and all(group["normalized"] for group in blocks)
+
+
+def test_muonh_is_refused_without_weight_norm_when_the_task_is_built():
     # hydra wraps the ValueError of the task in an InstantiationException that quotes it
-    with pytest.raises((ValueError, InstantiationException), match="weight_norm=true cannot be combined"):
-        hydra.utils.instantiate(
-            config.task, model=model, optimizer_cls=str2class(config.task.optimizer_cls), scheduler_cls=None
-        )
+    with pytest.raises((ValueError, InstantiationException), match="muonh"):
+        build_block_adam_task("gpff_stable", "muonh", "globals.weight_norm=false")
 
 
 @pytest.mark.parametrize("experiment", ["dm_no_t", "dm_t_aware"])

@@ -4,9 +4,10 @@ An equivariant layer mixes channels with one matrix that is shared over the 2l +
 components of a feature (in PaiNN: the 3 components of a vector). Adam rescales every
 entry on its own, so one learning rate still gives these matrices very different step
 sizes. ``BlockAdamW`` rescales the update of each such matrix ("block") so that the
-learning rate is its size, or replaces it by Muon's, NorMuon's or SOAP's update.
+learning rate is its size, or replaces it by Muon's, NorMuon's, MuonH's or SOAP's update.
 
 Manolache & Niepert, "Equivariance Breaks the Learning Rate" (NeurIPS 2026 workshop).
+"Fantastic Pretraining Optimizers and Where to Find Them II: Hyperball Optimization" (2026): MuonH.
 Vyas et al., "SOAP: Improving and Stabilizing Shampoo using Adam" (ICLR 2025).
 Li et al., "NorMuon: Making Muon more efficient and scalable" (2025).
 Amsel et al., "The Polar Express: Optimal Matrix Sign Methods and Their Application to the Muon Algorithm" (ICLR 2026).
@@ -23,7 +24,7 @@ from torch.optim import Optimizer
 
 from gpff.nn.normalized import NormalizedDense
 
-__all__ = ["BlockAdamW", "block_param_groups", "refuse_weight_norm"]
+__all__ = ["BlockAdamW", "block_param_groups"]
 
 # the equivariant blocks, with the name of their layer acting on vector features (None: no such layer)
 _BLOCKS = {PaiNNInteraction: None, PaiNNMixing: "mu_channel_mix", GatedEquivariantBlock: "mix_vectors"}
@@ -112,6 +113,15 @@ def orthogonalized(matrix: Tensor, method: str = "newton_schulz") -> Tensor:
     return _ORTHOGONALIZATIONS[method](matrix) * (_ADAMW_RMS * math.sqrt(max(matrix.shape[-2:])))
 
 
+def hyperball_update(matrix: Tensor, weight: Tensor, method: str = "newton_schulz") -> Tensor:
+    """MuonH's update of a momentum matrix: orthogonalized by ``method``, then scaled to the Frobenius norm of its
+    ``weight`` (zero stays zero). A step ``lr`` times this one changes the weight by the fraction ``lr`` of its norm,
+    whatever its shape: the learning rate no longer depends on the size of the layer."""
+    update = _ORTHOGONALIZATIONS[method](matrix)
+    norm = partial(torch.linalg.matrix_norm, keepdim=True)
+    return update * (norm(weight) / norm(update).clamp_min(1e-7))
+
+
 def row_normalized(matrix: Tensor, second_moment: Tensor, beta: float, method: str = "newton_schulz") -> Tensor:
     """NorMuon's update of a momentum matrix: orthogonalized by ``method``, every row divided by the root of its
     running mean square (``second_moment``, one per row, updated in place with decay ``beta``), then scaled back to
@@ -137,18 +147,27 @@ def _groups(keys) -> List[List[int]]:
     return list(groups.values())
 
 
-def _batched(function, matrices: List[Tensor], roles: int, states: Optional[List[Tensor]] = None) -> List[Tensor]:
+def _batched(
+    function,
+    matrices: List[Tensor],
+    roles: int,
+    states: Optional[List[Tensor]] = None,
+    fixed: Optional[List[Tensor]] = None,
+) -> List[Tensor]:
     """``function`` of every role of every matrix on its own, as one call per shape: the results, with the shapes
-    of ``matrices``. With ``states`` (one tensor per matrix with a row per row of it), ``function`` also takes
-    their batch and updates it in place, and they take its values."""
+    of ``matrices``. With ``fixed`` (one tensor per matrix, of its shape), ``function`` also takes their batch,
+    which it must not change. With ``states`` (one tensor per matrix with a row per row of it), ``function`` also
+    takes their batch, last, and updates it in place, and they take its values."""
     results = [None] * len(matrices)
     for indices in _groups(m.shape for m in matrices):
         inputs = [torch.cat([roles_of(matrices[i], roles) for i in indices])]
+        if fixed is not None:
+            inputs.append(torch.cat([roles_of(fixed[i], roles) for i in indices]))
         if states is not None:
             inputs.append(torch.cat([roles_of(states[i], roles) for i in indices]))
         batch = function(*inputs)
         if states is not None:
-            parts = [s.reshape(states[i].shape) for i, s in zip(indices, inputs[1].split(roles))]
+            parts = [s.reshape(states[i].shape) for i, s in zip(indices, inputs[-1].split(roles))]
             torch._foreach_copy_([states[i] for i in indices], parts)
         for i, result in zip(indices, batch.split(roles)):
             results[i] = result.reshape(matrices[i].shape)
@@ -205,6 +224,11 @@ class BlockAdamW(Optimizer):
       a polynomial per iteration, singular values closer to one for the same 5 iterations).
     * ``"normuon"``: NorMuon (Li et al. 2025), Muon's update with every row (output neuron) divided by the root of
       its running mean square (decay ``row_beta``), then scaled back to Muon's size: no neuron dominates the step.
+    * ``"muonh"``: MuonH, Muon on a hypersphere ("Hyperball Optimization"): Muon's direction (same ``momentum`` and
+      ``orthogonalization``) scaled to the Frobenius norm of the weight it updates, so ``lr`` is the fraction of its
+      norm that a step moves the weight, whatever the shape of the layer, and not AdamW's per-entry size. It needs
+      weights held at a fixed norm, so its groups have to be ``normalized`` (``globals.weight_norm=true``): the task
+      projects every row back onto its sphere after the step.
     * ``"soap"``: Adam in the eigenbasis of Shampoo's preconditioner, as in the reference implementation of
       SOAP. Every matrix keeps the averages (``shampoo_beta``, default ``betas[1]``) of ``G G^T`` and ``G^T G``
       over its gradients ``G``, and Adam's moments are those of ``G`` rotated into their eigenvectors, which are
@@ -216,7 +240,7 @@ class BlockAdamW(Optimizer):
 
     ``weight_decay`` is decoupled, as in AdamW: a step shrinks the weights by ``lr * weight_decay`` before the
     update, whichever update it is. It is off by default; the groups of ``block_param_groups`` decay the block
-    matrices only.
+    matrices only. A ``normalized`` group refuses it: the projection of its rows undoes the shrinking.
 
     A block group may set ``roles`` (default 1) for fused layers: each of its weights stacks that many equal
     matrices along its rows, one per role of the layer's output. Every block update then takes the step of each
@@ -245,7 +269,7 @@ class BlockAdamW(Optimizer):
         orthogonalization: str = "newton_schulz",
         row_beta: float = 0.95,
     ):
-        if block_update not in ("adam", "muon", "normuon", "soap", *_NORMS):
+        if block_update not in ("adam", "muon", "normuon", "muonh", "soap", *_NORMS):
             raise ValueError(f"unknown block_update {block_update!r}")
         if orthogonalization not in _ORTHOGONALIZATIONS:
             raise ValueError(f"unknown orthogonalization {orthogonalization!r}")
@@ -257,7 +281,7 @@ class BlockAdamW(Optimizer):
             raise ValueError("shampoo_beta has to be in [0, 1)")
         defaults = dict(
             lr=lr, betas=tuple(betas), eps=eps, weight_decay=weight_decay,
-            block=False, block_update=block_update, momentum=momentum, roles=1,
+            block=False, normalized=False, block_update=block_update, momentum=momentum, roles=1,
             precondition_frequency=precondition_frequency, shampoo_beta=shampoo_beta, one_sided=one_sided,
             orthogonalization=orthogonalization, row_beta=row_beta,
         )
@@ -272,6 +296,17 @@ class BlockAdamW(Optimizer):
             raise ValueError("the rows of a block matrix have to split into the roles of its group")
         if group["block"] and len({(p.dtype, p.device) for p in group["params"]}) > 1:
             raise ValueError("the parameters of a block group have to share their dtype and device")
+        if group["block"] and group["normalized"] and group["weight_decay"]:
+            raise ValueError(
+                "weight_decay has no effect on the weight-normalized matrices of the blocks: the task projects "
+                "their rows back onto their sphere after every step, which undoes the shrinking. Set weight_decay=0"
+            )
+        if group["block"] and group["block_update"] == "muonh" and not group["normalized"]:
+            raise ValueError(
+                "block_update='muonh' keeps its weights at a fixed norm, which is the projection of "
+                "globals.weight_norm=true; some block matrices are not weight-normalized. Set "
+                "globals.weight_norm=true or use block_update='muon'"
+            )
 
     @torch.no_grad()
     def step(self, closure=None):
@@ -282,8 +317,8 @@ class BlockAdamW(Optimizer):
         for group in self.param_groups:
             params = [p for p in group["params"] if p.grad is not None]
             mode = group["block_update"] if group["block"] else "adam"
-            if mode in ("muon", "normuon"):
-                updates = self._muon_updates(params, group, rows=mode == "normuon")
+            if mode in ("muon", "normuon", "muonh"):
+                updates = self._muon_updates(params, group, mode)
             elif mode == "soap":
                 updates = self._soap_updates(params, group)
             else:
@@ -324,19 +359,22 @@ class BlockAdamW(Optimizer):
         torch._foreach_div_(updates, denominators)
         return updates
 
-    def _muon_updates(self, params: List[Tensor], group: dict, rows: bool = False) -> List[Tensor]:
-        """Muon's updates, or with ``rows`` NorMuon's."""
+    def _muon_updates(self, params: List[Tensor], group: dict, mode: str = "muon") -> List[Tensor]:
+        """The updates of ``mode``: Muon's, NorMuon's (``"normuon"``) or MuonH's (``"muonh"``)."""
         for p in params:
             if not self.state[p]:
                 self.state[p]["momentum_buffer"] = torch.zeros_like(p)
-                if rows:
+                if mode == "normuon":
                     self.state[p]["row_second_moment"] = p.new_zeros(p.shape[0], 1)
         if not params:
             return []
         grads, buffers = [p.grad for p in params], [self.state[p]["momentum_buffer"] for p in params]
         torch._foreach_lerp_(buffers, grads, 1 - group["momentum"])
         nesterov = torch._foreach_lerp(grads, buffers, group["momentum"])
-        if not rows:
+        if mode == "muonh":
+            direction = partial(hyperball_update, method=group["orthogonalization"])
+            return _batched(direction, nesterov, group["roles"], fixed=params)
+        if mode == "muon":
             orthogonalize = partial(orthogonalized, method=group["orthogonalization"])
             return _batched(orthogonalize, nesterov, group["roles"])
         normalize = partial(row_normalized, beta=group["row_beta"], method=group["orthogonalization"])
@@ -415,29 +453,6 @@ class BlockAdamW(Optimizer):
         return update
 
 
-def refuse_weight_norm(model: nn.Module) -> None:
-    """Raise if the equivariant blocks of ``model`` have weight-normalized layers (``weight_norm=true``).
-
-    Weight normalization already sets the update size of these matrices: it re-projects every one of them
-    after each optimizer step. Its layers are also no ``nn.Linear``, so ``block_param_groups`` would leave
-    them out of the block group without notice, or find no block matrix at all.
-    """
-    normalized = [
-        f"{block_name}.{name}"
-        for block_name, block in model.named_modules()
-        if isinstance(block, tuple(_BLOCKS))
-        for name, layer in block.named_modules()
-        if isinstance(layer, NormalizedDense)
-    ]
-    if normalized:
-        more = f" and {len(normalized) - 3} more" if len(normalized) > 3 else ""
-        raise ValueError(
-            "weight_norm=true cannot be combined with task/optimizer=block_adam (task.block_scope): both set the "
-            "update size of the weight matrices of the equivariant blocks. Use one of them, e.g. "
-            f"globals.weight_norm=false. Weight-normalized block layers: {', '.join(normalized[:3])}{more}"
-        )
-
-
 def block_param_groups(
     params: Iterable[Tensor], model: nn.Module, scope: str = "all", slices: bool = False
 ) -> List[dict]:
@@ -449,28 +464,37 @@ def block_param_groups(
     Embeddings, the filter network, biases and normalization gains are never blocks, and the rest never takes
     weight decay: ``weight_decay`` of the optimizer decays the block matrices only.
 
+    The layers of ``weight_norm=true`` (``NormalizedDense``) are block layers like ``nn.Linear``. Their matrices
+    come in groups of their own (``normalized=True``), whose rows the task projects back onto their sphere after
+    every step: ``BlockAdamW`` refuses what that makes meaningless (weight decay) or what needs it (``muonh``).
+
     ``slices=True`` gives the fused layers (``_ROLES``: the layers whose output the forward pass splits into 2 or 3
     roles) the ``roles`` of their group, so that ``BlockAdamW`` steps each role as a block of its own. The block
-    matrices then come in one group per number of roles, in increasing order. The last layer of the gated blocks'
-    scalar net splits its output unevenly (scalars and gates), and stays one block.
+    matrices then come in one group per number of roles (and per normalized or not), in increasing order. The last
+    layer of the gated blocks' scalar net splits its output unevenly (scalars and gates), and stays one block.
     """
     if scope not in ("all", "vector"):
         raise ValueError(f"unknown block scope {scope!r}")
-    refuse_weight_norm(model)
-    roles = {}  # id of a block matrix -> number of roles of its layer
+    kinds = {}  # id of a block matrix -> (number of roles of its layer, whether the layer is weight-normalized)
     for module in model.modules():
         for block_cls, vector_layer in _BLOCKS.items():
             if isinstance(module, block_cls):
                 for name, layer in module.named_modules():
-                    if isinstance(layer, nn.Linear) and (scope == "all" or name == vector_layer):
-                        roles[id(layer.weight)] = _ROLES.get(name, 1) if slices else 1
+                    if isinstance(layer, (nn.Linear, NormalizedDense)) and (scope == "all" or name == vector_layer):
+                        kinds[id(layer.weight)] = (
+                            _ROLES.get(name, 1) if slices else 1,
+                            isinstance(layer, NormalizedDense),
+                        )
     params = list(params)
-    matrices = [p for p in params if id(p) in roles]
+    matrices = [p for p in params if id(p) in kinds]
     if not matrices:
         raise ValueError(f"no weight matrices of equivariant blocks in the parameters for block scope {scope!r}")
-    rest = [p for p in params if id(p) not in roles]
+    rest = [p for p in params if id(p) not in kinds]
     blocks = [
-        {"params": [p for p in matrices if roles[id(p)] == n], "block": True, "roles": n}
-        for n in sorted({roles[id(p)] for p in matrices})
+        {
+            "params": [p for p in matrices if kinds[id(p)] == (n, norm)],
+            "block": True, "roles": n, "normalized": norm,
+        }
+        for n, norm in sorted({kinds[id(p)] for p in matrices})
     ]
     return blocks + ([{"params": rest, "weight_decay": 0.0}] if rest else [])

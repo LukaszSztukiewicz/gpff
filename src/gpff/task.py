@@ -14,7 +14,7 @@ from schnetpack.task import UnsupervisedModelOutput
 from schnetpack.model.base import AtomisticModel
 from gpff.nn.normalized import project_weights
 
-from gpff.optim import block_param_groups, refuse_weight_norm
+from gpff.optim import block_param_groups
 
 
 log = logging.getLogger(__name__)
@@ -166,10 +166,11 @@ class AtomisticTask(SPKAtomisticTask):
         if block_slices and block_scope is None:
             raise ValueError("block_slices needs a block_scope: it splits the matrices of the blocks")
         if block_scope is not None:
-            # here rather than when Lightning builds the optimizer, after the data is loaded
-            refuse_weight_norm(self.model)
             # schnetpack builds the optimizer from self.parameters(): group them instead
             self.optimizer_cls = partial(_with_blocks, optimizer_cls, self.model, block_scope, block_slices)
+            # Build it once now rather than when Lightning does, after the data is loaded: a combination the
+            # optimizer refuses (block_update=muonh without weight_norm, weight_decay with it) fails at once.
+            self.optimizer_cls(self.parameters(), **(optimizer_args or {}))
 
     def optimizer_step(self, epoch=None, batch_idx=None, optimizer=None, optimizer_closure=None):
         super().optimizer_step(epoch, batch_idx, optimizer, optimizer_closure)

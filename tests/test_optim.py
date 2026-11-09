@@ -14,10 +14,12 @@ from torch import nn
 
 from gpff.model.heads import GatedEquivariant
 from gpff.model.painn import PaiNN
+from gpff.nn.normalized import NormalizedDense, project_weights
 from gpff.optim import (
     BlockAdamW,
     block_param_groups,
     eigenbasis,
+    hyperball_update,
     newton_schulz,
     polar_express,
     refreshed_basis,
@@ -27,6 +29,7 @@ from gpff.optim import (
 from gpff.task import AtomisticTask
 
 LR = 1e-2
+fro = torch.linalg.matrix_norm
 
 
 def last_delta(block_update, steps=3, shape=(12, 8), block=True, **kwargs):
@@ -416,9 +419,9 @@ def potential(trunk_weight_norm=False, head_weight_norm=False):
     )
 
 
-def task(model=None, **kwargs):
+def task(model=None, optimizer_args=None, **kwargs):
     model = potential() if model is None else model
-    return AtomisticTask(model=model, outputs=[], optimizer_args={"lr": 1e-3}, **kwargs)
+    return AtomisticTask(model=model, outputs=[], optimizer_args={"lr": 1e-3, **(optimizer_args or {})}, **kwargs)
 
 
 def test_task_builds_the_optimizer_from_the_block_groups():
@@ -432,17 +435,223 @@ def test_task_builds_the_optimizer_from_the_block_groups():
     assert ids(p for group in optimizer.param_groups for p in group["params"]) == ids(blocked.parameters())
 
 
-# the trunk alone would leave the head's matrices in the block group, the head alone the trunk's
-@pytest.mark.parametrize("trunk, head", [(True, True), (True, False), (False, True)])
-@pytest.mark.parametrize("scope", ["all", "vector"])
-def test_block_scope_refuses_weight_norm(trunk, head, scope):
-    model = potential(trunk_weight_norm=trunk, head_weight_norm=head)
-    message = "weight_norm=true cannot be combined with task/optimizer=block_adam"
+def normalized_matrices(model):
+    return {id(layer.weight) for layer in model.modules() if isinstance(layer, NormalizedDense)}
 
-    with pytest.raises(ValueError, match=message):
-        block_param_groups(model.parameters(), model, scope)
-    with pytest.raises(ValueError, match=message):
-        task(model=model, optimizer_cls=BlockAdamW, block_scope=scope)
+
+@pytest.mark.parametrize("scope", ["all", "vector"])
+def test_weight_normalized_layers_are_block_matrices_like_linear_ones(scope):
+    plain, normalized = potential(), potential(trunk_weight_norm=True, head_weight_norm=True)
+
+    plain_blocks, plain_rest = block_param_groups(plain.parameters(), plain, scope)
+    blocks, rest = block_param_groups(normalized.parameters(), normalized, scope)
+
+    assert (plain_blocks["normalized"], blocks["normalized"]) == (False, True)
+    assert len(blocks["params"]) == len(plain_blocks["params"])
+    assert ids(blocks["params"]) <= normalized_matrices(normalized)
+    # biases, the filter network and the rest stay out, whatever the layers are
+    assert len(rest["params"]) == len(plain_rest["params"])
+    assert not rest.get("block", False) and not ids(rest["params"]) & ids(blocks["params"])
+
+
+def test_weight_normalized_and_plain_matrices_come_in_groups_of_their_own():
+    model = potential(trunk_weight_norm=True)  # a normalized trunk next to a plain head
+
+    plain, normalized, rest = block_param_groups(model.parameters(), model, "all")
+
+    assert [(g["block"], g["normalized"]) for g in (plain, normalized)] == [(True, False), (True, True)]
+    assert ids(normalized["params"]) <= normalized_matrices(model)
+    assert not ids(plain["params"]) & normalized_matrices(model)
+    assert ids(plain["params"]) | ids(normalized["params"]) | ids(rest["params"]) == ids(model.parameters())
+
+
+def test_slices_split_the_weight_normalized_layers_by_roles_too():
+    model = potential(trunk_weight_norm=True, head_weight_norm=True)
+
+    groups = [g for g in block_param_groups(model.parameters(), model, "all", slices=True) if g.get("block")]
+
+    assert [(g["roles"], g["normalized"]) for g in groups] == [(1, True), (2, True), (3, True)]
+
+
+@pytest.mark.parametrize("block_update", ["rms", "spectral", "adam", "muon", "normuon", "muonh", "soap"])
+def test_task_builds_every_block_update_on_weight_normalized_blocks(block_update):
+    model = potential(trunk_weight_norm=True, head_weight_norm=True)
+
+    args = {"block_update": block_update}
+    blocked = task(model=model, optimizer_cls=BlockAdamW, block_scope="all", optimizer_args=args)
+
+    optimizer = blocked.configure_optimizers()
+    assert [(g["block"], g["normalized"]) for g in optimizer.param_groups] == [(True, True), (False, False)]
+
+
+# the trunk alone would leave the head's matrices in an unnormalized block group, the head alone the trunk's
+@pytest.mark.parametrize("trunk, head", [(False, False), (True, False), (False, True)])
+def test_task_refuses_muonh_unless_every_block_matrix_is_weight_normalized(trunk, head):
+    model = potential(trunk_weight_norm=trunk, head_weight_norm=head)
+
+    with pytest.raises(ValueError, match="muonh"):
+        task(model=model, optimizer_cls=BlockAdamW, block_scope="all", optimizer_args={"block_update": "muonh"})
+
+
+def test_task_refuses_weight_decay_on_weight_normalized_blocks_when_it_is_built():
+    model = potential(trunk_weight_norm=True, head_weight_norm=True)
+
+    with pytest.raises(ValueError, match="weight_decay has no effect"):
+        task(model=model, optimizer_cls=BlockAdamW, block_scope="all", optimizer_args={"weight_decay": 0.1})
+
+
+def test_a_muonh_step_of_a_task_moves_the_blocks_by_lr_of_their_norm_and_the_projection_restores_it():
+    model = potential(trunk_weight_norm=True, head_weight_norm=True).double()
+    blocked = task(
+        model=model, optimizer_cls=BlockAdamW, block_scope="all", optimizer_args={"block_update": "muonh", "lr": LR}
+    )
+    optimizer = blocked.configure_optimizers()
+    block = optimizer.param_groups[0]["params"]
+    before = [p.detach().clone() for p in block]
+    g = torch.Generator().manual_seed(0)
+    for p in blocked.parameters():
+        p.grad = torch.randn(p.shape, generator=g, dtype=torch.float64)
+
+    optimizer.step()
+
+    for p, start in zip(block, before):
+        assert fro(p.detach() - start).item() == pytest.approx(LR * fro(start).item())
+    project_weights(blocked.model)
+    for layer in blocked.model.modules():
+        if isinstance(layer, NormalizedDense):
+            rows = layer._augmented_weight().square().mean(1)
+            torch.testing.assert_close(rows, torch.ones(layer.out_features, dtype=torch.float64))
+
+
+def hyperball_inputs(shape=(12, 8), scale=1.0):
+    g = torch.Generator().manual_seed(0)
+    return (
+        torch.randn(shape, generator=g, dtype=torch.float64),
+        torch.randn(shape, generator=g, dtype=torch.float64) * scale,
+    )
+
+
+def test_hyperball_update_is_muons_direction_with_the_norm_of_the_weight():
+    momentum, weight = hyperball_inputs(scale=3.0)
+
+    update = hyperball_update(momentum, weight)
+
+    torch.testing.assert_close(fro(update), fro(weight))
+    direction = newton_schulz(momentum)
+    torch.testing.assert_close(update / fro(update), direction / fro(direction))
+
+
+def test_hyperball_update_of_a_batch_takes_the_norm_of_each_weight():
+    g = torch.Generator().manual_seed(0)
+    momentum = torch.randn(3, 6, 8, generator=g, dtype=torch.float64)
+    scales = torch.tensor([0.1, 1.0, 10.0], dtype=torch.float64)[:, None, None]
+    weight = torch.randn(3, 6, 8, generator=g, dtype=torch.float64) * scales
+
+    update = hyperball_update(momentum, weight)
+
+    torch.testing.assert_close(fro(update), fro(weight))
+    for k in range(3):
+        torch.testing.assert_close(update[k], hyperball_update(momentum[k], weight[k]))
+
+
+def test_zero_momentum_gives_a_zero_hyperball_update():
+    _, weight = hyperball_inputs()
+
+    assert not hyperball_update(torch.zeros_like(weight), weight).any()
+
+
+def normalized_group(params, **kwargs):
+    return {"params": params, "block": True, "normalized": True, **kwargs}
+
+
+def test_first_muonh_step_moves_the_weight_by_the_fraction_lr_of_its_norm():
+    grad, weight = hyperball_inputs(scale=2.0)
+    weight = nn.Parameter(weight)
+    weight.grad = grad.clone()
+    before = weight.detach().clone()
+
+    BlockAdamW([normalized_group([weight])], lr=LR, block_update="muonh", momentum=0.9).step()
+
+    step = before - weight.detach()
+    # whatever the shape and size of the weight, and whatever the gradient: Nesterov momentum only rescales the
+    # gradient of the first step
+    assert fro(step).item() == pytest.approx(LR * fro(before).item())
+    torch.testing.assert_close(step, LR * hyperball_update(grad, before))
+
+
+def test_a_muonh_step_has_the_same_relative_size_for_a_wide_and_a_tall_layer():
+    g = torch.Generator().manual_seed(0)
+    weights = [nn.Parameter(torch.randn(shape, generator=g, dtype=torch.float64) * scale)
+               for shape, scale in (((4, 32), 0.1), ((32, 4), 5.0), ((16, 16), 1.0))]
+    before = [w.detach().clone() for w in weights]
+    for w in weights:
+        w.grad = torch.randn(w.shape, generator=g, dtype=torch.float64)
+
+    BlockAdamW([normalized_group(weights)], lr=LR, block_update="muonh").step()
+
+    for w, start in zip(weights, before):
+        assert (fro(start - w.detach()) / fro(start)).item() == pytest.approx(LR)
+
+
+def test_a_fused_layer_takes_the_muonh_step_of_each_role_relative_to_the_role():
+    g = torch.Generator().manual_seed(0)
+    roles, rows, columns = 3, 6, 8
+    scales = torch.tensor([0.1, 1.0, 10.0], dtype=torch.float64).repeat_interleave(rows)[:, None]
+    weight = nn.Parameter(torch.randn(roles * rows, columns, generator=g, dtype=torch.float64) * scales)
+    weight.grad = torch.randn(roles * rows, columns, generator=g, dtype=torch.float64)
+    before, grad = weight.detach().clone(), weight.grad.clone()
+
+    BlockAdamW([normalized_group([weight], roles=roles)], lr=LR, block_update="muonh").step()
+
+    steps = (before - weight.detach()).chunk(roles)
+    for step, role, role_grad in zip(steps, before.chunk(roles), grad.chunk(roles)):
+        assert fro(step).item() == pytest.approx(LR * fro(role).item())
+        torch.testing.assert_close(step, LR * hyperball_update(role_grad, role))
+
+
+@pytest.mark.parametrize("roles", [1, 2])
+@pytest.mark.parametrize("orthogonalization", ["newton_schulz", "polar_express"])
+def test_matrices_stepped_together_step_as_if_alone_with_muonh(roles, orthogonalization):
+    # the weights of a group are batched with the momentum, per shape; a missing gradient puts a matrix behind
+    g = torch.Generator().manual_seed(0)
+    shapes = [(8, 4), (8, 4), (4, 6), (8, 4), (4, 6)]
+    starts = [torch.randn(shape, generator=g, dtype=torch.float64) * (k + 1) for k, shape in enumerate(shapes)]
+    together, alone = [nn.Parameter(s.clone()) for s in starts], [nn.Parameter(s.clone()) for s in starts]
+    kwargs = dict(lr=LR, block_update="muonh", orthogonalization=orthogonalization)
+    optimizers = [BlockAdamW([normalized_group(together, roles=roles)], **kwargs)]
+    optimizers += [BlockAdamW([normalized_group([p], roles=roles)], **kwargs) for p in alone]
+
+    for step in range(7):
+        for k, (a, b) in enumerate(zip(together, alone)):
+            missing = k == 1 and step in (0, 3)
+            a.grad = None if missing else torch.randn(a.shape, generator=g, dtype=torch.float64)
+            b.grad = None if missing else a.grad.clone()
+        for optimizer in optimizers:
+            optimizer.step()
+
+    for a, b, start in zip(together, alone, starts):
+        assert not torch.equal(a.detach(), start)
+        torch.testing.assert_close(a.detach(), b.detach())
+
+
+def test_muonh_needs_weight_normalized_matrices():
+    weight = nn.Parameter(torch.zeros(4, 4))
+
+    with pytest.raises(ValueError, match="muonh"):
+        BlockAdamW([{"params": [weight], "block": True}], block_update="muonh")
+    BlockAdamW([normalized_group([weight])], block_update="muonh")
+    # the others do not mind either way
+    BlockAdamW([{"params": [weight], "block": True}], block_update="muon")
+
+
+@pytest.mark.parametrize("block_update", ["adam", "rms", "muon", "normuon", "muonh"])
+def test_weight_decay_is_refused_on_weight_normalized_matrices(block_update):
+    weight = nn.Parameter(torch.zeros(4, 4))
+
+    with pytest.raises(ValueError, match="weight_decay has no effect"):
+        BlockAdamW([normalized_group([weight])], block_update=block_update, weight_decay=0.1)
+    BlockAdamW([normalized_group([weight])], block_update=block_update)
+    BlockAdamW([{"params": [weight], "block": True}], block_update="muon", weight_decay=0.1)
 
 
 def test_weight_norm_without_block_scope_keeps_its_optimizer():
