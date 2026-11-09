@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gpff"
-version = "0.0.1"
+version = "0.0.2"
 description = "GPFF - Generative Pseudo Force Field for molecule generation."
 readme = "README.md"
-# Held to a single Python version, like the pinned numerical stack below.
+# Held to a single Python version
 requires-python = ">=3.13,<3.14"
 license = { text = "MIT" }
 authors = [
+    { name = "Lukasz Sztukiewicz", email = "contact@lukaszsztukiewicz.com"},
     { name = "Stefaan Hessmann", email = "stefaan@posteo.de" },
 ]
 dependencies = [
@@ -53,8 +54,6 @@ gpff_prepare_metadata = "gpff.cli.prepare_metadata:main"
 gpff_prepare_geom_revisited = "gpff.cli.prepare_geom_revisited:main"
 gpff_calculate_metrics = "gpff.cli.calculate_metrics:main"
 gpff_reference_assets = "gpff.cli.reference_assets:main"
-# Deprecated alias for gpff_train, kept for existing job scripts.
-gpfftrain = "gpff.cli.train:train"
 
 [project.urls]
 Homepage = "https://github.com/stefaanhessmann/gpff"

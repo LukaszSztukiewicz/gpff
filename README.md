@@ -12,7 +12,7 @@ gpff/
 └── src/
     └── gpff/                       # the importable package
         ├── cli/                    # one module per console entry point
-        │   ├── __init__.py         # shared banner, torch.load shim, OmegaConf resolvers
+        │   ├── __init__.py         # torch.load shim, OmegaConf resolvers
         │   ├── train.py            # gpff_train
         │   ├── generate.py         # gpff_generate
         │   ├── prepare_metadata.py  # gpff_prepare_metadata
@@ -21,13 +21,13 @@ gpff/
         ├── diagnostics.py          # force-field diagnostics every N training samples
         ├── keys.py
         ├── task.py
-        ├── analysis/               # validity, metrics, DB metadata, force-field diagnostics
+        ├── analysis/               # metrics, DB metadata, force-field diagnostics
         ├── configs/                # Hydra config tree
         ├── data/                   # data modules, datasets (QM9), transforms
         ├── model/                  # network heads (PaiNN, gated equivariant outputs)
         ├── nn/                     # neural-network building blocks
         ├── pseudo_pes/             # Gaussian pseudo-PES used to train GPFF
-        ├── sample/                 # samplers (DD, Heun, ancestral, adaptive), priors, shape predictors
+        ├── sample/                 # samplers, priors, shape predictors
         └── utils/                  # generic helpers
 ```
 
@@ -58,7 +58,6 @@ After install the entry points are on `PATH`:
 | `gpff_calculate_metrics` | Reduce those arrays to `evaluation/results.json`. Wraps `gpff.cli.calculate_metrics:main()`. |
 | `gpff_prepare_geom_revisited` | Build the GEOM-Drugs dataset of the MiDi split, cleaned as in GEOM-Drugs Revisited (below). Wraps `gpff.cli.prepare_geom_revisited:main()`. |
 
-`gpfftrain` still works as a deprecated alias for `gpff_train`.
 
 ### GEOM-Drugs (Revisited)
 
