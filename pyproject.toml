@@ -15,30 +15,29 @@ authors = [
     { name = "Stefaan Hessmann", email = "stefaan@posteo.de" },
 ]
 dependencies = [
-    # Numerical stack pinned around torch==2.14.1 (CUDA 13 wheels, needs an
-    # NVIDIA driver >= 580); torch releases can change numerical results, so the
-    # versions below are held together and bumped as a set.
-    "ase==3.26.0",
+    # Torch and Lightning stay fixed, as do Hydra and OmegaConf. Torch's
+    # CUDA 13 wheels require an NVIDIA driver >= 580.
+    "ase==3.29.0",
     "hydra-core==1.4.0rc1",
-    "matplotlib==3.10.8",
-    "numpy==2.3.2",
+    "matplotlib==3.11.2",
+    "numpy==2.5.4",
     "omegaconf==2.4.0",
     "petname==2.9",
     "pytorch-lightning==2.6.6",
-    "rdkit==2025.9.6",
-    "scikit-learn==1.8.0",
-    "scipy==1.16.1",
+    "rdkit==2026.9.1",
+    "scikit-learn==1.9.1",
+    "scipy==1.18.1",
     "torch==2.14.1",
-    "torchmetrics==1.8.1",
-    "tqdm==4.67.3",
-    "wandb==0.25.1",
-    "posebusters==0.2.12",
-    # Extra numerics pins held to the matred_old versions (transitive deps;
-    # torch==2.14.1 already pins triton + the CUDA 13 libs).
-    "pandas==2.3.2",
+    "torchmetrics==1.9.0",
+    "tqdm==4.70.1",
+    "wandb==0.31.0",
+    "posebusters==0.6.5",
+    # Explicit transitive numerics pins; torch==2.14.1 supplies its own
+    # Triton and CUDA 13 constraints.
+    "pandas==3.1.1",
     "sympy==1.14.0",
-    "networkx==3.5",
-    "lightning-utilities==0.15.2",
+    "networkx==3.7",
+    "lightning-utilities==0.15.3",
     "schnetpack @ git+https://github.com/atomistic-machine-learning/schnetpack.git@ab4314d6a328d5f2b4d7a72d5097e3a2e0fef61f",
 ]
 
