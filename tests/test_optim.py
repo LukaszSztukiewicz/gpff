@@ -523,6 +523,31 @@ def test_a_muonh_step_of_a_task_moves_the_blocks_by_lr_of_their_norm_and_the_pro
             torch.testing.assert_close(rows, torch.ones(layer.out_features, dtype=torch.float64))
 
 
+def test_a_muonh_step_on_init_norm_layers_keeps_every_row_at_the_norm_it_was_initialized_with():
+    model = potential(trunk_weight_norm="init", head_weight_norm="init")
+    layers = [layer for layer in model.modules() if isinstance(layer, NormalizedDense)]
+    assert layers and all(not layer.silu_compensation for layer in layers)
+    model = model.double()
+    blocked = task(
+        model=model, optimizer_cls=BlockAdamW, block_scope="all", optimizer_args={"block_update": "muonh", "lr": LR}
+    )
+    optimizer = blocked.configure_optimizers()
+    assert all(group["normalized"] for group in optimizer.param_groups if group["block"])
+    g = torch.Generator().manual_seed(0)
+    for p in blocked.parameters():
+        p.grad = torch.randn(p.shape, generator=g, dtype=torch.float64)
+
+    optimizer.step()
+    project_weights(blocked.model)
+
+    for layer in layers:
+        weight, bias = layer.normalized_parameters()
+        norm2 = weight.square().sum(1) + (0 if bias is None else bias.square())
+        torch.testing.assert_close(norm2, layer.gain[:, 0].square())
+        torch.testing.assert_close(layer._augmented_weight().square().mean(1),
+                                   torch.ones(layer.out_features, dtype=torch.float64))
+
+
 def hyperball_inputs(shape=(12, 8), scale=1.0):
     g = torch.Generator().manual_seed(0)
     return (

@@ -119,10 +119,15 @@ gpff_train experiment=gpff task/optimizer=block_adam task.optimizer_args.block_u
 # MuonH ("Hyperball Optimization"): Muon's direction with the norm of the weight it updates, on weights
 # held at a fixed norm, so that globals.lr is the fraction of a weight's norm that a step moves it. The fixed
 # norm is globals.weight_norm=true (EDM2's normalization: the rows of every linear layer are projected back
-# onto their sphere after each step; the recipe gpff_stable sets it). The task refuses block_update=muonh
-# without it, and weight_decay with it (the projection undoes the decay). The other block updates also run on
-# weight-normalized layers; muon, normuon and rms keep their own update size there.
+# onto their sphere after each step; the recipe gpff_stable sets it) or init (the same projection, onto the norm
+# every row was initialized with). The task refuses block_update=muonh without one of them, and weight_decay
+# with them (the projection undoes the decay). The other block updates also run on weight-normalized layers;
+# muon, normuon and rms keep their own update size there.
 gpff_train experiment=gpff_stable task/optimizer=block_adam task.optimizer_args.block_update=muonh
+# weight_norm=true gives every row the norm one and compensates SiLU, which is too large a scale for experiment=gpff
+# without the other stabilizers of gpff_stable (the features overflow in the first forward pass). init starts as
+# the model without weight_norm instead:
+gpff_train experiment=gpff globals.weight_norm=init task/optimizer=block_adam task.optimizer_args.block_update=muonh
 
 # Gate the messages an atom receives from its neighbors by an invariant number that reads
 # the scalars of both atoms and their distance (all its weights start at zero: a gate of one):

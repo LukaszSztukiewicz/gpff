@@ -169,7 +169,7 @@ class PaiNN(nn.Module):
         prenorm: Union[bool, str] = False,
         degree_norm: Union[bool, str] = False,
         neighbor_gate: bool = False,
-        weight_norm: bool = False,
+        weight_norm: Union[bool, str] = False,
         residual_scaling: bool = False,
         normalized_products: bool = False,
         radial_norm: bool = False,
@@ -222,6 +222,12 @@ class PaiNN(nn.Module):
                 that flag does not change the initialization of these.
             weight_norm: normalize linear weight rows on use and after optimizer
                 updates (with AtomisticTask), following EDM2. Also covers filters.
+                True gives every row the norm one and compensates SiLU, which is the
+                scale EDM2's magnitude-preserving blocks are designed for: without the
+                other stabilizers of gpff_stable (prenorm, residual_scaling, ...) a
+                PaiNN overflows at the start. 'init' keeps the norm every row was
+                initialized with and does not compensate SiLU: the model starts as
+                the one without weight_norm and training only turns the rows.
             residual_scaling: scale each of the 2L residual updates by 1/sqrt(2L)
                 and divide each sum by sqrt(1 + 1/(2L)). This limits the variance
                 budget across depth; it is not a bound for correlated branches.
@@ -235,6 +241,8 @@ class PaiNN(nn.Module):
             raise ValueError("prenorm must be false, true or 'rms'")
         if degree_norm not in (False, True, "mean"):
             raise ValueError("degree_norm must be false, true or 'mean'")
+        if weight_norm not in (False, True, "init"):
+            raise ValueError("weight_norm must be false, true or 'init'")
 
         self.n_atom_basis = n_atom_basis
         self.n_interactions = n_interactions
@@ -293,7 +301,7 @@ class PaiNN(nn.Module):
         if residual_scaling and n_interactions < 1:
             raise ValueError("residual_scaling requires n_interactions >= 1")
         if weight_norm:
-            normalize_linears(self)
+            normalize_linears(self, init_norm=weight_norm == "init")
 
         # one norm per block input (interaction, mixing) and one for the output
         self.prenorm = prenorm

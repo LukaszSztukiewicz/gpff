@@ -46,7 +46,7 @@ class GatedEquivariant(nn.Module):
         output_key: str = keys.forces,
         bounded: bool = False,
         x0_radius: float = 15.0,
-        weight_norm: bool = False,
+        weight_norm: Union[bool, str] = False,
         output_gain: Optional[float] = None,
         zero_net_force: bool = False,
         normalized_products: bool = False,
@@ -75,7 +75,9 @@ class GatedEquivariant(nn.Module):
             x0_radius: bound on |E[x_0 | x_t]_i - (1 - alpha) (x_i - x_mean)|, the
                 network's share of the force: the radius of a denoised molecule (QM9:
                 7.4 A) plus what the skip term leaves at intermediate noise levels.
-            weight_norm: use normalized linear weights throughout the readout.
+            weight_norm: use normalized linear weights throughout the readout:
+                true for rows of norm one, 'init' for rows that keep the norm they were
+                initialized with (see :class:`gpff.model.PaiNN`).
             output_gain: optional learned scalar initialized to this value. A small
                 nonzero value starts near zero forces while allowing immediate
                 gradients into the trunk. Applied before the optional bounded head.
@@ -87,6 +89,8 @@ class GatedEquivariant(nn.Module):
         """
 
         super().__init__()
+        if weight_norm not in (False, True, "init"):
+            raise ValueError("weight_norm must be false, true or 'init'")
 
         self.outnet = build_gated_equivariant_mlp(
             n_in=n_in,
@@ -105,7 +109,7 @@ class GatedEquivariant(nn.Module):
             raise ValueError("zero_net_force requires n_out=1")
         self.zero_net_force = zero_net_force
         if weight_norm:
-            normalize_linears(self.outnet)
+            normalize_linears(self.outnet, init_norm=weight_norm == "init")
         if output_gain is not None:
             self.output_gain = nn.Parameter(torch.tensor(float(output_gain)))
 

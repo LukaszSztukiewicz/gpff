@@ -22,6 +22,7 @@ globals:
   neighbor_gate: false
   bounded_forces: false
   # Independent EDM2-inspired stabilizers; existing runs retain their defaults.
+  # weight_norm: false | true (rows of norm one, for gpff_stable: alone it overflows) | init (initial row norms)
   weight_norm: false
   residual_scaling: false
   normalized_products: false

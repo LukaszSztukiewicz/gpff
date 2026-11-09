@@ -230,3 +230,75 @@ def test_stable_config_instantiates_without_training_remedies():
     assert cfg.trainer.gradient_clip_val is None and not cfg.task.skip_exploding_batches
     model = instantiate(cfg.model)
     assert isinstance(model.representation.mixing[0], ProductNormalizedMixing)
+
+
+@pytest.mark.parametrize("bias", [False, True])
+def test_init_norm_layer_starts_as_the_plain_layer_and_keeps_its_row_norms(bias):
+    torch.manual_seed(5)
+    dense = Dense(13, 7, bias=bias, activation=torch.nn.functional.silu).double()
+    if bias:
+        with torch.no_grad():
+            dense.bias.normal_()
+    x = torch.randn(9, 13, dtype=torch.float64)
+    expected = dense(x)  # before wrapping: the wrapper shares the parameters and projects them in place
+    initial = (dense.weight if not bias else torch.cat([dense.weight, dense.bias[:, None]], dim=1))
+    initial = initial.detach().norm(dim=1).clone()
+
+    layer = NormalizedDense(dense, init_norm=True)
+
+    torch.testing.assert_close(layer(x), expected)
+    assert set(layer.state_dict()) == {"weight", "gain"} | ({"bias"} if bias else set())
+    # training turns the rows and rescales them; the function keeps the norm they were initialized with
+    with torch.no_grad():
+        layer.weight.add_(torch.randn_like(layer.weight))
+        if bias:
+            layer.bias.add_(torch.randn_like(layer.bias))
+    layer.project_()
+    w, b = layer.normalized_parameters()
+    norm2 = w.square().sum(1) + (0 if b is None else b.square())
+    torch.testing.assert_close(norm2, initial.square())
+    torch.testing.assert_close(layer._augmented_weight().square().mean(1), torch.ones(7, dtype=torch.float64))
+    with torch.no_grad():  # the gauge of the affine row is kept
+        before = layer(x)
+        layer.weight.mul_(19)
+        if bias:
+            layer.bias.mul_(19)
+    torch.testing.assert_close(layer(x), before)
+
+
+def test_unit_norm_layer_is_unchanged_by_the_init_norm_option():
+    torch.manual_seed(5)
+    layer = NormalizedDense(Dense(13, 7, activation=torch.nn.functional.silu).double())
+    x = torch.randn(9, 13, dtype=torch.float64)
+
+    w, b = layer.normalized_parameters()
+
+    torch.testing.assert_close(layer(x), torch.nn.functional.silu(torch.nn.functional.linear(x, w, b)) / 0.596)
+    torch.testing.assert_close(w.square().sum(1) + b.square(), torch.ones(7, dtype=torch.float64))
+    # no new entry in the state_dict of the layers of the existing recipes
+    assert set(layer.state_dict()) == {"weight", "bias"} and layer.silu_compensation
+
+
+def test_weight_norm_init_starts_as_the_model_without_weight_norm():
+    # weight_norm=true on this model overflows: the rows of norm one and the compensation of SiLU enlarge every
+    # layer of a PaiNN that has no other remedy against growth
+    plain_options = dict(prenorm=False, degree_norm=False, residual_scaling=False, normalized_products=False,
+                         radial_norm=False)
+    inputs = _batch(*_molecules())
+    models = []
+    for weight_norm in (False, "init"):
+        torch.manual_seed(11)  # the same initial weights: wrapping the layers draws no random numbers
+        models.append(make_model(weight_norm=weight_norm, **plain_options).eval())
+    plain, init = models
+
+    assert not any(isinstance(m, NormalizedDense) for m in plain.modules())
+    assert any(isinstance(m, NormalizedDense) for m in init.modules())
+    # the models were built in float32 and converted: the projection of the rows is rounded in float32
+    torch.testing.assert_close(init(dict(inputs))["forces"], plain(dict(inputs))["forces"], rtol=1e-4, atol=1e-6)
+
+
+def test_weight_norm_takes_false_true_or_init():
+    with pytest.raises(ValueError, match="weight_norm must be"):
+        make_model(weight_norm="fixed")
+    with pytest.raises(ValueError, match="weight_norm must be"):
+        GatedEquivariant(n_in=8, weight_norm="fixed")

@@ -73,6 +73,15 @@ def test_block_adam_takes_the_weight_normalized_blocks_of_the_stable_recipe(bloc
     assert blocks and all(group["normalized"] for group in blocks)
 
 
+@pytest.mark.parametrize("experiment", ["gpff", "gpff_stable"])
+def test_muonh_takes_the_init_norm_rows_of_the_experiments(experiment):
+    config, task = build_block_adam_task(experiment, "muonh", "globals.weight_norm=init")
+
+    assert config.globals.weight_norm == "init"
+    blocks = [group for group in task.configure_optimizers().param_groups if group["block"]]
+    assert blocks and all(group["normalized"] for group in blocks)
+
+
 def test_muonh_is_refused_without_weight_norm_when_the_task_is_built():
     # hydra wraps the ValueError of the task in an InstantiationException that quotes it
     with pytest.raises((ValueError, InstantiationException), match="muonh"):

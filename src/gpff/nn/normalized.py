@@ -41,9 +41,18 @@ class NormalizedDense(nn.Module):
     does this), keeping the effective learning rate from drifting with norms.
     The bias is a weight on a constant input and shares the row norm, so it
     cannot bypass normalization. SiLU's expected RMS attenuation is compensated.
+
+    ``init_norm=True`` keeps the norm every affine row had when the layer was wrapped instead of one, and does
+    not compensate SiLU: the layer computes what ``layer`` computed at the start, and training only turns its
+    rows. The unit rows and the compensation raise the scale of every layer above that of a plain PaiNN, whose
+    sums and products do not stay bounded (see ``PaiNN.prenorm`` and ``residual_scaling``): without those,
+    six blocks overflow at the start.
     """
 
-    def __init__(self, layer: nn.Linear):
+    # class-level default, so models pickled before the option existed still load
+    silu_compensation: bool = True
+
+    def __init__(self, layer: nn.Linear, init_norm: bool = False):
         super().__init__()
         self.in_features = layer.in_features
         self.out_features = layer.out_features
@@ -52,6 +61,10 @@ class NormalizedDense(nn.Module):
         self.activation = getattr(layer, "activation", nn.Identity())
         if torch.any(self._augmented_weight().detach().square().sum(dim=1) == 0):
             raise ValueError("weight_norm requires nonzero affine rows; use output_gain=0 for a zero output")
+        if init_norm:
+            # a buffer only then: the state_dict of the other layers stays as it was
+            self.register_buffer("gain", _row_norm(self._augmented_weight().detach()).clone())
+            self.silu_compensation = False
         self.project_()
 
     def _augmented_weight(self):
@@ -60,6 +73,9 @@ class NormalizedDense(nn.Module):
 
     def normalized_parameters(self):
         norm = _row_norm(self._augmented_weight())
+        gain = getattr(self, "gain", None)
+        if gain is not None:
+            norm = norm / gain
         weight = (self.weight / norm).to(self.weight.dtype)
         bias = None if self.bias is None else (self.bias / norm[:, 0]).to(self.bias.dtype)
         return weight, bias
@@ -76,18 +92,18 @@ class NormalizedDense(nn.Module):
         weight, bias = self.normalized_parameters()
         y = F.linear(x, weight, bias)
         if self.activation is F.silu:
-            return F.silu(y) / 0.596
+            return F.silu(y) / 0.596 if self.silu_compensation else F.silu(y)
         return self.activation(y) if self.activation is not None else y
 
 
-def normalize_linears(module: nn.Module):
+def normalize_linears(module: nn.Module, init_norm: bool = False):
     """Replace linear/Dense children, retaining shared modules and parameter names."""
     replaced = {}
     for parent in list(module.modules()):
         for name, child in list(parent.named_children()):
             if isinstance(child, nn.Linear):
                 if id(child) not in replaced:
-                    replaced[id(child)] = NormalizedDense(child)
+                    replaced[id(child)] = NormalizedDense(child, init_norm)
                 setattr(parent, name, replaced[id(child)])
 
 

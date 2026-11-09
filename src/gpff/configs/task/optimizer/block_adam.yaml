@@ -4,7 +4,10 @@
 # Expected globals:
 #   - lr: size of the update of every matrix for rms and spectral (its RMS or spectral norm), AdamW-like for muon,
 #     normuon and soap; for muonh the fraction of the weight's norm that a step moves it
-#   - weight_norm: true for muonh (EDM2's forced weight normalization, see below), optional for the others
+#   - weight_norm: true or init for muonh (EDM2's forced weight normalization, see below), optional for the others.
+#     true gives every row the norm one and is meant for experiment=gpff_stable: on experiment=gpff alone the
+#     features overflow at the start. init keeps the norm every row was initialized with, so experiment=gpff
+#     starts as without weight_norm (the same loss at the start) and only the directions of the rows are trained
 #
 # block_update: rms | spectral | muon | normuon | muonh | soap | adam (adam = plain AdamW, for control runs). normuon
 #               is Muon with every row normalized by its running RMS (Li et al.); soap is Adam in the eigenbasis of
@@ -12,6 +15,7 @@
 #               Muon's direction with the norm of the weight it updates, so lr is relative to that norm. It needs
 #               globals.weight_norm=true, which projects every row back onto its sphere after each step:
 #                 gpff_train experiment=gpff_stable task/optimizer=block_adam task.optimizer_args.block_update=muonh
+#                 gpff_train experiment=gpff globals.weight_norm=init task/optimizer=block_adam task.optimizer_args.block_update=muonh
 #               weight_decay has to be 0 with weight_norm=true: the projection undoes it.
 # block_scope:  all (every matrix of the interaction, mixing and head blocks) | vector (only those acting
 #               on vector features)

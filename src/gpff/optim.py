@@ -227,8 +227,8 @@ class BlockAdamW(Optimizer):
     * ``"muonh"``: MuonH, Muon on a hypersphere ("Hyperball Optimization"): Muon's direction (same ``momentum`` and
       ``orthogonalization``) scaled to the Frobenius norm of the weight it updates, so ``lr`` is the fraction of its
       norm that a step moves the weight, whatever the shape of the layer, and not AdamW's per-entry size. It needs
-      weights held at a fixed norm, so its groups have to be ``normalized`` (``globals.weight_norm=true``): the task
-      projects every row back onto its sphere after the step.
+      weights held at a fixed norm, so its groups have to be ``normalized`` (``globals.weight_norm=true`` or ``init``):
+      the task projects every row back onto its sphere after the step.
     * ``"soap"``: Adam in the eigenbasis of Shampoo's preconditioner, as in the reference implementation of
       SOAP. Every matrix keeps the averages (``shampoo_beta``, default ``betas[1]``) of ``G G^T`` and ``G^T G``
       over its gradients ``G``, and Adam's moments are those of ``G`` rotated into their eigenvectors, which are
@@ -304,8 +304,8 @@ class BlockAdamW(Optimizer):
         if group["block"] and group["block_update"] == "muonh" and not group["normalized"]:
             raise ValueError(
                 "block_update='muonh' keeps its weights at a fixed norm, which is the projection of "
-                "globals.weight_norm=true; some block matrices are not weight-normalized. Set "
-                "globals.weight_norm=true or use block_update='muon'"
+                "globals.weight_norm=true or init; some block matrices are not weight-normalized. Set "
+                "globals.weight_norm=true (or init) or use block_update='muon'"
             )
 
     @torch.no_grad()
@@ -464,7 +464,7 @@ def block_param_groups(
     Embeddings, the filter network, biases and normalization gains are never blocks, and the rest never takes
     weight decay: ``weight_decay`` of the optimizer decays the block matrices only.
 
-    The layers of ``weight_norm=true`` (``NormalizedDense``) are block layers like ``nn.Linear``. Their matrices
+    The layers of ``weight_norm=true`` or ``init`` (``NormalizedDense``) are block layers like ``nn.Linear``. Their matrices
     come in groups of their own (``normalized=True``), whose rows the task projects back onto their sphere after
     every step: ``BlockAdamW`` refuses what that makes meaningless (weight decay) or what needs it (``muonh``).
 
