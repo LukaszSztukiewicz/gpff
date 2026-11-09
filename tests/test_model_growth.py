@@ -339,3 +339,18 @@ def test_bounded_and_preconditioned_forces_are_alternatives():
 def test_sigma_data_must_be_positive(sigma_data):
     with pytest.raises(ValueError, match="sigma_data"):
         _model(prenorm=False, bounded=False, sigma_data=sigma_data)
+
+
+@pytest.mark.parametrize("preconditioned", [False, True])
+def test_sigma_data_draws_no_random_numbers(preconditioned):
+    # the head is built after the representation, so a draw would change its weights
+    plain = _model(prenorm=False, bounded=False, preconditioned=preconditioned)
+    plain_rng = torch.random.get_rng_state()
+    model = _model(prenorm=False, bounded=False, preconditioned=preconditioned, sigma_data=2.5)
+
+    assert torch.equal(torch.random.get_rng_state(), plain_rng)
+    assert model.representation.noise_embedding.weight.abs().max() == 0
+    params = dict(model.named_parameters())
+    assert set(params) - set(dict(plain.named_parameters())) == {"representation.noise_embedding.weight"}
+    for name, value in plain.named_parameters():
+        torch.testing.assert_close(params[name], value, rtol=0, atol=0, msg=name)

@@ -331,8 +331,11 @@ class PaiNN(nn.Module):
         if sigma_data is not None:
             if not sigma_data > 0:
                 raise ValueError(f"sigma_data must be positive, got {sigma_data}")
-            # no bias: a molecule seen in units of sigma_data gets no embedding at all
-            self.noise_embedding = nn.Linear(1, n_atom_basis, bias=False)
+            # no bias: a molecule seen in units of sigma_data gets no embedding at all.
+            # skip_init: the random init of nn.Linear, overwritten by zeros anyway, would draw
+            # from the global RNG and change the weights built after it (the output heads)
+            # against the same run without sigma_data
+            self.noise_embedding = nn.utils.skip_init(nn.Linear, 1, n_atom_basis, bias=False)
             nn.init.zeros_(self.noise_embedding.weight)
 
         # one norm per block input (interaction, mixing) and one for the output
