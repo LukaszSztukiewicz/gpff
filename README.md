@@ -292,6 +292,15 @@ gpff_calculate_metrics --samples_db_path samples.db \
   --metrics rdkit_validity posebusters_validity uniqueness mean_tanimoto_similarity
 ```
 
+## Documentation
+
+| Document | Contents |
+| -------- | -------- |
+| [`docs/geom_drugs_benchmark.md`](docs/geom_drugs_benchmark.md) | Proposal: a GEOM-Drugs evaluation suite — dataset preparation, the metric tiers (granular validity, GFN2-xTB geometry/energy benchmark, W1 distribution metrics, generalization probes) and the protocol rules for comparing models faithfully. |
+| [`docs/gpff_diagnostics.md`](docs/gpff_diagnostics.md) | Proposal: model-internal diagnostics — conservativity of the learned field, fixed-point and contraction spectrum, σ calibration and effective loss weighting, PES smoothness and Lipschitz constants, loss-landscape and optimization probes. |
+
+Both are design proposals; nothing in them is implemented yet.
+
 ## Citation
 
 If you use this code, please cite:
