@@ -6,7 +6,13 @@
 # with the 1/rate weight of the NELBO. The positions, their labels and their loss are
 # those of experiment=gpff.
 #
-# Sample with sampler=ctmc_types.
+# ABSENT: with globals.absent=true and a canvas, globals.canvas_size=29 (fixed) or
+# globals.canvas_extra=8 (each molecule plus up to 8 slots), the model also generates the
+# number of atoms. ABSENT is then a clean class like the elements, and the ABSENT slots
+# are atoms parked at the centroid (gpff.data.transform.Canvas).
+#
+# Sample with sampler=ctmc_types prior=canvas, with the canvas of training
+# (prior.size, prior.max_extra).
 defaults:
   - gpff
   # globals.type_process
@@ -14,13 +20,19 @@ defaults:
   - _self_
 
 globals:
-  # the dataset's elements, in the order of the vocabulary; MASK comes after them
+  # the dataset's elements, in the order of the vocabulary; ABSENT and MASK follow them
   atom_types: [1, 6, 7, 8, 9]
+  # whether a slot may hold no atom; needs a canvas
+  absent: false
+  # slots of every canvas (at least the largest molecule), or extra slots per molecule
+  canvas_size: null
+  canvas_extra: 0
   # weight of the type cross-entropy next to the force loss
   type_loss_weight: 1.0
   type_vocabulary:
     _target_: gpff.atom_types.Vocabulary
     elements: ${globals.atom_types}
+    absent: ${globals.absent}
 
 run:
   experiment: gpff_ctmc_types
@@ -33,8 +45,17 @@ run:
 generative_transform:
   align_by_element: false
 
+# for the sampler callback; the generation's prior=canvas is the same
+prior:
+  _target_: gpff.sample.atom_types.CanvasPrior
+  size: ${globals.canvas_size}
+  max_extra: ${globals.canvas_extra}
+
 data:
   transforms:
+    - _target_: gpff.data.transform.Canvas
+      size: ${globals.canvas_size}
+      max_extra: ${globals.canvas_extra}
     - ${generative_transform}
     - _target_: gpff.data.transform.AtomTypeTransform
       process: ${globals.type_process}

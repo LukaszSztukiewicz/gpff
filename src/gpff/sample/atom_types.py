@@ -10,6 +10,10 @@ classes along with the forces, and after the positions' update the types take th
 reverse step of their process. properties.Z follows the types: the atomic number of the
 most likely class, MASK_Z while a slot is MASK. A molecule with a MASK slot does not
 converge, and the last step decides every slot.
+
+For a model that generates the number of atoms, :class:`CanvasPrior` replaces the
+molecules by canvases of slots as in training; the slots that end ABSENT are dropped
+from the molecules (gpff.utils.batching.batch_to_atoms_list).
 """
 
 import math
@@ -22,27 +26,98 @@ from gpff import keys
 from gpff.atom_types import MASK_Z, AbsorbingTypes, ContinuousTypes
 from gpff.model.atom_types import TypeLogits
 from gpff.sample.direct_denoising import DirectDenoisingSampler
+from gpff.sample.priors import Prior
 
 
-__all__ = ["AbsorbingTypeSampler", "ContinuousTypeSampler"]
+__all__ = ["CanvasPrior", "AbsorbingTypeSampler", "ContinuousTypeSampler"]
+
+
+class CanvasPrior(Prior):
+    """
+    Positions from an isotropic normal on canvases of slots, for the models that generate
+    the atom types; the sampler sets the types. Every molecule of the batch becomes a
+    canvas of ``size`` slots, or of its own number of atoms and U{0, ..., max_extra} more:
+    the canvases of training (gpff.data.transform.Canvas). With neither, a canvas has the
+    size of its molecule. Only the number of molecules and, without a size, their sizes
+    are taken from the batch; its elements and positions are dropped.
+
+    Args:
+        sigma: standard deviation of the positions, the run's sigma_max.
+        size: number of slots of every canvas.
+        max_extra: largest number of slots added to a molecule, instead of a size.
+    """
+
+    def __init__(self, sigma: float = 30.0, size: Optional[int] = None, max_extra: int = 0):
+        if size is not None and max_extra:
+            raise ValueError("a canvas has a size or extra slots, not both")
+        if (size is not None and size < 1) or max_extra < 0:
+            raise ValueError(f"invalid canvas: size {size}, max_extra {max_extra}")
+        self.sigma = sigma
+        self.size = size
+        self.max_extra = max_extra
+
+    def sample_from_batch(self, batch, conditions=None):
+        n_atoms = batch[properties.n_atoms]
+        if self.size is not None:
+            sizes = torch.full_like(n_atoms, self.size)
+        else:
+            sizes = n_atoms + torch.randint(self.max_extra + 1, n_atoms.shape, device=n_atoms.device)
+        n_slots = int(sizes.sum())
+        positions = batch[properties.R]
+        return {
+            properties.idx: batch[properties.idx],
+            properties.n_atoms: sizes,
+            properties.idx_m: torch.repeat_interleave(torch.arange(len(sizes), device=sizes.device), sizes),
+            properties.Z: torch.full((n_slots,), MASK_Z, dtype=batch[properties.Z].dtype, device=sizes.device),
+            properties.R: self.sigma * torch.randn(n_slots, 3, dtype=positions.dtype, device=positions.device),
+            properties.cell: batch[properties.cell],
+            properties.pbc: batch[properties.pbc],
+        }
 
 
 class _TypeDenoisingSampler(DirectDenoisingSampler):
     """
-    The part of the type samplers that does not depend on the process.
+    The part of the type samplers that does not depend on the process, with the
+    unmasking of the absorbing process, MDLM's ancestral sampler (Sahoo et al. 2024). The
+    masking rate falls from 1 before the first step to 0 after the last one. From rate r
+    to r' every MASK slot is unmasked with probability (r - r') / r, drawing its class from
+    the prediction, so that a slot is MASK with probability r' afterwards. As the rate is
+    drawn independently of the positions' noise level in training, any schedule is one the
+    model was trained for.
 
     Args:
+        schedule: the masking rate after a share u of the steps, "cosine",
+            cos(pi u / 2), which unmasks few slots early and many late (MaskGIT), or
+            "linear", 1 - u.
         temperature: temperature of the predicted class distribution.
     """
 
     process_type: type = object
 
-    def __init__(self, temperature: float = 1.0, **kwargs):
+    def __init__(self, schedule: str = "cosine", temperature: float = 1.0, **kwargs):
         super().__init__(**kwargs)
+        if schedule not in ("cosine", "linear"):
+            raise ValueError(f"schedule must be cosine or linear, got {schedule}")
         if not temperature > 0:
             raise ValueError(f"temperature must be positive, got {temperature}")
+        self.schedule = schedule
         self.temperature = temperature
         self.process = None
+
+    def masking_rate(self, step: int) -> float:
+        """The masking rate after a step (counting down from n_steps to 1); 1 before the first."""
+        if step > self.n_steps:
+            return 1.0
+        if step <= 1:
+            return 0.0
+        u = self.get_denoising_ratio(step)
+        return math.cos(math.pi * u / 2) if self.schedule == "cosine" else 1.0 - u
+
+    def _unmasked(self, h: torch.Tensor, step: int) -> torch.Tensor:
+        """(n_atoms,) True for the MASK slots this step unmasks."""
+        before, after = self.masking_rate(step + 1), self.masking_rate(step)
+        draw = torch.rand(len(h), device=h.device)
+        return self.process.vocabulary.masked(h) & (draw < (before - after) / before)
 
     def _init_state(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """
@@ -122,43 +197,21 @@ class _TypeDenoisingSampler(DirectDenoisingSampler):
 
 class AbsorbingTypeSampler(_TypeDenoisingSampler):
     """
-    The reverse process of AbsorbingTypes, MDLM's ancestral sampler (Sahoo et al. 2024),
-    over the steps of direct denoising. The masking rate falls from 1 before the first
-    step to 0 after the last one. From rate r to r' every MASK slot is unmasked with
-    probability (r - r') / r, drawing its class from the prediction, so that a slot is
-    MASK with probability r' afterwards. A decided slot keeps its class: an absorbing
+    The reverse process of AbsorbingTypes over the steps of direct denoising: MASK slots
+    are unmasked on the schedule, and a decided slot keeps its class, as an absorbing
     process has no path back.
 
     Args:
-        schedule: the masking rate after a share u of the steps, "cosine",
-            cos(pi u / 2), which unmasks few slots early and many late (MaskGIT), or
-            "linear", 1 - u.
+        schedule: the masking rate over the steps, "cosine" or "linear".
         temperature: temperature of the predicted class distribution.
     """
 
     process_type = AbsorbingTypes
 
-    def __init__(self, schedule: str = "cosine", **kwargs):
-        super().__init__(**kwargs)
-        if schedule not in ("cosine", "linear"):
-            raise ValueError(f"schedule must be cosine or linear, got {schedule}")
-        self.schedule = schedule
-
-    def masking_rate(self, step: int) -> float:
-        """The masking rate after a step (counting down from n_steps to 1); 1 before the first."""
-        if step > self.n_steps:
-            return 1.0
-        if step <= 1:
-            return 0.0
-        u = self.get_denoising_ratio(step)
-        return math.cos(math.pi * u / 2) if self.schedule == "cosine" else 1.0 - u
-
     def next_types(self, batch, step, logits, predictions):
         h = batch[keys.h]
-        before, after = self.masking_rate(step + 1), self.masking_rate(step)
-        unmask = self.process.vocabulary.masked(h) & (torch.rand(len(h), device=h.device) < (before - after) / before)
         drawn = self.process.vocabulary.one_hot(self._draw(logits), h.dtype)
-        return torch.where(unmask.unsqueeze(-1), drawn, h)
+        return torch.where(self._unmasked(h, step).unsqueeze(-1), drawn, h)
 
 
 class ContinuousTypeSampler(_TypeDenoisingSampler):
@@ -168,7 +221,13 @@ class ContinuousTypeSampler(_TypeDenoisingSampler):
     estimate s p, as the positions jump to x_0. The jumps are plain: the types take no
     transport steps.
 
+    With a process that masks, every slot starts as MASK and is unmasked on the schedule,
+    as for absorbing types, to the drawn class's one-hot s onehot(c); from then on it is
+    continuous like the others, so it may still change its class.
+
     Args:
+        schedule: with a process that masks, the masking rate over the steps, "cosine"
+            or "linear".
         temperature: temperature of the predicted class distribution.
     """
 
@@ -181,9 +240,13 @@ class ContinuousTypeSampler(_TypeDenoisingSampler):
 
     def perturb_types(self, batch, step):
         h = batch[keys.h]
+        vocabulary = self.process.vocabulary
         noise = self.add_noise(torch.zeros_like(h), step)
-        noise[:, self.process.vocabulary.n_classes :] = 0
-        return h + noise
+        noise[:, vocabulary.n_classes :] = 0
+        return torch.where(vocabulary.masked(h).unsqueeze(-1), h, h + noise)
 
     def next_types(self, batch, step, logits, predictions):
-        return self.process.clean_estimate(logits)
+        h = batch[keys.h]
+        h_next = torch.where(self.process.vocabulary.masked(h).unsqueeze(-1), h, self.process.clean_estimate(logits))
+        drawn = self.process.scale * self.process.vocabulary.one_hot(self._draw(logits), h.dtype)
+        return torch.where(self._unmasked(h, step).unsqueeze(-1), drawn, h_next)

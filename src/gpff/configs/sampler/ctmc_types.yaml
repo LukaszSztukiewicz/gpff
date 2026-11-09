@@ -1,6 +1,7 @@
 # Direct denoising that also generates the atom types, for models of
 # experiment=gpff_ctmc_types: MASK slots are unmasked over the steps by the reverse
-# process of the model's absorbing type process (gpff.sample.atom_types).
+# process of the model's absorbing type process (gpff.sample.atom_types). Pair it with
+# prior=canvas, with the canvas of training for a model with ABSENT.
 defaults:
   - direct_denoising
   - _self_

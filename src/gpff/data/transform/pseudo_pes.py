@@ -7,6 +7,7 @@ from schnetpack import properties
 
 from gpff.pseudo_pes import LossWeights, Geometries, PseudoCalculator
 from gpff.utils.alignment import align_rotation, align_permutation
+from gpff.atom_types import ABSENT_Z
 from gpff import keys
 
 
@@ -91,13 +92,14 @@ class PseudoPESTransform(trn.Transform):
                 target_numbers=atom_types,
             )
         elif self.align_permutation:
-            # one class for all atoms: the pairing ignores the elements, which stay with x_0
-            one_class = torch.zeros_like(atom_types)
+            # one class for all atoms: the pairing ignores the elements, which stay with x_0;
+            # the ABSENT slots of a canvas (gpff.data.transform.Canvas) pair among themselves
+            classes = (atom_types == ABSENT_Z).long()
             x_t, _ = align_permutation(
                 positions=x_t,
                 target_positions=x_0,
-                numbers=one_class,
-                target_numbers=one_class,
+                numbers=classes,
+                target_numbers=classes,
             )
 
         # align rotation of x_t to x_0. The rotation of x_t relative to x_0 cannot be read from

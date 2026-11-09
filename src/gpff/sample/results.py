@@ -62,7 +62,8 @@ def batches_to_trajectories(
     Each returned trajectory is a list of ``(Atoms, metadata)`` tuples. If a
     trajectory converges, repeated converged tail states are removed and only
     the first converged structure is kept. The metadata holds every batch entry
-    except private (``_``-prefixed) keys and the model's atom features.
+    except private (``_``-prefixed) keys and the model's atom features; its atom-wise
+    entries keep the ABSENT slots of a canvas, which the Atoms leave out.
     """
     if len(batch_results) == 0:
         return []

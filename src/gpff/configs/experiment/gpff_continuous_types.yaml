@@ -3,9 +3,14 @@
 # scaled one-hot of each slot's element is noised with the positions' noise level
 # (gpff.atom_types.ContinuousTypes, globals.type_process.scale), and the head predicts the
 # clean classes with a cross-entropy. The samplers move the channel to scale * p, the
-# expectation of the clean one-hot. Everything else is experiment=gpff_ctmc_types.
+# expectation of the clean one-hot. Everything else is experiment=gpff_ctmc_types,
+# ABSENT and canvases included.
 #
-# Sample with sampler=continuous_types.
+# MASK: with globals.type_process.mask=true the absorbing process runs on top of the
+# channel: slots are the MASK token at a per-molecule rate drawn independently of sigma,
+# and sampling starts from all MASK and unmasks on a schedule, as for absorbing types.
+#
+# Sample with sampler=continuous_types prior=canvas.
 defaults:
   - gpff_ctmc_types
   - override /type_process: continuous

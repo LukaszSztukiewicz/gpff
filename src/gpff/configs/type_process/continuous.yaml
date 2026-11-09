@@ -6,3 +6,8 @@ vocabulary: ${globals.type_vocabulary}
 # value of the one-hot entries: the types resolve where sigma / scale is small
 scale: 0.3
 sigma_max: ${globals.sigma_max}
+# MASK: the absorbing process on top of the channel, slots MASK at a per-molecule rate
+# drawn independently of sigma; sampling then starts from every slot MASK
+mask: false
+# with mask, the smallest rate drawn; bounds the 1/rate weight of the NELBO by 100
+min_rate: 0.01

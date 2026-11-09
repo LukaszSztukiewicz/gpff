@@ -118,6 +118,23 @@ def test_type_experiments_train_the_process_their_head_keeps(experiment, process
     assert head.process.vocabulary.numbers == (1, 6, 7, 8, 9, 99)
 
 
+@pytest.mark.parametrize("experiment", ["gpff_ctmc_types", "gpff_continuous_types"])
+def test_type_experiments_take_absent_canvases(experiment):
+    overrides = [f"experiment={experiment}", "globals.absent=true", "globals.canvas_size=29"]
+    if experiment == "gpff_continuous_types":
+        overrides.append("globals.type_process.mask=true")
+    with initialize_config_dir(config_dir=str(CONFIG_DIR)):
+        config = compose("train", overrides=[*overrides, "run.path=/runs", "run.data_dir=/data"])
+
+    model = hydra.utils.instantiate(config.model)
+    canvas, *_ = hydra.utils.instantiate(config.data.transforms)
+    prior = hydra.utils.instantiate(config.prior)
+    process = model.output_modules[1].process
+    assert process.vocabulary.numbers == (1, 6, 7, 8, 9, 0, 99)
+    assert canvas.size == prior.size == 29
+    assert getattr(process, "mask", True)
+
+
 def test_adaptive_direct_denoising_config_builds_a_sampler_with_a_jump_optimizer():
     overrides = ["sampler=adaptive_direct_denoising", "sampler.jump_optimizer={_target_:gpff.sample.jump_optimizers.MDMin}"]
     with initialize_config_dir(config_dir=str(CONFIG_DIR)):

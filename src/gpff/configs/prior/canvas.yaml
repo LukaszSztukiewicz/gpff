@@ -1,0 +1,8 @@
+# Positions from an isotropic normal on canvases of slots, for the models that generate
+# the atom types (experiment=gpff_ctmc_types, gpff_continuous_types); the sampler sets the
+# types. Give the canvas of training: size (fixed) or max_extra (each test molecule's size
+# plus up to max_extra slots). With neither, every canvas has its test molecule's size.
+_target_: gpff.sample.atom_types.CanvasPrior
+sigma: 30.0
+size: null
+max_extra: 0

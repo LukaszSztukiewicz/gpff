@@ -98,6 +98,9 @@ hydra:
           match a target covariance and center; needs a scaffold condition generator
         - prior=scaffold_gaussian - scaffold atoms keep their original positions,
           free atoms are drawn isotropically; needs a scaffold condition generator
+        - prior=canvas - isotropic positions on canvases of slots, for the samplers
+          that generate the atom types (sampler=ctmc_types, continuous_types); set
+          prior.size or prior.max_extra as in training for a model with ABSENT
 
         Available condition generator options:
         - condition_generator=shape - one target variance vector per molecule
