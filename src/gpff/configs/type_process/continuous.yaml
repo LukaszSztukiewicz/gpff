@@ -1,0 +1,8 @@
+# @package globals.type_process
+# Continuous diffusion of a scaled one-hot type channel with the positions' noise level,
+# see gpff.atom_types.ContinuousTypes
+_target_: gpff.atom_types.ContinuousTypes
+vocabulary: ${globals.type_vocabulary}
+# value of the one-hot entries: the types resolve where sigma / scale is small
+scale: 0.3
+sigma_max: ${globals.sigma_max}

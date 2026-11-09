@@ -264,6 +264,8 @@ class DirectDenoisingSampler(Sampler):
     ) -> Dict[str, torch.Tensor]:
         """
         Enforce constraints on the updated positions. No-op by default.
+
+        denoise_step passes the calculator's results of this step as ``predictions``.
         """
         return batch
 
@@ -321,7 +323,7 @@ class DirectDenoisingSampler(Sampler):
                 **history,
             },
         )
-        batch = self.postprocess_step(batch, step, conditions=conditions, **kwargs)
+        batch = self.postprocess_step(batch, step, conditions=conditions, predictions=predictions, **kwargs)
 
         return batch
 

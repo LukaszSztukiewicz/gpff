@@ -168,6 +168,7 @@ class PaiNN(nn.Module):
     normalized_products: bool = False
     radial_norm: bool = False
     sigma_data: Optional[float] = None
+    embedding_key: str = properties.Z
 
     def __init__(
         self,
@@ -191,6 +192,7 @@ class PaiNN(nn.Module):
         normalized_products: bool = False,
         radial_norm: bool = False,
         sigma_data: Optional[float] = None,
+        embedding_key: str = properties.Z,
     ):
         """
         Args:
@@ -261,6 +263,9 @@ class PaiNN(nn.Module):
                 sigma_data to the largest per-axis RMS radius of the clean molecules: below
                 it, units that vary with the molecule would hide the absolute bond lengths.
                 The cutoff, the radial basis and norm_epsilon are then in units of s.
+            embedding_key: the input the nuclear embedding reads: the atomic numbers, or the
+                type vectors (keys.h) of a model that generates the atom types, with
+                gpff.model.atom_types.TypeEmbedding as nuclear_embedding.
         """
         super(PaiNN, self).__init__()
         if prenorm not in (False, True, "rms"):
@@ -281,6 +286,7 @@ class PaiNN(nn.Module):
         if nuclear_embedding is None:
             nuclear_embedding = nn.Embedding(100, n_atom_basis)
         self.embedding = nuclear_embedding
+        self.embedding_key = embedding_key
         if electronic_embeddings is None:
             electronic_embeddings = []
         electronic_embeddings = nn.ModuleList(electronic_embeddings)
@@ -456,7 +462,7 @@ class PaiNN(nn.Module):
                             torch.rsqrt(degree))[:, None, None]
 
         # compute initial embeddings
-        q = self.embedding(atomic_numbers)
+        q = self.embedding(inputs[self.embedding_key])
         for embedding in self.electronic_embeddings:
             q = q + embedding(q, inputs)
         # EDM's c_noise: the absolute scale the units hide, zero below sigma_data

@@ -23,3 +23,8 @@ target_variances: Final = "target_variances"
 free_covariance: Final = "free_covariance"
 free_center: Final = "free_center"
 nfe: Final = "nfe"
+# models that generate the atom types (gpff.types)
+h: Final = "h"  # (n_atoms, vocabulary size) the type vectors the model reads
+type_logits: Final = "type_logits"  # (n_atoms, n_classes) predicted clean classes
+type_target: Final = "type_target"  # (n_atoms,) clean classes
+type_weight: Final = "type_weight"  # (n_atoms, 1) weights of the type cross-entropy

@@ -24,6 +24,9 @@ _PAIR_KEYS = (
     properties.Rij,
 )
 
+# model outputs the calculator returns besides the forces or the noise
+_TYPE_OUTPUTS = (keys.type_logits,)
+
 
 def _molecule_selection(batch: Dict[str, Any], molecules: torch.Tensor) -> Dict[str, torch.Tensor]:
     """
@@ -212,6 +215,13 @@ class Calculator:
     def _predict(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         """
         The model's atom-wise prediction (noise or forces) for the batch.
+        """
+        return self._predict_outputs(batch)[self.noise_key if self.noise_model else keys.forces]
+
+    def _predict_outputs(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """
+        The model's atom-wise prediction (noise or forces) for the batch, and
+        its type logits if it generates the atom types.
 
         With skip_converged, a batch whose molecules converge at different
         steps (the adaptive samplers) gets cheaper with every converged
@@ -222,7 +232,8 @@ class Calculator:
         active = ~batch[keys.converged]
         n_active = int(active.sum()) if self.skip_converged else len(active)
         if n_active == len(active):
-            return self.model(batch)[key].detach()
+            outputs = self.model(batch)
+            return {k: outputs[k].detach() for k in (key, *_TYPE_OUTPUTS) if k in outputs}
 
         # the selection changes only when another molecule converges; reusing
         # it also hands the model the same neighbor list tensors every step
@@ -233,8 +244,14 @@ class Calculator:
         selection = cached[2]
 
         prediction = torch.zeros_like(batch[properties.R])
+        results = {key: prediction}
         if n_active > 0:
-            prediction[selection["atoms"]] = self.model(_select_molecules(batch, selection))[key].detach()
+            outputs = self.model(_select_molecules(batch, selection))
+            prediction[selection["atoms"]] = outputs[key].detach()
+            for k in _TYPE_OUTPUTS:
+                if k in outputs:
+                    results[k] = outputs[k].new_zeros(len(prediction), *outputs[k].shape[1:])
+                    results[k][selection["atoms"]] = outputs[k].detach()
         # the batch keeps the last prediction of each converged molecule
         previous = batch.get(key)
         if previous is not None and previous.shape == prediction.shape:
@@ -243,7 +260,7 @@ class Calculator:
             batch[key] = previous
         else:
             batch[key] = prediction
-        return prediction
+        return results
 
     def calculate(
         self,
@@ -270,7 +287,8 @@ class Calculator:
                 return it under keys.sigma_curr.
             sigma_t: The current sigma_t.
         Returns:
-            Dictionary with the requested quantities.
+            Dictionary with the requested quantities, and keys.type_logits if
+            the model predicts them.
         """
         if self.noise_model and any([forces, score, x0]) and sigma_t is None:
             raise ValueError("sigma_t must be provided when any of forces, score, x0 is True and noise_model is True.")
@@ -279,8 +297,10 @@ class Calculator:
 
         self.check_model()
         batch = self.update_neighbors(batch)
-        prediction = self._predict(batch)
-        results = {}
+        outputs = self._predict_outputs(batch)
+        prediction = outputs[self.noise_key if self.noise_model else keys.forces]
+        # the clean types of a model that generates them, from the same model call
+        results = {k: outputs[k] for k in _TYPE_OUTPUTS if k in outputs}
 
         # noise model
         if self.noise_model:

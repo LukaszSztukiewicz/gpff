@@ -1,0 +1,7 @@
+# @package globals.type_process
+# Absorbing-state discrete diffusion of the atom types (a CTMC with MASK as the absorbing
+# state), see gpff.atom_types.AbsorbingTypes
+_target_: gpff.atom_types.AbsorbingTypes
+vocabulary: ${globals.type_vocabulary}
+# smallest masking rate drawn; bounds the 1/rate weight of the NELBO by 100
+min_rate: 0.01

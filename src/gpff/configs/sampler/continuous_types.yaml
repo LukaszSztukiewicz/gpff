@@ -1,0 +1,11 @@
+# Direct denoising that also generates the atom types, for models of
+# experiment=gpff_continuous_types: the type channel is perturbed and jumps to its clean
+# estimate with the positions (gpff.sample.atom_types). The types take no transport
+# steps, so transport_sigma must stay null.
+defaults:
+  - direct_denoising
+  - _self_
+
+_target_: gpff.sample.atom_types.ContinuousTypeSampler
+# temperature of the predicted class distribution
+temperature: 1.0

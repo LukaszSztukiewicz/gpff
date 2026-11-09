@@ -97,6 +97,27 @@ def test_generate_help_lists_every_sampler_config():
     assert listed == {path.stem for path in (CONFIG_DIR / "sampler").glob("*.yaml")}
 
 
+@pytest.mark.parametrize("sampler", ["ctmc_types", "continuous_types"])
+def test_type_sampler_configs_build(sampler):
+    with initialize_config_dir(config_dir=str(CONFIG_DIR)):
+        config = compose("generate", overrides=[f"sampler={sampler}"])
+
+    calculator = hydra.utils.instantiate(config.sampler.calculator, model=None)
+    hydra.utils.instantiate(config.sampler, calculator=calculator)
+
+
+@pytest.mark.parametrize("experiment, process", [("gpff_ctmc_types", "AbsorbingTypes"), ("gpff_continuous_types", "ContinuousTypes")])
+def test_type_experiments_train_the_process_their_head_keeps(experiment, process):
+    with initialize_config_dir(config_dir=str(CONFIG_DIR)):
+        config = compose("train", overrides=[f"experiment={experiment}", "run.path=/runs", "run.data_dir=/data"])
+
+    model = hydra.utils.instantiate(config.model)
+    transform = next(t for t in hydra.utils.instantiate(config.data.transforms) if hasattr(t, "process"))
+    head = model.output_modules[1]
+    assert type(head.process).__name__ == type(transform.process).__name__ == process
+    assert head.process.vocabulary.numbers == (1, 6, 7, 8, 9, 99)
+
+
 def test_adaptive_direct_denoising_config_builds_a_sampler_with_a_jump_optimizer():
     overrides = ["sampler=adaptive_direct_denoising", "sampler.jump_optimizer={_target_:gpff.sample.jump_optimizers.MDMin}"]
     with initialize_config_dir(config_dir=str(CONFIG_DIR)):

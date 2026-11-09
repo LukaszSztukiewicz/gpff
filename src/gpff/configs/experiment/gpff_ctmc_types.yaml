@@ -1,0 +1,89 @@
+# @package _global_
+# GPFF that also generates the atom types, by absorbing-state discrete diffusion: a CTMC
+# in which a slot's type jumps to the MASK token of the vocabulary and stays there
+# (gpff.atom_types.AbsorbingTypes). The masking rate is drawn per molecule, independently
+# of the positions' noise level, and the loss is the cross-entropy on the masked slots
+# with the 1/rate weight of the NELBO. The positions, their labels and their loss are
+# those of experiment=gpff.
+#
+# Sample with sampler=ctmc_types.
+defaults:
+  - gpff
+  # globals.type_process
+  - /type_process: absorbing
+  - _self_
+
+globals:
+  # the dataset's elements, in the order of the vocabulary; MASK comes after them
+  atom_types: [1, 6, 7, 8, 9]
+  # weight of the type cross-entropy next to the force loss
+  type_loss_weight: 1.0
+  type_vocabulary:
+    _target_: gpff.atom_types.Vocabulary
+    elements: ${globals.atom_types}
+
+run:
+  experiment: gpff_ctmc_types
+  tags:
+    - gpff
+    - gpff_ctmc_types
+
+# the noisy positions are paired with the clean ones by position alone: the model does
+# not see their elements
+generative_transform:
+  align_by_element: false
+
+data:
+  transforms:
+    - ${generative_transform}
+    - _target_: gpff.data.transform.AtomTypeTransform
+      process: ${globals.type_process}
+    - _target_: gpff.utils.neighbors.AllToAllNeighborList
+    - _target_: schnetpack.transform.CastTo32
+
+model:
+  representation:
+    embedding_key: ${key:h}
+    nuclear_embedding:
+      _target_: gpff.model.atom_types.TypeEmbedding
+      vocabulary: ${globals.type_vocabulary}
+      n_atom_basis: ${globals.n_atom_basis}
+  output_modules:
+    - _target_: gpff.model.heads.GatedEquivariant
+      n_in: ${globals.n_atom_basis}
+      n_hidden: null
+      n_layers: 3
+      output_key: ${key:forces}
+      bounded: ${globals.bounded_forces}
+      x0_radius: ${globals.x0_radius}
+      weight_norm: ${globals.weight_norm}
+      output_gain: ${globals.output_gain}
+      zero_net_force: ${globals.zero_net_force}
+      normalized_products: ${globals.normalized_products}
+      preconditioned: ${globals.preconditioned_forces}
+    - _target_: gpff.model.atom_types.TypeLogits
+      n_in: ${globals.n_atom_basis}
+      process: ${globals.type_process}
+      n_hidden: null
+      n_layers: 3
+
+task:
+  outputs:
+    - _target_: gpff.task.ModelOutput
+      name: ${key:forces}
+      metrics:
+        mae:
+          _target_: torchmetrics.regression.MeanAbsoluteError
+        mse:
+          _target_: torchmetrics.regression.MeanSquaredError
+          squared: True
+      loss_weight: 1.
+      scale_loss: ${globals.scale_loss}
+      weights_key: ${globals.weights_key}
+      sigma_weighting: ${globals.sigma_weighting}
+    - _target_: gpff.task.CrossEntropyOutput
+      name: ${key:type_logits}
+      target_property: ${key:type_target}
+      weights_key: ${key:type_weight}
+      loss_weight: ${globals.type_loss_weight}
+      metrics: {}

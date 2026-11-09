@@ -1,0 +1,18 @@
+# @package _global_
+# GPFF that also generates the atom types, by continuous diffusion of a type channel: the
+# scaled one-hot of each slot's element is noised with the positions' noise level
+# (gpff.atom_types.ContinuousTypes, globals.type_process.scale), and the head predicts the
+# clean classes with a cross-entropy. The samplers move the channel to scale * p, the
+# expectation of the clean one-hot. Everything else is experiment=gpff_ctmc_types.
+#
+# Sample with sampler=continuous_types.
+defaults:
+  - gpff_ctmc_types
+  - override /type_process: continuous
+  - _self_
+
+run:
+  experiment: gpff_continuous_types
+  tags:
+    - gpff
+    - gpff_continuous_types

@@ -85,7 +85,11 @@ hydra:
         - sampler=adaptive_heun - adaptive Heun's method sampler with per-molecule sigma estimation
         - sampler=adaptive_stochastic_heun - stochastic Heun's method sampler with per-molecule
           sigma estimation
-        
+        - sampler=ctmc_types - direct denoising that also generates the atom types of
+          experiment=gpff_ctmc_types (absorbing discrete diffusion)
+        - sampler=continuous_types - direct denoising that also generates the atom types of
+          experiment=gpff_continuous_types (continuous type channel)
+
         Available prior options:
         - prior=gaussian (default)
         - prior=shape - prescribed principal variances per molecule; needs

@@ -1,0 +1,12 @@
+# Direct denoising that also generates the atom types, for models of
+# experiment=gpff_ctmc_types: MASK slots are unmasked over the steps by the reverse
+# process of the model's absorbing type process (gpff.sample.atom_types).
+defaults:
+  - direct_denoising
+  - _self_
+
+_target_: gpff.sample.atom_types.AbsorbingTypeSampler
+# masking rate over the steps: cosine unmasks few slots early and many late, or linear
+schedule: cosine
+# temperature of the predicted class distribution
+temperature: 1.0

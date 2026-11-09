@@ -8,6 +8,7 @@ import datetime
 import torch
 import numpy as np
 from torch import nn as nn
+import torch.nn.functional as F
 from torchmetrics import Metric
 from schnetpack.task import ModelOutput as SPKModelOutput
 from schnetpack.task import AtomisticTask as SPKAtomisticTask
@@ -22,7 +23,7 @@ from gpff.optim import block_param_groups
 log = logging.getLogger(__name__)
 
 
-__all__ = ["ModelOutput", "AtomisticTask", "LearnedSigmaWeights"]
+__all__ = ["ModelOutput", "CrossEntropyOutput", "AtomisticTask", "LearnedSigmaWeights"]
 
 
 def _with_blocks(optimizer_cls, model, scope, slices, params, **kwargs):
@@ -202,6 +203,26 @@ class ModelOutput(SPKModelOutput):
             loss = torch.mean(self.sigma_weighting(loss, target[self.sigma_key]))
 
         return self.loss_weight * loss
+
+
+class CrossEntropyOutput(ModelOutput):
+    """
+    Cross-entropy of per-atom logits (``name``) against integer classes
+    (``target_property``), each atom weighted by ``weights_key`` (n_atoms, 1), and
+    averaged over the atoms. For the type heads of gpff.model.atom_types.
+    """
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("metrics", {})
+        super().__init__(*args, **kwargs)
+        if self.scale_loss is not None or self.sigma_weighting is not None:
+            raise ValueError("CrossEntropyOutput takes neither scale_loss nor sigma_weighting")
+
+    def calculate_loss(self, pred, target):
+        loss = F.cross_entropy(pred[self.name], target[self.target_property], reduction="none")
+        if self.weights_key is not None:
+            loss = loss * target[self.weights_key].squeeze(-1)
+        return self.loss_weight * loss.mean()
 
 
 class AtomisticTask(SPKAtomisticTask):
