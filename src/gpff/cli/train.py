@@ -6,6 +6,7 @@ from typing import List
 
 import hydra
 import torch
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import Callback, LightningDataModule, Trainer, seed_everything
 from pytorch_lightning.loggers.logger import Logger
@@ -119,8 +120,14 @@ def train(config: DictConfig):
         _convert_="partial",
     )
 
-    # log.info("Logging hyperparameters.")
-    log_hyperparameters(config=config, model=task, trainer=trainer)
+    # Log plain containers so nested fields remain native W&B parameters.
+    hparams = OmegaConf.to_container(config, resolve=True)
+    hydra_config = HydraConfig.get()
+    hparams["hydra_choices"] = OmegaConf.to_container(
+        hydra_config.runtime.choices, resolve=True
+    )
+    hparams["hydra_overrides"] = list(hydra_config.overrides.task)
+    log_hyperparameters(config=hparams, model=task, trainer=trainer)
 
     # Our checkpoints pickle schnetpack model objects (task hyperparameters), so
     # every Lightning load below needs weights_only=False; Lightning >= 2.6
